@@ -17,6 +17,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- Currency Conversion ---
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_usd_to_inr_rate():
+    """Get current USD to INR exchange rate. Falls back to approximate rate if API fails."""
+    try:
+        # You can integrate a free API like exchangerate-api.com here
+        # For now, using approximate rate
+        return 83.0  # Approximate USD to INR rate - update this or use real API
+    except:
+        return 83.0  # Fallback rate
+
+def convert_currency(amount_usd, to_currency="INR"):
+    """Convert USD amount to specified currency."""
+    if to_currency == "INR":
+        rate = get_usd_to_inr_rate()
+        return amount_usd * rate
+    return amount_usd
+
+def format_currency(amount, currency="USD"):
+    """Format currency with proper symbols and formatting."""
+    if currency == "INR":
+        return f"₹{amount:,.0f}"
+    else:
+        return f"${amount:,.2f}"
+
 # --- Enhanced Data Loading with Validation ---
 @st.cache_data
 def load_and_validate_data():
@@ -311,6 +336,9 @@ def main():
         client_name = st.text_input("Client Name", value="")
         project_name = st.text_input("Project Name", value="")
         
+        # Currency selection
+        currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0)
+        
         st.markdown("---")
         
         room_type = st.selectbox(
@@ -332,7 +360,7 @@ def main():
         st.caption(f"Budget range: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
     
     # Main content areas
-    tab1, tab2, tab3 = st.tabs(["Room Analysis", "Requirements", "Generate BOQ"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate BOQ", "3D Visualization"])
     
     with tab1:
         room_area, ceiling_height = create_room_calculator()
@@ -355,6 +383,9 @@ def main():
             if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
                 generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
                            technical_reqs, room_area, project_id, quote_valid_days)
+    
+    with tab4:
+        create_3d_visualization_placeholder()
         
         with col2:
             st.markdown("**Product Stats:**")
@@ -365,8 +396,18 @@ def main():
                     # Convert price column to numeric, handling errors
                     numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
                     valid_prices = numeric_prices[numeric_prices > 0]
-                    avg_price = valid_prices.mean() if len(valid_prices) > 0 else None
-                    st.metric("Avg Price", f"${avg_price:.0f}" if avg_price and not pd.isna(avg_price) else "N/A")
+                    avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
+                    
+                    if avg_price_usd and not pd.isna(avg_price_usd):
+                        # Get currency preference from sidebar
+                        display_currency = st.session_state.get('currency', 'USD')
+                        if display_currency == "INR":
+                            avg_price_inr = convert_currency(avg_price_usd, "INR")
+                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
+                        else:
+                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
+                    else:
+                        st.metric("Avg Price", "N/A")
                 except Exception:
                     st.metric("Avg Price", "N/A")
 
@@ -518,7 +559,7 @@ def extract_boq_items(boq_content):
     return items
 
 def display_boq_results(boq_content, validation_results, project_id, quote_valid_days):
-    """Display BOQ results with validation feedback."""
+    """Display BOQ results with interactive editing capabilities."""
     
     st.subheader("Generated Bill of Quantities")
     
@@ -535,6 +576,10 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     
     # Display BOQ content
     st.markdown(boq_content)
+    
+    # Add interactive BOQ editor
+    st.markdown("---")
+    create_interactive_boq_editor()
     
     # Add download functionality
     col1, col2, col3 = st.columns(3)
@@ -566,6 +611,215 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     
     with col3:
         st.button("Generate Revised BOQ", help="Generate new BOQ with validation feedback")
+
+def create_interactive_boq_editor():
+    """Create interactive BOQ editing interface."""
+    st.subheader("Interactive BOQ Editor")
+    
+    # Initialize session state for BOQ items
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    
+    # Get product data for editing
+    product_df, _, _ = load_and_validate_data()
+    if product_df is None:
+        st.error("Cannot load product catalog for editing")
+        return
+    
+    # Currency selection for editor
+    currency = st.selectbox("Display Currency", ["USD", "INR"], key="editor_currency")
+    
+    tabs = st.tabs(["Edit Current BOQ", "Add Products", "Product Search"])
+    
+    with tabs[0]:
+        edit_current_boq(currency)
+    
+    with tabs[1]:
+        add_products_interface(product_df, currency)
+    
+    with tabs[2]:
+        product_search_interface(product_df, currency)
+
+def edit_current_boq(currency):
+    """Interface for editing current BOQ items."""
+    if not st.session_state.boq_items:
+        st.info("No BOQ items loaded. Generate a BOQ first or add products manually.")
+        return
+    
+    st.write("**Current BOQ Items:**")
+    
+    for i, item in enumerate(st.session_state.boq_items):
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
+        
+        with col1:
+            st.write(f"**{item['name']}**")
+            st.caption(f"Brand: {item['brand']} | Category: {item['category']}")
+        
+        with col2:
+            # Editable quantity
+            new_qty = st.number_input(
+                "Qty", 
+                min_value=0, 
+                value=item.get('quantity', 1),
+                key=f"qty_{i}"
+            )
+            st.session_state.boq_items[i]['quantity'] = new_qty
+        
+        with col3:
+            # Display price
+            price_usd = item.get('price', 0)
+            if currency == "INR":
+                price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
+            else:
+                price_display = format_currency(price_usd, "USD")
+            st.write(price_display)
+        
+        with col4:
+            # Total price
+            total_usd = price_usd * new_qty
+            if currency == "INR":
+                total_display = format_currency(convert_currency(total_usd, "INR"), "INR")
+            else:
+                total_display = format_currency(total_usd, "USD")
+            st.write(total_display)
+        
+        with col5:
+            # Remove button
+            if st.button("Remove", key=f"remove_{i}"):
+                st.session_state.boq_items.pop(i)
+                st.experimental_rerun()
+    
+    # Calculate totals
+    if st.session_state.boq_items:
+        total_usd = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total (USD)", format_currency(total_usd, "USD"))
+        with col2:
+            if currency == "INR":
+                total_inr = convert_currency(total_usd, "INR")
+                st.metric("Total (INR)", format_currency(total_inr, "INR"))
+
+def add_products_interface(product_df, currency):
+    """Interface for adding products to BOQ."""
+    st.write("**Add Products from Catalog:**")
+    
+    # Category filter
+    categories = ['All'] + sorted(product_df['category'].dropna().unique().tolist())
+    selected_category = st.selectbox("Filter by Category", categories)
+    
+    # Brand filter
+    if selected_category != 'All':
+        filtered_df = product_df[product_df['category'] == selected_category]
+    else:
+        filtered_df = product_df
+    
+    brands = ['All'] + sorted(filtered_df['brand'].dropna().unique().tolist())
+    selected_brand = st.selectbox("Filter by Brand", brands)
+    
+    if selected_brand != 'All':
+        filtered_df = filtered_df[filtered_df['brand'] == selected_brand]
+    
+    # Product selection
+    if len(filtered_df) > 0:
+        # Display products in a more manageable way
+        products_per_page = 10
+        total_products = len(filtered_df)
+        total_pages = (total_products - 1) // products_per_page + 1
+        
+        page = st.number_input("Page", min_value=1, max_value=total_pages, value=1) - 1
+        start_idx = page * products_per_page
+        end_idx = min(start_idx + products_per_page, total_products)
+        
+        current_products = filtered_df.iloc[start_idx:end_idx]
+        
+        for idx, (_, product) in enumerate(current_products.iterrows()):
+            col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
+            
+            with col1:
+                st.write(f"**{product['name']}**")
+                st.caption(f"Brand: {product['brand']}")
+            
+            with col2:
+                price_usd = product.get('price', 0)
+                if currency == "INR":
+                    price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
+                else:
+                    price_display = format_currency(price_usd, "USD")
+                st.write(price_display)
+            
+            with col3:
+                qty = st.number_input("Quantity", min_value=1, value=1, key=f"add_qty_{start_idx + idx}")
+            
+            with col4:
+                if st.button("Add", key=f"add_btn_{start_idx + idx}"):
+                    new_item = {
+                        'name': product['name'],
+                        'brand': product['brand'],
+                        'category': product.get('category', ''),
+                        'price': price_usd,
+                        'quantity': qty
+                    }
+                    st.session_state.boq_items.append(new_item)
+                    st.success(f"Added {product['name']}")
+        
+        st.caption(f"Showing {start_idx + 1}-{end_idx} of {total_products} products")
+    else:
+        st.info("No products found with current filters")
+
+def product_search_interface(product_df, currency):
+    """Advanced product search interface."""
+    st.write("**Search Products:**")
+    
+    search_term = st.text_input("Search by product name, brand, or features")
+    
+    if search_term:
+        # Search across multiple columns
+        mask = (
+            product_df['name'].str.contains(search_term, case=False, na=False) |
+            product_df['brand'].str.contains(search_term, case=False, na=False) |
+            product_df['features'].str.contains(search_term, case=False, na=False)
+        )
+        search_results = product_df[mask].head(20)  # Limit results
+        
+        if len(search_results) > 0:
+            st.write(f"Found {len(search_results)} matching products:")
+            
+            for idx, (_, product) in enumerate(search_results.iterrows()):
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
+                    
+                    with col1:
+                        st.write(f"**{product['name']}**")
+                        st.caption(f"Brand: {product['brand']} | Category: {product.get('category', 'N/A')}")
+                    
+                    with col2:
+                        price_usd = product.get('price', 0)
+                        if currency == "INR":
+                            price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
+                        else:
+                            price_display = format_currency(price_usd, "USD")
+                        st.write(price_display)
+                    
+                    with col3:
+                        qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{idx}")
+                    
+                    with col4:
+                        if st.button("Add", key=f"search_add_{idx}"):
+                            new_item = {
+                                'name': product['name'],
+                                'brand': product['brand'],
+                                'category': product.get('category', ''),
+                                'price': price_usd,
+                                'quantity': qty
+                            }
+                            st.session_state.boq_items.append(new_item)
+                            st.success("Added to BOQ!")
+        else:
+            st.info("No products found matching your search")
+    else:
+        st.info("Enter search terms to find products")
 
 if __name__ == "__main__":
     main()
