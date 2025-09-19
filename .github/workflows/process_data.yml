@@ -1,0 +1,41 @@
+# .github/workflows/process_data.yml
+
+name: Process New Product Data
+
+# This action triggers whenever you push changes to any CSV file inside the 'data' folder
+on:
+  push:
+    paths:
+      - 'data/**.csv'
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas
+
+      - name: Run data processing script
+        run: python process_data.py
+
+      - name: Commit and push if there are changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add new_master_catalog_DRAFT.csv
+          # Check if there are changes to commit
+          if git diff-index --quiet HEAD; then
+            echo "No changes to the draft file. Nothing to commit."
+          else
+            git commit -m "Automated: Update master catalog draft"
+            git push
+          fi
