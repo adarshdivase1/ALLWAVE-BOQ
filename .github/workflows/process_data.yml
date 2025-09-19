@@ -39,7 +39,7 @@ jobs:
       
       - name: Commit and push with retry
         run: |
-          git add new_master_catalog_DRAFT.csv
+          git add master_product_catalog.csv
           
           # Check if there are any changes to commit
           if git diff-index --quiet HEAD; then
