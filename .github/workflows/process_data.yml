@@ -11,13 +11,16 @@ jobs:
   build-and-commit:
     runs-on: ubuntu-latest
 
-    # This block is essential for allowing the action to write files.
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
+        # ## MODIFIED ## - This ensures the action checks out the full history
+        # which is needed for pulling and pushing correctly.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,9 +38,15 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add new_master_catalog_DRAFT.csv
+          
+          # Check if there are any changes to commit
           if git diff-index --quiet HEAD; then
             echo "No changes to the draft file. Nothing to commit."
           else
             git commit -m "Automated: Update master catalog draft"
+            
+            # ## NEW ## - Sync with the remote repository before pushing
+            git pull --rebase
+            
             git push
           fi
