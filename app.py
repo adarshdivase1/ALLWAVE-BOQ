@@ -805,15 +805,28 @@ def edit_current_boq(currency):
                 )
             
             with col3:
+                # FIX: Ensure quantity is at least 1 and handle potential float/invalid values
+                current_quantity = item.get('quantity', 1)
+                try:
+                    # Convert to int and ensure it's at least 1
+                    safe_quantity = max(1, int(float(current_quantity))) if current_quantity else 1
+                except (ValueError, TypeError):
+                    safe_quantity = 1
+                
                 new_quantity = st.number_input(
                     "Quantity", 
                     min_value=1, 
-                    value=int(item.get('quantity', 1)), 
+                    value=safe_quantity, 
                     key=f"qty_{i}"
                 )
                 
                 # Price input with currency conversion
                 current_price = item.get('price', 0)
+                try:
+                    current_price = float(current_price) if current_price else 0
+                except (ValueError, TypeError):
+                    current_price = 0
+                
                 if currency == 'INR' and current_price > 0:
                     display_price = convert_currency(current_price, 'INR')
                 else:
