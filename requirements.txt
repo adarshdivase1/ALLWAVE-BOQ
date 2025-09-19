@@ -1,4 +1,6 @@
 streamlit
 pandas
 google-generativeai
-python-dateutil
+numpy
+plotly
+aiohttp
