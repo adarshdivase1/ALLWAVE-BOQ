@@ -11,7 +11,7 @@ jobs:
   build-and-commit:
     runs-on: ubuntu-latest
 
-    # ## NEW ## - Add this permissions block
+    # This block is essential for allowing the action to write files.
     permissions:
       contents: write
 
