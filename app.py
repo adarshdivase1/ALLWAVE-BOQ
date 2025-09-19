@@ -251,16 +251,16 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available")
         network_capability = st.selectbox("Network Infrastructure", 
-                                        ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
+                                            ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
         cable_management = st.selectbox("Cable Management", 
-                                      ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required")
         security_clearance = st.selectbox("Security Level", 
-                                        ["Standard", "Restricted", "Classified"])
+                                            ["Standard", "Restricted", "Classified"])
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -382,11 +382,8 @@ def main():
         with col1:
             if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
                 generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
-                           technical_reqs, room_area, project_id, quote_valid_days)
+                             technical_reqs, room_area, project_id, quote_valid_days)
     
-    with tab4:
-        create_3d_visualization_placeholder()
-        
         with col2:
             st.markdown("**Product Stats:**")
             st.metric("Total Products", len(product_df))
@@ -410,16 +407,19 @@ def main():
                         st.metric("Avg Price", "N/A")
                 except Exception:
                     st.metric("Avg Price", "N/A")
+    
+    with tab4:
+        create_3d_visualization_placeholder()
 
 def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
-                technical_reqs, room_area, project_id, quote_valid_days):
+                 technical_reqs, room_area, project_id, quote_valid_days):
     """Enhanced BOQ generation with validation."""
     
     with st.spinner("Engineering professional BOQ with technical validation..."):
         
         # Create enhanced prompt
         prompt = create_enhanced_prompt(product_df, guidelines, room_type, budget_tier, 
-                                      features, technical_reqs, room_area)
+                                        features, technical_reqs, room_area)
         
         try:
             # Generate BOQ with retry logic
@@ -820,6 +820,46 @@ def product_search_interface(product_df, currency):
             st.info("No products found matching your search")
     else:
         st.info("Enter search terms to find products")
+
+def create_3d_visualization_placeholder():
+    """Create placeholder for 3D visualization functionality."""
+    st.subheader("3D Room Visualization")
+    
+    # Placeholder content
+    st.info("🔧 3D visualization feature coming soon!")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Planned Features:**")
+        st.markdown("""
+        - Interactive 3D room layout
+        - Equipment placement visualization  
+        - Cable routing visualization
+        - Viewing angle analysis
+        - Acoustic modeling preview
+        """)
+    
+    with col2:
+        st.write("**Current Status:**")
+        st.markdown("""
+        - 🟡 Room dimension capture: Ready
+        - 🔴 3D rendering engine: In development
+        - 🔴 Equipment models: In development
+        - 🔴 Interactive controls: Planned
+        """)
+    
+    # Optional: Add a simple room layout diagram
+    st.write("**Room Layout Preview:**")
+    st.text("┌─────────────────────┐")
+    st.text("│                     │")
+    st.text("│       [TV]          │")  
+    st.text("│                     │")
+    st.text("│   [Table/Conf]      │")
+    st.text("│                     │")
+    st.text("│       [Door]        │")
+    st.text("└─────────────────────┘")
+    st.caption("Simple ASCII room layout - 3D version coming soon")
 
 if __name__ == "__main__":
     main()
