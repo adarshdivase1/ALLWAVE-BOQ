@@ -1,4 +1,3 @@
-# process_data.py
 import pandas as pd
 import os
 import re
@@ -6,14 +5,16 @@ import re
 def find_header_row(file_path, keywords, max_rows=20):
     """Tries to find the correct header row in a messy CSV."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             for i, line in enumerate(f):
                 if i >= max_rows:
                     break
                 if sum(keyword.lower() in line.lower() for keyword in keywords) >= 2:
                     return i
-    except Exception:
-        with open(file_path, 'r', encoding='latin1') as f:
+    except Exception as e:
+        print(f"  -> Could not read file {file_path} with utf-8, trying latin1. Error: {e}")
+        # Fallback for different encodings
+        with open(file_path, 'r', encoding='latin1', errors='ignore') as f:
              for i, line in enumerate(f):
                 if i >= max_rows:
                     break
@@ -28,20 +29,35 @@ def clean_brand_name(filename):
     return base_name
 
 # --- Main Script ---
-folder_path = 'data' # ## MODIFIED ## Now specifically looks in the 'data' folder
+new_data_folder = 'data'
+existing_master_file = 'master_product_catalog.csv'
 output_filename = 'new_master_catalog_DRAFT.csv'
-all_products = []
+all_new_products = []
 header_keywords = ['description', 'model', 'part', 'price']
 
-if not os.path.exists(folder_path):
-    print(f"Error: The '{folder_path}' directory was not found. Please create it and add your CSV files.")
+# ## NEW ## - Step 1: Read the existing master catalog if it exists
+if os.path.exists(existing_master_file):
+    print(f"Reading existing data from {existing_master_file}...")
+    try:
+        existing_df = pd.read_csv(existing_master_file)
+    except Exception as e:
+        print(f"  -> Warning: Could not read existing master file. Starting fresh. Error: {e}")
+        existing_df = pd.DataFrame()
+else:
+    print(f"No existing {existing_master_file} found. Starting with a blank slate.")
+    existing_df = pd.DataFrame()
+
+
+# ## Step 2: Process all the new files ##
+if not os.path.exists(new_data_folder):
+    print(f"Error: The '{new_data_folder}' directory was not found. Please create it and add your new CSV files.")
     exit()
 
-csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
-print(f"Found {len(csv_files)} CSV files to process in the '{folder_path}' folder...")
+csv_files = [f for f in os.listdir(new_data_folder) if f.endswith('.csv')]
+print(f"Found {len(csv_files)} new CSV files to process in the '{new_data_folder}' folder...")
 
 for filename in csv_files:
-    file_path = os.path.join(folder_path, filename)
+    file_path = os.path.join(new_data_folder, filename)
     brand = clean_brand_name(filename)
     print(f"Processing: {filename} (Brand: {brand})")
     try:
@@ -53,7 +69,7 @@ for filename in csv_files:
         price_col = next((col for col in df.columns if 'price' in col.lower()), None)
 
         if not model_col or not desc_col:
-            print(f"  -> Warning: Could not find 'Model' or 'Description' columns. Skipping.")
+            print(f"  -> Warning: Could not find 'Model' or 'Description' columns in {filename}. Skipping.")
             continue
 
         df = df.rename(columns={model_col: 'Model', desc_col: 'Description'})
@@ -79,14 +95,28 @@ for filename in csv_files:
                 'use_case_tags': '',
                 'compatibility_tags': ''
             }
-            all_products.append(product_data)
+            all_new_products.append(product_data)
 
     except Exception as e:
-        print(f"  -> Error processing {filename}: {e}")
+        print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-if all_products:
-    final_df = pd.DataFrame(all_products)
-    final_df.to_csv(output_filename, index=False)
-    print(f"\n✅ Success! Consolidated {len(final_df)} products into '{output_filename}'.")
+# ## NEW ## - Step 3: Combine old and new data
+if not all_new_products and existing_df.empty:
+    print("\n❌ No existing data and no new products were found. Exiting.")
 else:
-    print("\n❌ No products were processed. Please check the CSV files for correct formatting.")
+    new_products_df = pd.DataFrame(all_new_products)
+    
+    # Combine the existing and new dataframes
+    combined_df = pd.concat([existing_df, new_products_df], ignore_index=True)
+    
+    # ## NEW ## - Step 4: De-duplicate, keeping the last (newest) entry for any duplicates
+    # This ensures new data overwrites old data if a product already exists.
+    if 'name' in combined_df.columns:
+        initial_rows = len(combined_df)
+        combined_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
+        final_rows = len(combined_df)
+        print(f"De-duplication complete. Removed {initial_rows - final_rows} old or duplicate entries.")
+
+    # Save the combined and cleaned data
+    combined_df.to_csv(output_filename, index=False)
+    print(f"\n✅ Success! Merged all data and saved {len(combined_df)} total products into '{output_filename}'.")
