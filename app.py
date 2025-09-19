@@ -1760,10 +1760,8 @@ def main():
             st.exception(e)
 
 if __name__ == "__main__":
-    # Configure Streamlit settings
-    st.set_option('deprecation.showPyplotGlobalUse', False)
 
-    # Custom CSS for better styling
+ # Custom CSS for better styling
     st.markdown("""
     <style>
         .stMetric > label {
