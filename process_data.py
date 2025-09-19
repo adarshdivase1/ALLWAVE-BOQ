@@ -31,15 +31,16 @@ def clean_brand_name(filename):
 # --- Main Script ---
 new_data_folder = 'data'
 existing_master_file = 'master_product_catalog.csv'
-output_filename = 'new_master_catalog_DRAFT.csv'
+output_filename = 'master_product_catalog.csv'  # Changed: Output directly to main catalog file
 all_new_products = []
 header_keywords = ['description', 'model', 'part', 'price']
 
-# ## NEW ## - Step 1: Read the existing master catalog if it exists
+# Step 1: Read the existing master catalog if it exists
 if os.path.exists(existing_master_file):
     print(f"Reading existing data from {existing_master_file}...")
     try:
         existing_df = pd.read_csv(existing_master_file)
+        print(f"  -> Found {len(existing_df)} existing products in catalog")
     except Exception as e:
         print(f"  -> Warning: Could not read existing master file. Starting fresh. Error: {e}")
         existing_df = pd.DataFrame()
@@ -47,8 +48,7 @@ else:
     print(f"No existing {existing_master_file} found. Starting with a blank slate.")
     existing_df = pd.DataFrame()
 
-
-# ## Step 2: Process all the new files ##
+# Step 2: Process all the new files
 if not os.path.exists(new_data_folder):
     print(f"Error: The '{new_data_folder}' directory was not found. Please create it and add your new CSV files.")
     exit()
@@ -100,16 +100,17 @@ for filename in csv_files:
     except Exception as e:
         print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-# ## NEW ## - Step 3: Combine old and new data
+# Step 3: Combine old and new data
 if not all_new_products and existing_df.empty:
     print("\n❌ No existing data and no new products were found. Exiting.")
 else:
     new_products_df = pd.DataFrame(all_new_products)
+    print(f"  -> Processed {len(all_new_products)} new products from CSV files")
     
     # Combine the existing and new dataframes
     combined_df = pd.concat([existing_df, new_products_df], ignore_index=True)
     
-    # ## NEW ## - Step 4: De-duplicate, keeping the last (newest) entry for any duplicates
+    # Step 4: De-duplicate, keeping the last (newest) entry for any duplicates
     # This ensures new data overwrites old data if a product already exists.
     if 'name' in combined_df.columns:
         initial_rows = len(combined_df)
@@ -117,6 +118,7 @@ else:
         final_rows = len(combined_df)
         print(f"De-duplication complete. Removed {initial_rows - final_rows} old or duplicate entries.")
 
-    # Save the combined and cleaned data
+    # Save the combined and cleaned data directly to the main catalog file
     combined_df.to_csv(output_filename, index=False)
-    print(f"\n✅ Success! Merged all data and saved {len(combined_df)} total products into '{output_filename}'.")
+    print(f"\n✅ Success! Updated master catalog with {len(combined_df)} total products.")
+    print(f"✅ Streamlit app will now automatically use the latest product data.")
