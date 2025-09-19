@@ -455,23 +455,65 @@ Generate the BOQ now:
     return prompt
 
 def extract_boq_items(boq_content):
-    """Extract structured BOQ items from response (simplified)."""
-    # This is a simplified extraction - in production you'd want more robust parsing
+    """Extract structured BOQ items from response with improved parsing."""
     items = []
     
-    # Extract table content using regex
-    table_pattern = r'\|.*?\|'
-    matches = re.findall(table_pattern, boq_content, re.MULTILINE)
+    # Look for markdown table sections
+    lines = boq_content.split('\n')
+    in_table = False
     
-    for match in matches:
-        if 'Category' not in match and 'TOTAL' not in match:
-            parts = [part.strip() for part in match.split('|') if part.strip()]
+    for line in lines:
+        line = line.strip()
+        
+        # Detect table start (header row with |)
+        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'brand', 'item']):
+            in_table = True
+            continue
+            
+        # Skip separator lines (|---|---|)
+        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
+            continue
+            
+        # Process table rows
+        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
+            parts = [part.strip() for part in line.split('|') if part.strip()]
             if len(parts) >= 3:
+                # Try to identify category from the content
+                category = parts[0].lower()
+                product_name = parts[2] if len(parts) > 2 else parts[1]
+                
+                # Map common category terms to standard categories
+                if any(term in category for term in ['display', 'monitor', 'screen', 'projector']):
+                    category = 'display'
+                elif any(term in category for term in ['audio', 'speaker', 'microphone', 'sound']):
+                    category = 'audio'
+                elif any(term in category for term in ['video', 'conferencing', 'camera']):
+                    category = 'control'  # Video conferencing systems often include control
+                elif any(term in category for term in ['control', 'processor', 'switch']):
+                    category = 'control'
+                elif any(term in category for term in ['mount', 'bracket', 'rack']):
+                    category = 'mount'
+                elif any(term in category for term in ['cable', 'connect', 'wire']):
+                    category = 'cable'
+                
+                # Also check product name for category clues
+                product_lower = product_name.lower()
+                if 'display' in product_lower or 'monitor' in product_lower:
+                    category = 'display'
+                elif 'rally bar' in product_lower or 'camera' in product_lower or 'conferencing' in product_lower:
+                    category = 'control'  # Video bars typically include control functionality
+                elif 'speaker' in product_lower or 'microphone' in product_lower:
+                    category = 'audio'
+                
                 items.append({
-                    'category': parts[0] if len(parts) > 0 else '',
-                    'name': parts[2] if len(parts) > 2 else '',
-                    'brand': parts[1] if len(parts) > 1 else ''
+                    'category': category,
+                    'name': product_name,
+                    'brand': parts[1] if len(parts) > 1 else 'Unknown'
                 })
+                
+        # End table when we hit a line that doesn't start with |
+        elif in_table and not line.startswith('|'):
+            in_table = False
     
     return items
 
