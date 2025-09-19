@@ -398,11 +398,15 @@ def main():
                     if avg_price_usd and not pd.isna(avg_price_usd):
                         # Get currency preference from sidebar
                         display_currency = st.session_state.get('currency', 'USD')
+                        
+                        # --- THIS IS THE CORRECTED BLOCK ---
                         if display_currency == "INR":
                             avg_price_inr = convert_currency(avg_price_usd, "INR")
-                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
+                            st.metric("Avg Price (INR)", avg_price_inr)
                         else:
-                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
+                            st.metric("Avg Price (USD)", avg_price_usd)
+                        # ------------------------------------
+                            
                     else:
                         st.metric("Avg Price", "N/A")
                 except Exception:
@@ -763,7 +767,7 @@ def add_products_interface(product_df, currency):
                     }
                     st.session_state.boq_items.append(new_item)
                     st.success(f"Added {product['name']}")
-        
+            
         st.caption(f"Showing {start_idx + 1}-{end_idx} of {total_products} products")
     else:
         st.info("No products found with current filters")
@@ -855,7 +859,7 @@ def create_3d_visualization_placeholder():
     st.text("│                     │")
     st.text("│       [TV]          │")  
     st.text("│                     │")
-    st.text("│   [Table/Conf]      │")
+    st.text("│    [Table/Conf]     │")
     st.text("│                     │")
     st.text("│       [Door]        │")
     st.text("└─────────────────────┘")
