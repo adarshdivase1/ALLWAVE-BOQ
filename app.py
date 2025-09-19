@@ -56,21 +56,43 @@ def load_and_validate_data():
         if df['name'].isnull().sum() > 0:
             validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
         
-        # Check for zero/missing prices
-        zero_price_count = (df['price'] == 0.0).sum()
-        if zero_price_count > 100:  # Allow some zero prices for accessories
-            validation_issues.append(f"{zero_price_count} products have zero pricing")
+        # Check for zero/missing prices - make price handling more robust
+        if 'price' in df.columns:
+            # Convert price to numeric, handling non-numeric values
+            df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+            zero_price_count = (df['price'] == 0.0).sum()
+            if zero_price_count > 100:  # Allow some zero prices for accessories
+                validation_issues.append(f"{zero_price_count} products have zero pricing")
+        else:
+            df['price'] = 0.0  # Add price column if missing
+            validation_issues.append("Price column missing - using default values")
             
         # Brand validation
-        if df['brand'].isnull().sum() > 0:
+        if 'brand' not in df.columns:
+            df['brand'] = 'Unknown'
+            validation_issues.append("Brand column missing - using default values")
+        elif df['brand'].isnull().sum() > 0:
+            df['brand'] = df['brand'].fillna('Unknown')
             validation_issues.append(f"{df['brand'].isnull().sum()} products missing brand information")
         
         # Category validation - ensure we have essential categories
-        categories = df['category'].value_counts()
-        essential_categories = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts']
-        missing_categories = [cat for cat in essential_categories if cat not in categories.index]
-        if missing_categories:
-            validation_issues.append(f"Missing essential categories: {missing_categories}")
+        if 'category' not in df.columns:
+            df['category'] = 'General'
+            validation_issues.append("Category column missing - using default values")
+        else:
+            df['category'] = df['category'].fillna('General')
+            categories = df['category'].value_counts()
+            essential_categories = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts']
+            missing_categories = [cat for cat in essential_categories if cat not in categories.index]
+            if missing_categories:
+                validation_issues.append(f"Missing essential categories: {missing_categories}")
+        
+        # Add features column if missing (for search functionality)
+        if 'features' not in df.columns:
+            df['features'] = df['name']  # Use name as fallback for features
+            validation_issues.append("Features column missing - using product names for search")
+        else:
+            df['features'] = df['features'].fillna('')
         
         try:
             with open("avixa_guidelines.md", "r") as f:
@@ -306,8 +328,119 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
     
     return doc_content
 
+# --- FIXED: Enhanced BOQ Item Extraction ---
+def extract_boq_items_from_response(boq_content, product_df):
+    """Extract and match BOQ items from AI response with product database."""
+    items = []
+    
+    # Look for markdown table sections
+    lines = boq_content.split('\n')
+    in_table = False
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Detect table start (header row with |)
+        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'brand', 'item', 'description']):
+            in_table = True
+            continue
+            
+        # Skip separator lines (|---|---|)
+        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
+            continue
+            
+        # Process table rows
+        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
+            parts = [part.strip() for part in line.split('|') if part.strip()]
+            if len(parts) >= 3:
+                # Extract information from table row
+                category = parts[0].lower() if len(parts) > 0 else 'general'
+                brand = parts[1] if len(parts) > 1 else 'Unknown'
+                product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
+                
+                # Try to extract quantity and price if present
+                quantity = 1
+                price = 0
+                
+                # Look for quantity in the row (usually a number)
+                for part in parts:
+                    if part.isdigit():
+                        quantity = int(part)
+                        break
+                
+                # Try to match with actual product in database
+                matched_product = match_product_in_database(product_name, brand, product_df)
+                if matched_product is not None:
+                    price = float(matched_product.get('price', 0))
+                    actual_brand = matched_product.get('brand', brand)
+                    actual_category = matched_product.get('category', category)
+                    actual_name = matched_product.get('name', product_name)
+                else:
+                    actual_brand = brand
+                    actual_category = normalize_category(category, product_name)
+                    actual_name = product_name
+                
+                items.append({
+                    'category': actual_category,
+                    'name': actual_name,
+                    'brand': actual_brand,
+                    'quantity': quantity,
+                    'price': price,
+                    'matched': matched_product is not None
+                })
+                
+        # End table when we hit a line that doesn't start with |
+        elif in_table and not line.startswith('|'):
+            in_table = False
+    
+    return items
+
+def match_product_in_database(product_name, brand, product_df):
+    """Try to match a product name and brand with the database."""
+    if product_df is None or len(product_df) == 0:
+        return None
+    
+    # First try exact brand and partial name match
+    brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
+    if len(brand_matches) > 0:
+        name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
+        if len(name_matches) > 0:
+            return name_matches.iloc[0].to_dict()
+    
+    # Try partial name match across all products
+    name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
+    if len(name_matches) > 0:
+        return name_matches.iloc[0].to_dict()
+    
+    return None
+
+def normalize_category(category_text, product_name):
+    """Normalize category names to standard categories."""
+    category_lower = category_text.lower()
+    product_lower = product_name.lower()
+    
+    # Map common category terms to standard categories
+    if any(term in category_lower or term in product_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
+        return 'Displays'
+    elif any(term in category_lower or term in product_lower for term in ['audio', 'speaker', 'microphone', 'sound', 'amplifier']):
+        return 'Audio'
+    elif any(term in category_lower or term in product_lower for term in ['video', 'conferencing', 'camera', 'codec', 'rally']):
+        return 'Video Conferencing'
+    elif any(term in category_lower or term in product_lower for term in ['control', 'processor', 'switch', 'matrix']):
+        return 'Control'
+    elif any(term in category_lower or term in product_lower for term in ['mount', 'bracket', 'rack', 'stand']):
+        return 'Mounts'
+    elif any(term in category_lower or term in product_lower for term in ['cable', 'connect', 'wire', 'hdmi', 'usb']):
+        return 'Cables'
+    else:
+        return 'General'
+
 # --- Main Application ---
 def main():
+    # Initialize session state for BOQ items if not exists
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    
     # Load and validate data
     product_df, guidelines, data_issues = load_and_validate_data()
     
@@ -338,6 +471,7 @@ def main():
         
         # Currency selection
         currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0)
+        st.session_state['currency'] = currency  # Store in session state
         
         st.markdown("---")
         
@@ -396,17 +530,14 @@ def main():
                     avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
                     
                     if avg_price_usd and not pd.isna(avg_price_usd):
-                        # Get currency preference from sidebar
+                        # Get currency preference from session state
                         display_currency = st.session_state.get('currency', 'USD')
                         
-                        # --- THIS IS THE CORRECTED BLOCK ---
                         if display_currency == "INR":
                             avg_price_inr = convert_currency(avg_price_usd, "INR")
-                            st.metric("Avg Price (INR)", avg_price_inr)
+                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
                         else:
-                            st.metric("Avg Price (USD)", avg_price_usd)
-                        # ------------------------------------
-                            
+                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
                     else:
                         st.metric("Avg Price", "N/A")
                 except Exception:
@@ -433,8 +564,11 @@ def generate_boq(model, product_df, guidelines, room_type, budget_tier, features
                 # Parse and validate response
                 boq_content = response.text
                 
-                # Extract structured data (simplified)
-                boq_items = extract_boq_items(boq_content)
+                # FIXED: Extract structured data and load into session state
+                boq_items = extract_boq_items_from_response(boq_content, product_df)
+                
+                # Load items into session state for editor
+                st.session_state.boq_items = boq_items
                 
                 # Validate BOQ
                 validator = BOQValidator(ROOM_SPECS, product_df)
@@ -446,6 +580,10 @@ def generate_boq(model, product_df, guidelines, room_type, budget_tier, features
                 
                 # Display results
                 display_boq_results(boq_content, validation_results, project_id, quote_valid_days)
+                
+                # Show success message about loading items
+                if boq_items:
+                    st.success(f"✅ Successfully loaded {len(boq_items)} items into BOQ editor!")
                 
         except Exception as e:
             st.error(f"BOQ generation failed: {str(e)}")
@@ -484,83 +622,17 @@ You are a Professional AV Systems Engineer with 15+ years experience. Create a p
 6. Include 3-year warranty costs
 7. Add 15% contingency for unforeseen issues
 
+**OUTPUT FORMAT REQUIREMENT:**
+Please provide your response in a clear table format using markdown tables. Make sure to include:
+| Category | Brand | Product Name | Quantity | Unit Price | Total |
+
 **PRODUCT CATALOG:**
 {product_catalog_string}
-
-**OUTPUT FORMAT:**
-Provide a complete system design with:
-1. Executive summary
-2. Technical specifications compliance
-3. Detailed BOQ table with labor
-4. Risk assessment and recommendations
 
 Generate the BOQ now:
 """
     
     return prompt
-
-def extract_boq_items(boq_content):
-    """Extract structured BOQ items from response with improved parsing."""
-    items = []
-    
-    # Look for markdown table sections
-    lines = boq_content.split('\n')
-    in_table = False
-    
-    for line in lines:
-        line = line.strip()
-        
-        # Detect table start (header row with |)
-        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'brand', 'item']):
-            in_table = True
-            continue
-            
-        # Skip separator lines (|---|---|)
-        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
-            continue
-            
-        # Process table rows
-        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
-            parts = [part.strip() for part in line.split('|') if part.strip()]
-            if len(parts) >= 3:
-                # Try to identify category from the content
-                category = parts[0].lower()
-                product_name = parts[2] if len(parts) > 2 else parts[1]
-                
-                # Map common category terms to standard categories
-                if any(term in category for term in ['display', 'monitor', 'screen', 'projector']):
-                    category = 'display'
-                elif any(term in category for term in ['audio', 'speaker', 'microphone', 'sound']):
-                    category = 'audio'
-                elif any(term in category for term in ['video', 'conferencing', 'camera']):
-                    category = 'control'  # Video conferencing systems often include control
-                elif any(term in category for term in ['control', 'processor', 'switch']):
-                    category = 'control'
-                elif any(term in category for term in ['mount', 'bracket', 'rack']):
-                    category = 'mount'
-                elif any(term in category for term in ['cable', 'connect', 'wire']):
-                    category = 'cable'
-                
-                # Also check product name for category clues
-                product_lower = product_name.lower()
-                if 'display' in product_lower or 'monitor' in product_lower:
-                    category = 'display'
-                elif 'rally bar' in product_lower or 'camera' in product_lower or 'conferencing' in product_lower:
-                    category = 'control'  # Video bars typically include control functionality
-                elif 'speaker' in product_lower or 'microphone' in product_lower:
-                    category = 'audio'
-                
-                items.append({
-                    'category': category,
-                    'name': product_name,
-                    'brand': parts[1] if len(parts) > 1 else 'Unknown'
-                })
-                
-        # End table when we hit a line that doesn't start with |
-        elif in_table and not line.startswith('|'):
-            in_table = False
-    
-    return items
 
 def display_boq_results(boq_content, validation_results, project_id, quote_valid_days):
     """Display BOQ results with interactive editing capabilities."""
@@ -605,7 +677,14 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     
     with col2:
         # Generate CSV for further processing
-        csv_data = "Category,Brand,Product,Quantity,Unit Price,Total\n"  # Simplified
+        if st.session_state.boq_items:
+            csv_data = "Category,Brand,Product,Quantity,Unit Price,Total\n"
+            for item in st.session_state.boq_items:
+                total = item.get('price', 0) * item.get('quantity', 1)
+                csv_data += f"{item.get('category', '')},{item.get('brand', '')},{item.get('name', '')},{item.get('quantity', 1)},{item.get('price', 0)},{total}\n"
+        else:
+            csv_data = "Category,Brand,Product,Quantity,Unit Price,Total\n"
+        
         st.download_button(
             label="Download BOQ (CSV)",
             data=csv_data,
@@ -614,15 +693,12 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         )
     
     with col3:
-        st.button("Generate Revised BOQ", help="Generate new BOQ with validation feedback")
+        if st.button("Generate Revised BOQ", help="Generate new BOQ with validation feedback"):
+            st.experimental_rerun()
 
 def create_interactive_boq_editor():
-    """Create interactive BOQ editing interface."""
+    """FIXED: Create interactive BOQ editing interface."""
     st.subheader("Interactive BOQ Editor")
-    
-    # Initialize session state for BOQ items
-    if 'boq_items' not in st.session_state:
-        st.session_state.boq_items = []
     
     # Get product data for editing
     product_df, _, _ = load_and_validate_data()
@@ -631,7 +707,7 @@ def create_interactive_boq_editor():
         return
     
     # Currency selection for editor
-    currency = st.selectbox("Display Currency", ["USD", "INR"], key="editor_currency")
+    currency = st.session_state.get('currency', 'USD')
     
     tabs = st.tabs(["Edit Current BOQ", "Add Products", "Product Search"])
     
@@ -645,225 +721,242 @@ def create_interactive_boq_editor():
         product_search_interface(product_df, currency)
 
 def edit_current_boq(currency):
-    """Interface for editing current BOQ items."""
+    """FIXED: Interface for editing current BOQ items."""
     if not st.session_state.boq_items:
-        st.info("No BOQ items loaded. Generate a BOQ first or add products manually.")
+        st.info("No BOQ items loaded. Generate a BOQ first.")
         return
     
-    st.write("**Current BOQ Items:**")
+    st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
     
+    # Create editable table
     for i, item in enumerate(st.session_state.boq_items):
-        col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
-        
-        with col1:
-            st.write(f"**{item['name']}**")
-            st.caption(f"Brand: {item['brand']} | Category: {item['category']}")
-        
-        with col2:
-            # Editable quantity
-            new_qty = st.number_input(
-                "Qty", 
-                min_value=0, 
-                value=item.get('quantity', 1),
-                key=f"qty_{i}"
-            )
-            st.session_state.boq_items[i]['quantity'] = new_qty
-        
-        with col3:
-            # Display price
-            price_usd = item.get('price', 0)
-            if currency == "INR":
-                price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
-            else:
-                price_display = format_currency(price_usd, "USD")
-            st.write(price_display)
-        
-        with col4:
-            # Total price
-            total_usd = price_usd * new_qty
-            if currency == "INR":
-                total_display = format_currency(convert_currency(total_usd, "INR"), "INR")
-            else:
-                total_display = format_currency(total_usd, "USD")
-            st.write(total_display)
-        
-        with col5:
-            # Remove button
-            if st.button("Remove", key=f"remove_{i}"):
-                st.session_state.boq_items.pop(i)
-                st.experimental_rerun()
-    
-    # Calculate totals
-    if st.session_state.boq_items:
-        total_usd = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total (USD)", format_currency(total_usd, "USD"))
-        with col2:
-            if currency == "INR":
-                total_inr = convert_currency(total_usd, "INR")
-                st.metric("Total (INR)", format_currency(total_inr, "INR"))
-
-def add_products_interface(product_df, currency):
-    """Interface for adding products to BOQ."""
-    st.write("**Add Products from Catalog:**")
-    
-    # Category filter
-    categories = ['All'] + sorted(product_df['category'].dropna().unique().tolist())
-    selected_category = st.selectbox("Filter by Category", categories)
-    
-    # Brand filter
-    if selected_category != 'All':
-        filtered_df = product_df[product_df['category'] == selected_category]
-    else:
-        filtered_df = product_df
-    
-    brands = ['All'] + sorted(filtered_df['brand'].dropna().unique().tolist())
-    selected_brand = st.selectbox("Filter by Brand", brands)
-    
-    if selected_brand != 'All':
-        filtered_df = filtered_df[filtered_df['brand'] == selected_brand]
-    
-    # Product selection
-    if len(filtered_df) > 0:
-        # Display products in a more manageable way
-        products_per_page = 10
-        total_products = len(filtered_df)
-        total_pages = (total_products - 1) // products_per_page + 1
-        
-        page = st.number_input("Page", min_value=1, max_value=total_pages, value=1) - 1
-        start_idx = page * products_per_page
-        end_idx = min(start_idx + products_per_page, total_products)
-        
-        current_products = filtered_df.iloc[start_idx:end_idx]
-        
-        for idx, (_, product) in enumerate(current_products.iterrows()):
-            col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
+        with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}..."):
+            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
             
             with col1:
-                st.write(f"**{product['name']}**")
-                st.caption(f"Brand: {product['brand']}")
+                new_name = st.text_input(f"Product Name", value=item.get('name', ''), key=f"name_{i}")
+                new_brand = st.text_input(f"Brand", value=item.get('brand', ''), key=f"brand_{i}")
             
             with col2:
-                price_usd = product.get('price', 0)
-                if currency == "INR":
-                    price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
-                else:
-                    price_display = format_currency(price_usd, "USD")
-                st.write(price_display)
+                new_category = st.selectbox(
+                    "Category", 
+                    ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'],
+                    index=['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'].index(
+                        item.get('category', 'General') if item.get('category', 'General') in 
+                        ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'] else 'General'
+                    ),
+                    key=f"category_{i}"
+                )
             
             with col3:
-                qty = st.number_input("Quantity", min_value=1, value=1, key=f"add_qty_{start_idx + idx}")
+                new_quantity = st.number_input(
+                    "Quantity", 
+                    min_value=1, 
+                    value=int(item.get('quantity', 1)), 
+                    key=f"qty_{i}"
+                )
+                
+                # Price input with currency conversion
+                current_price = item.get('price', 0)
+                if currency == 'INR' and current_price > 0:
+                    display_price = convert_currency(current_price, 'INR')
+                else:
+                    display_price = current_price
+                
+                new_price = st.number_input(
+                    f"Unit Price ({currency})", 
+                    min_value=0.0, 
+                    value=float(display_price), 
+                    key=f"price_{i}"
+                )
+                
+                # Convert back to USD if needed for storage
+                if currency == 'INR':
+                    stored_price = new_price / get_usd_to_inr_rate()
+                else:
+                    stored_price = new_price
             
             with col4:
-                if st.button("Add", key=f"add_btn_{start_idx + idx}"):
-                    new_item = {
-                        'name': product['name'],
-                        'brand': product['brand'],
-                        'category': product.get('category', ''),
-                        'price': price_usd,
-                        'quantity': qty
-                    }
-                    st.session_state.boq_items.append(new_item)
-                    st.success(f"Added {product['name']}")
+                total_price = stored_price * new_quantity
+                if currency == 'INR':
+                    display_total = convert_currency(total_price, 'INR')
+                    st.metric("Total", format_currency(display_total, 'INR'))
+                else:
+                    st.metric("Total", format_currency(total_price, 'USD'))
+                
+                if st.button(f"Remove", key=f"remove_{i}", type="secondary"):
+                    st.session_state.boq_items.pop(i)
+                    st.experimental_rerun()
             
-        st.caption(f"Showing {start_idx + 1}-{end_idx} of {total_products} products")
-    else:
-        st.info("No products found with current filters")
+            # Update item if changed
+            st.session_state.boq_items[i].update({
+                'name': new_name,
+                'brand': new_brand,
+                'category': new_category,
+                'quantity': new_quantity,
+                'price': stored_price
+            })
+    
+    # Summary
+    if st.session_state.boq_items:
+        total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+        if currency == 'INR':
+            display_total = convert_currency(total_cost, 'INR')
+            st.markdown(f"### **Total Project Cost: {format_currency(display_total, 'INR')}**")
+        else:
+            st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
+
+def add_products_interface(product_df, currency):
+    """Interface for adding new products to BOQ."""
+    st.write("**Add Products to BOQ:**")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Category filter
+        categories = ['All'] + list(product_df['category'].unique()) if 'category' in product_df.columns else ['All']
+        selected_category = st.selectbox("Filter by Category", categories)
+        
+        # Filter products
+        if selected_category != 'All':
+            filtered_df = product_df[product_df['category'] == selected_category]
+        else:
+            filtered_df = product_df
+        
+        # Product selection
+        product_options = [f"{row['brand']} - {row['name']}" for _, row in filtered_df.iterrows()]
+        if product_options:
+            selected_product_str = st.selectbox("Select Product", product_options)
+            
+            # Find selected product
+            for _, row in filtered_df.iterrows():
+                if f"{row['brand']} - {row['name']}" == selected_product_str:
+                    selected_product = row
+                    break
+        else:
+            st.warning("No products found in selected category")
+            return
+    
+    with col2:
+        if product_options:
+            quantity = st.number_input("Quantity", min_value=1, value=1)
+            
+            # Display price in selected currency
+            base_price = float(selected_product.get('price', 0))
+            if currency == 'INR' and base_price > 0:
+                display_price = convert_currency(base_price, 'INR')
+                st.metric("Unit Price", format_currency(display_price, 'INR'))
+                total = display_price * quantity
+                st.metric("Total", format_currency(total, 'INR'))
+            else:
+                st.metric("Unit Price", format_currency(base_price, 'USD'))
+                total = base_price * quantity
+                st.metric("Total", format_currency(total, 'USD'))
+            
+            if st.button("Add to BOQ", type="primary"):
+                # Add to BOQ items
+                new_item = {
+                    'category': selected_product.get('category', 'General'),
+                    'name': selected_product.get('name', ''),
+                    'brand': selected_product.get('brand', ''),
+                    'quantity': quantity,
+                    'price': base_price,  # Always store in USD
+                    'matched': True
+                }
+                st.session_state.boq_items.append(new_item)
+                st.success(f"Added {quantity}x {selected_product['name']} to BOQ!")
+                st.experimental_rerun()
 
 def product_search_interface(product_df, currency):
     """Advanced product search interface."""
-    st.write("**Search Products:**")
+    st.write("**Search Product Catalog:**")
     
-    search_term = st.text_input("Search by product name, brand, or features")
-    
-    if search_term:
-        # Search across multiple columns
-        mask = (
-            product_df['name'].str.contains(search_term, case=False, na=False) |
-            product_df['brand'].str.contains(search_term, case=False, na=False) |
-            product_df['features'].str.contains(search_term, case=False, na=False)
-        )
-        search_results = product_df[mask].head(20)  # Limit results
-        
-        if len(search_results) > 0:
-            st.write(f"Found {len(search_results)} matching products:")
-            
-            for idx, (_, product) in enumerate(search_results.iterrows()):
-                with st.container():
-                    col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
-                    
-                    with col1:
-                        st.write(f"**{product['name']}**")
-                        st.caption(f"Brand: {product['brand']} | Category: {product.get('category', 'N/A')}")
-                    
-                    with col2:
-                        price_usd = product.get('price', 0)
-                        if currency == "INR":
-                            price_display = format_currency(convert_currency(price_usd, "INR"), "INR")
-                        else:
-                            price_display = format_currency(price_usd, "USD")
-                        st.write(price_display)
-                    
-                    with col3:
-                        qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{idx}")
-                    
-                    with col4:
-                        if st.button("Add", key=f"search_add_{idx}"):
-                            new_item = {
-                                'name': product['name'],
-                                'brand': product['brand'],
-                                'category': product.get('category', ''),
-                                'price': price_usd,
-                                'quantity': qty
-                            }
-                            st.session_state.boq_items.append(new_item)
-                            st.success("Added to BOQ!")
-        else:
-            st.info("No products found matching your search")
-    else:
-        st.info("Enter search terms to find products")
-
-def create_3d_visualization_placeholder():
-    """Create placeholder for 3D visualization functionality."""
-    st.subheader("3D Room Visualization")
-    
-    # Placeholder content
-    st.info("🔧 3D visualization feature coming soon!")
-    
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.write("**Planned Features:**")
-        st.markdown("""
-        - Interactive 3D room layout
-        - Equipment placement visualization  
-        - Cable routing visualization
-        - Viewing angle analysis
-        - Acoustic modeling preview
-        """)
+        search_term = st.text_input("Search products...", placeholder="Enter product name, brand, or features")
+        
+        if search_term:
+            # Search across multiple columns
+            search_cols = ['name', 'brand']
+            if 'features' in product_df.columns:
+                search_cols.append('features')
+            
+            mask = product_df[search_cols].apply(
+                lambda x: x.astype(str).str.contains(search_term, case=False, na=False)
+            ).any(axis=1)
+            
+            search_results = product_df[mask]
+            
+            st.write(f"Found {len(search_results)} products:")
+            
+            # Display search results
+            for _, product in search_results.head(10).iterrows():  # Limit to first 10 results
+                with st.expander(f"{product.get('brand', 'Unknown')} - {product.get('name', 'Unknown')[:60]}..."):
+                    col_a, col_b, col_c = st.columns([2, 1, 1])
+                    
+                    with col_a:
+                        st.write(f"**Category:** {product.get('category', 'N/A')}")
+                        st.write(f"**Brand:** {product.get('brand', 'N/A')}")
+                        if 'features' in product and pd.notna(product['features']):
+                            st.write(f"**Features:** {str(product['features'])[:100]}...")
+                    
+                    with col_b:
+                        price = float(product.get('price', 0))
+                        if currency == 'INR' and price > 0:
+                            display_price = convert_currency(price, 'INR')
+                            st.metric("Price", format_currency(display_price, 'INR'))
+                        else:
+                            st.metric("Price", format_currency(price, 'USD'))
+                    
+                    with col_c:
+                        add_qty = st.number_input(f"Qty", min_value=1, value=1, key=f"search_qty_{product.name}")
+                        if st.button(f"Add", key=f"search_add_{product.name}"):
+                            new_item = {
+                                'category': product.get('category', 'General'),
+                                'name': product.get('name', ''),
+                                'brand': product.get('brand', ''),
+                                'quantity': add_qty,
+                                'price': price,
+                                'matched': True
+                            }
+                            st.session_state.boq_items.append(new_item)
+                            st.success(f"Added {add_qty}x {product['name']} to BOQ!")
+
+def create_3d_visualization_placeholder():
+    """Placeholder for 3D room visualization."""
+    st.subheader("3D Room Visualization")
+    st.info("🚧 3D visualization feature coming soon!")
+    
+    # Placeholder for future 3D visualization using Three.js
+    st.markdown("""
+    **Planned Features:**
+    - Interactive 3D room layout
+    - Equipment placement visualization  
+    - Cable routing planning
+    - Sight line analysis
+    - Acoustic modeling preview
+    """)
+    
+    # Simple 2D room layout mockup
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("**2D Room Layout Preview:**")
+        # This would be replaced with actual 3D visualization
+        st.image("https://via.placeholder.com/600x400/e0e0e0/333333?text=3D+Room+Visualization+Coming+Soon", 
+                caption="Interactive 3D room visualization will be available in future updates")
     
     with col2:
-        st.write("**Current Status:**")
-        st.markdown("""
-        - 🟡 Room dimension capture: Ready
-        - 🔴 3D rendering engine: In development
-        - 🔴 Equipment models: In development
-        - 🔴 Interactive controls: Planned
-        """)
-    
-    # Optional: Add a simple room layout diagram
-    st.write("**Room Layout Preview:**")
-    st.text("┌─────────────────────┐")
-    st.text("│                     │")
-    st.text("│       [TV]          │")  
-    st.text("│                     │")
-    st.text("│    [Table/Conf]     │")
-    st.text("│                     │")
-    st.text("│       [Door]        │")
-    st.text("└─────────────────────┘")
-    st.caption("Simple ASCII room layout - 3D version coming soon")
+        st.markdown("**Equipment List:**")
+        if st.session_state.boq_items:
+            for item in st.session_state.boq_items[:5]:  # Show first 5 items
+                st.write(f"• {item.get('name', 'Unknown')[:30]}...")
+            if len(st.session_state.boq_items) > 5:
+                st.write(f"• ... and {len(st.session_state.boq_items) - 5} more items")
+        else:
+            st.write("Generate a BOQ first to see equipment list")
 
+# Run the application
 if __name__ == "__main__":
     main()
