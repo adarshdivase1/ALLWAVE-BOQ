@@ -361,8 +361,14 @@ def main():
             st.metric("Total Products", len(product_df))
             st.metric("Brands", product_df['brand'].nunique())
             if 'price' in product_df.columns:
-                avg_price = product_df[product_df['price'] > 0]['price'].mean()
-                st.metric("Avg Price", f"${avg_price:.0f}" if not pd.isna(avg_price) else "N/A")
+                try:
+                    # Convert price column to numeric, handling errors
+                    numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
+                    valid_prices = numeric_prices[numeric_prices > 0]
+                    avg_price = valid_prices.mean() if len(valid_prices) > 0 else None
+                    st.metric("Avg Price", f"${avg_price:.0f}" if avg_price and not pd.isna(avg_price) else "N/A")
+                except Exception:
+                    st.metric("Avg Price", "N/A")
 
 def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
                 technical_reqs, room_area, project_id, quote_valid_days):
