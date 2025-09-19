@@ -217,6 +217,37 @@ class BOQValidator:
         
         return issues, warnings
 
+def validate_against_avixa(model, guidelines, boq_items):
+    """Use AI to validate the BOQ against AVIXA standards."""
+    if not guidelines or not boq_items:
+        return []
+    
+    prompt = f"""
+    You are an AVIXA Certified Technology Specialist (CTS). Review the following Bill of Quantities (BOQ) against the provided AVIXA standards.
+    List any potential non-compliance issues, missing items (like accessibility components), or areas for improvement based on the standards.
+    If there are no obvious issues, respond with 'No specific compliance issues found based on the provided data.'
+
+    **AVIXA Standards Summary:**
+    {guidelines}
+
+    **Bill of Quantities to Review:**
+    {json.dumps(boq_items, indent=2)}
+
+    **Your Compliance Review:**
+    """
+    try:
+        response = generate_with_retry(model, prompt)
+        if response and response.text:
+            # Avoid adding the "no issues found" message as a warning
+            if "no specific compliance issues" in response.text.lower():
+                return []
+            # Return findings as a list of warnings
+            return [line.strip() for line in response.text.split('\n') if line.strip()]
+        return []
+    except Exception as e:
+        return [f"AVIXA compliance check failed: {str(e)}"]
+
+
 # --- Enhanced UI Components ---
 def create_project_header():
     """Create professional project header."""
@@ -273,16 +304,16 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available")
         network_capability = st.selectbox("Network Infrastructure", 
-                                            ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
+                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
         cable_management = st.selectbox("Cable Management", 
-                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
+                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required")
         security_clearance = st.selectbox("Security Level", 
-                                            ["Standard", "Restricted", "Classified"])
+                                          ["Standard", "Restricted", "Classified"])
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -319,7 +350,7 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
         doc_content += "\n"
     
     if validation_results['warnings']:
-        doc_content += "**⚡ Technical Recommendations:**\n"
+        doc_content += "**⚡ Technical Recommendations & Compliance Notes:**\n"
         for warning in validation_results['warnings']:
             doc_content += f"- {warning}\n"
         doc_content += "\n"
@@ -328,7 +359,7 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
     
     return doc_content
 
-# --- FIXED: Enhanced BOQ Item Extraction ---
+# --- Enhanced BOQ Item Extraction ---
 def extract_boq_items_from_response(boq_content, product_df):
     """Extract and match BOQ items from AI response with product database."""
     items = []
@@ -437,9 +468,13 @@ def normalize_category(category_text, product_name):
 
 # --- Main Application ---
 def main():
-    # Initialize session state for BOQ items if not exists
+    # SOLVED: Initialize session state for all generated content to prevent it from disappearing on rerun.
     if 'boq_items' not in st.session_state:
         st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = None
     
     # Load and validate data
     product_df, guidelines, data_issues = load_and_validate_data()
@@ -494,7 +529,7 @@ def main():
         st.caption(f"Budget range: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
     
     # Main content areas
-    tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate BOQ", "3D Visualization"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
     
     with tab1:
         room_area, ceiling_height = create_room_calculator()
@@ -515,9 +550,10 @@ def main():
         
         with col1:
             if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
+                # This function now saves results to session_state instead of directly displaying them.
                 generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
-                             technical_reqs, room_area, project_id, quote_valid_days)
-    
+                             technical_reqs, room_area)
+        
         with col2:
             st.markdown("**Product Stats:**")
             st.metric("Total Products", len(product_df))
@@ -542,13 +578,23 @@ def main():
                         st.metric("Avg Price", "N/A")
                 except Exception:
                     st.metric("Avg Price", "N/A")
-    
+        
+        # SOLVED: Display results from session_state. This ensures they persist on reruns.
+        if st.session_state.boq_content:
+            st.markdown("---")
+            display_boq_results(
+                st.session_state.boq_content,
+                st.session_state.validation_results,
+                project_id,
+                quote_valid_days
+            )
+        
     with tab4:
         create_3d_visualization_placeholder()
 
 def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
-                 technical_reqs, room_area, project_id, quote_valid_days):
-    """Enhanced BOQ generation with validation."""
+                 technical_reqs, room_area):
+    """Enhanced BOQ generation that saves results to session_state."""
     
     with st.spinner("Engineering professional BOQ with technical validation..."):
         
@@ -561,14 +607,10 @@ def generate_boq(model, product_df, guidelines, room_type, budget_tier, features
             response = generate_with_retry(model, prompt)
             
             if response:
-                # Parse and validate response
                 boq_content = response.text
                 
-                # FIXED: Extract structured data and load into session state
+                # Extract structured data
                 boq_items = extract_boq_items_from_response(boq_content, product_df)
-                
-                # Load items into session state for editor
-                st.session_state.boq_items = boq_items
                 
                 # Validate BOQ
                 validator = BOQValidator(ROOM_SPECS, product_df)
@@ -576,15 +618,22 @@ def generate_boq(model, product_df, guidelines, room_type, budget_tier, features
                     boq_items, room_type, room_area
                 )
                 
+                # NEW: Add AI-powered AVIXA compliance validation
+                avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
+                warnings.extend(avixa_warnings)
+                
                 validation_results = {"issues": issues, "warnings": warnings}
                 
-                # Display results
-                display_boq_results(boq_content, validation_results, project_id, quote_valid_days)
+                # SOLVED: Store all generated content in session_state to persist across reruns.
+                st.session_state.boq_content = boq_content
+                st.session_state.boq_items = boq_items
+                st.session_state.validation_results = validation_results
                 
-                # Show success message about loading items
                 if boq_items:
-                    st.success(f"✅ Successfully loaded {len(boq_items)} items into BOQ editor!")
-                
+                    st.success(f"✅ Successfully generated and loaded {len(boq_items)} items!")
+                else:
+                    st.warning("⚠️ BOQ generated, but no items could be parsed. Check the raw output.")
+
         except Exception as e:
             st.error(f"BOQ generation failed: {str(e)}")
             with st.expander("Technical Details"):
@@ -594,7 +643,8 @@ def create_enhanced_prompt(product_df, guidelines, room_type, budget_tier, featu
     """Create comprehensive prompt for BOQ generation."""
     
     room_spec = ROOM_SPECS[room_type]
-    product_catalog_string = product_df.to_csv(index=False)
+    # Provide a sample of the catalog instead of the full CSV to avoid overly large prompts
+    product_catalog_string = product_df.head(100).to_csv(index=False) 
     
     prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
@@ -606,28 +656,31 @@ You are a Professional AV Systems Engineer with 15+ years experience. Create a p
 - Special Requirements: {features}
 - Infrastructure: {technical_reqs}
 
-**TECHNICAL CONSTRAINTS:**
+**TECHNICAL CONSTRAINTS & GUIDELINES:**
+- Adhere to the provided AVIXA standards for all design choices.
 - Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
 - Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
 - Audio coverage: {room_spec['audio_coverage']}
-- Power requirements: {room_spec['power_requirements']}
 - Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
 
 **MANDATORY REQUIREMENTS:**
-1. ONLY use products from the provided catalog
-2. Verify all components are compatible
-3. Include proper mounting and cabling
-4. Add installation labor estimates
-5. Ensure system meets AVIXA standards
-6. Include 3-year warranty costs
-7. Add 15% contingency for unforeseen issues
+1. ONLY use products from the provided product catalog sample. If a suitable product is not in the sample, note it.
+2. Verify all components are compatible (e.g., mounts fit displays).
+3. Include appropriate mounting hardware, cabling (HDMI, USB, Ethernet), and power distribution.
+4. Add a line item for 'Installation & Commissioning Labor' as 15% of the total hardware cost.
+5. Add a line item for 'System Warranty (3 Years)' as 5% of the total hardware cost.
+6. Add a line item for 'Project Contingency' as 10% of the total hardware cost.
 
 **OUTPUT FORMAT REQUIREMENT:**
-Please provide your response in a clear table format using markdown tables. Make sure to include:
-| Category | Brand | Product Name | Quantity | Unit Price | Total |
+- Start with a brief 2-3 sentence 'System Design Summary'.
+- Then, provide the BOQ in a clear markdown table with the following columns:
+| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |
 
-**PRODUCT CATALOG:**
+**PRODUCT CATALOG SAMPLE:**
 {product_catalog_string}
+
+**AVIXA GUIDELINES:**
+{guidelines}
 
 Generate the BOQ now:
 """
@@ -640,13 +693,13 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     st.subheader("Generated Bill of Quantities")
     
     # Show validation results first
-    if validation_results['issues']:
+    if validation_results.get('issues'):
         st.error("Critical Issues Found:")
         for issue in validation_results['issues']:
             st.write(f"- {issue}")
     
-    if validation_results['warnings']:
-        st.warning("Technical Recommendations:")
+    if validation_results.get('warnings'):
+        st.warning("Technical Recommendations & Compliance Notes:")
         for warning in validation_results['warnings']:
             st.write(f"- {warning}")
     
@@ -658,19 +711,20 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     create_interactive_boq_editor()
     
     # Add download functionality
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
-        # Generate PDF-ready content
-        pdf_content = generate_professional_boq_document(
-            {'design_summary': boq_content}, 
+        # Generate Markdown/PDF-ready content
+        doc_content = generate_professional_boq_document(
+            {'design_summary': boq_content.split('---')[0]}, # Extract summary
             {'project_id': project_id, 'quote_valid_days': quote_valid_days},
             validation_results
         )
+        final_doc = doc_content + "\n" + boq_content # Combine summary and table
         
         st.download_button(
             label="Download BOQ (Markdown)",
-            data=pdf_content,
+            data=final_doc,
             file_name=f"{project_id}_BOQ_{datetime.now().strftime('%Y%m%d')}.md",
             mime="text/markdown"
         )
@@ -678,10 +732,12 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     with col2:
         # Generate CSV for further processing
         if st.session_state.boq_items:
-            csv_data = "Category,Brand,Product,Quantity,Unit Price,Total\n"
-            for item in st.session_state.boq_items:
-                total = item.get('price', 0) * item.get('quantity', 1)
-                csv_data += f"{item.get('category', '')},{item.get('brand', '')},{item.get('name', '')},{item.get('quantity', 1)},{item.get('price', 0)},{total}\n"
+            df_to_download = pd.DataFrame(st.session_state.boq_items)
+            # Ensure price and quantity are numeric for calculation
+            df_to_download['price'] = pd.to_numeric(df_to_download['price'], errors='coerce').fillna(0)
+            df_to_download['quantity'] = pd.to_numeric(df_to_download['quantity'], errors='coerce').fillna(0)
+            df_to_download['total'] = df_to_download['price'] * df_to_download['quantity']
+            csv_data = df_to_download[['category', 'brand', 'name', 'quantity', 'price', 'total']].to_csv(index=False).encode('utf-8')
         else:
             csv_data = "Category,Brand,Product,Quantity,Unit Price,Total\n"
         
@@ -691,13 +747,9 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
             file_name=f"{project_id}_BOQ_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
-    
-    with col3:
-        if st.button("Generate Revised BOQ", help="Generate new BOQ with validation feedback"):
-            st.experimental_rerun()
 
 def create_interactive_boq_editor():
-    """FIXED: Create interactive BOQ editing interface."""
+    """Create interactive BOQ editing interface."""
     st.subheader("Interactive BOQ Editor")
     
     # Get product data for editing
@@ -721,14 +773,15 @@ def create_interactive_boq_editor():
         product_search_interface(product_df, currency)
 
 def edit_current_boq(currency):
-    """FIXED: Interface for editing current BOQ items."""
+    """Interface for editing current BOQ items."""
     if not st.session_state.boq_items:
-        st.info("No BOQ items loaded. Generate a BOQ first.")
+        st.info("No BOQ items loaded. Generate a BOQ first or add products manually.")
         return
     
     st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
     
     # Create editable table
+    items_to_remove = []
     for i, item in enumerate(st.session_state.boq_items):
         with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}..."):
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
@@ -738,13 +791,16 @@ def edit_current_boq(currency):
                 new_brand = st.text_input(f"Brand", value=item.get('brand', ''), key=f"brand_{i}")
             
             with col2:
+                # Handle potential missing categories
+                category_list = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General']
+                current_category = item.get('category', 'General')
+                if current_category not in category_list:
+                    current_category = 'General'
+                
                 new_category = st.selectbox(
                     "Category", 
-                    ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'],
-                    index=['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'].index(
-                        item.get('category', 'General') if item.get('category', 'General') in 
-                        ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General'] else 'General'
-                    ),
+                    category_list,
+                    index=category_list.index(current_category),
                     key=f"category_{i}"
                 )
             
@@ -785,8 +841,7 @@ def edit_current_boq(currency):
                     st.metric("Total", format_currency(total_price, 'USD'))
                 
                 if st.button(f"Remove", key=f"remove_{i}", type="secondary"):
-                    st.session_state.boq_items.pop(i)
-                    st.experimental_rerun()
+                    items_to_remove.append(i)
             
             # Update item if changed
             st.session_state.boq_items[i].update({
@@ -796,9 +851,16 @@ def edit_current_boq(currency):
                 'quantity': new_quantity,
                 'price': stored_price
             })
-    
+
+    if items_to_remove:
+        # Remove items in reverse order to avoid index issues
+        for index in sorted(items_to_remove, reverse=True):
+            st.session_state.boq_items.pop(index)
+        st.rerun()
+
     # Summary
     if st.session_state.boq_items:
+        st.markdown("---")
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
         if currency == 'INR':
             display_total = convert_currency(total_cost, 'INR')
@@ -814,7 +876,7 @@ def add_products_interface(product_df, currency):
     
     with col1:
         # Category filter
-        categories = ['All'] + list(product_df['category'].unique()) if 'category' in product_df.columns else ['All']
+        categories = ['All'] + sorted(list(product_df['category'].unique())) if 'category' in product_df.columns else ['All']
         selected_category = st.selectbox("Filter by Category", categories)
         
         # Filter products
@@ -829,6 +891,7 @@ def add_products_interface(product_df, currency):
             selected_product_str = st.selectbox("Select Product", product_options)
             
             # Find selected product
+            selected_product = None
             for _, row in filtered_df.iterrows():
                 if f"{row['brand']} - {row['name']}" == selected_product_str:
                     selected_product = row
@@ -838,8 +901,8 @@ def add_products_interface(product_df, currency):
             return
     
     with col2:
-        if product_options:
-            quantity = st.number_input("Quantity", min_value=1, value=1)
+        if 'selected_product' in locals() and selected_product is not None:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
             
             # Display price in selected currency
             base_price = float(selected_product.get('price', 0))
@@ -865,7 +928,8 @@ def add_products_interface(product_df, currency):
                 }
                 st.session_state.boq_items.append(new_item)
                 st.success(f"Added {quantity}x {selected_product['name']} to BOQ!")
-                st.experimental_rerun()
+                time.sleep(1) # Give user time to see success message
+                st.rerun()
 
 def product_search_interface(product_df, currency):
     """Advanced product search interface."""
@@ -891,7 +955,7 @@ def product_search_interface(product_df, currency):
             st.write(f"Found {len(search_results)} products:")
             
             # Display search results
-            for _, product in search_results.head(10).iterrows():  # Limit to first 10 results
+            for i, product in search_results.head(10).iterrows():  # Limit to first 10 results
                 with st.expander(f"{product.get('brand', 'Unknown')} - {product.get('name', 'Unknown')[:60]}..."):
                     col_a, col_b, col_c = st.columns([2, 1, 1])
                     
@@ -910,8 +974,9 @@ def product_search_interface(product_df, currency):
                             st.metric("Price", format_currency(price, 'USD'))
                     
                     with col_c:
-                        add_qty = st.number_input(f"Qty", min_value=1, value=1, key=f"search_qty_{product.name}")
-                        if st.button(f"Add", key=f"search_add_{product.name}"):
+                        # Use a unique key for each number input
+                        add_qty = st.number_input(f"Qty", min_value=1, value=1, key=f"search_qty_{i}")
+                        if st.button(f"Add", key=f"search_add_{i}"):
                             new_item = {
                                 'category': product.get('category', 'General'),
                                 'name': product.get('name', ''),
@@ -922,21 +987,24 @@ def product_search_interface(product_df, currency):
                             }
                             st.session_state.boq_items.append(new_item)
                             st.success(f"Added {add_qty}x {product['name']} to BOQ!")
+                            time.sleep(1)
+                            st.rerun()
 
 def create_3d_visualization_placeholder():
     """Placeholder for 3D room visualization."""
     st.subheader("3D Room Visualization")
     st.info("🚧 3D visualization feature coming soon!")
     
-    # Placeholder for future 3D visualization using Three.js
+    # Placeholder for future 3D visualization
     st.markdown("""
     **Planned Features:**
     - Interactive 3D room layout
     - Equipment placement visualization  
     - Cable routing planning
-    - Sight line analysis
+    - Sight line analysis from different seats
     - Acoustic modeling preview
     """)
+    
     
     # Simple 2D room layout mockup
     col1, col2 = st.columns([2, 1])
@@ -945,7 +1013,7 @@ def create_3d_visualization_placeholder():
         st.markdown("**2D Room Layout Preview:**")
         # This would be replaced with actual 3D visualization
         st.image("https://via.placeholder.com/600x400/e0e0e0/333333?text=3D+Room+Visualization+Coming+Soon", 
-                caption="Interactive 3D room visualization will be available in future updates")
+                 caption="Interactive 3D room visualization will be available in future updates")
     
     with col2:
         st.markdown("**Equipment List:**")
