@@ -251,7 +251,7 @@ def main():
                     ```
                     """
                     try:
-                        model = genai.GenerativeModel('gemini-1.0-pro')
+                        model = genai.GenerativeModel('gemini-1.5-flash')
                         response = model.generate_content(system_prompt)
                         
                         # Call the new parsing function
