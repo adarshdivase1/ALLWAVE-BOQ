@@ -1306,7 +1306,7 @@ def main():
             )
         
     with tab4:
-        create_3d_visualization_placeholder()
+        create_3d_visualization()
 
 def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
                  technical_reqs, room_area):
