@@ -8,7 +8,7 @@ import json
 import time
 from io import BytesIO
 import base64
-import streamlit.components.v1 as components
+import streamlit.components.v1 as components 
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -186,33 +186,23 @@ class BOQValidator:
         issues = []
         warnings = []
         
-        if not boq_items:
-            issues.append("No BOQ items found to validate")
-            return issues, warnings
-        
+        # Check display sizing against room specifications
         displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
         if displays:
             room_spec = self.room_specs.get(room_type, {})
             recommended_size = room_spec.get('recommended_display_size', (32, 98))
             
             for display in displays:
-                try:
-                    product_name = display.get('name', '')
-                    if not isinstance(product_name, str):
-                        product_name = str(product_name) if product_name is not None else ''
-                    
-                    if product_name:
-                        size_match = re.search(r'(\d+)"', product_name)
-                        if size_match:
-                            size = int(size_match.group(1))
-                            if size < recommended_size[0]:
-                                warnings.append(f"Display size {size}\" may be too small for {room_type}")
-                            elif size > recommended_size[1]:
-                                warnings.append(f"Display size {size}\" may be too large for {room_type}")
-                except (re.error, ValueError, AttributeError) as e:
-                    print(f"Error validating display size for {display.get('name', 'Unknown')}: {e}")
-                    continue
+                # Extract size from product name (rough heuristic)
+                size_match = re.search(r'(\d+)"', display.get('name', ''))
+                if size_match:
+                    size = int(size_match.group(1))
+                    if size < recommended_size[0]:
+                        warnings.append(f"Display size {size}\" may be too small for {room_type}")
+                    elif size > recommended_size[1]:
+                        warnings.append(f"Display size {size}\" may be too large for {room_type}")
         
+        # Check for essential components
         essential_categories = ['display', 'audio', 'control']
         found_categories = [item.get('category', '').lower() for item in boq_items]
         
@@ -220,8 +210,10 @@ class BOQValidator:
             if not any(essential in cat for cat in found_categories):
                 issues.append(f"Missing essential component: {essential}")
         
-        total_estimated_power = len(boq_items) * 150
-        if total_estimated_power > 1800:
+        # Power consumption estimation (simplified)
+        total_estimated_power = len(boq_items) * 150  # Rough estimate
+        room_spec = self.room_specs.get(room_type, {})
+        if total_estimated_power > 1800:  # 15A circuit limit
             warnings.append("System may require dedicated 20A circuit")
         
         return issues, warnings
@@ -247,12 +239,15 @@ def validate_against_avixa(model, guidelines, boq_items):
     try:
         response = generate_with_retry(model, prompt)
         if response and response.text:
+            # Avoid adding the "no issues found" message as a warning
             if "no specific compliance issues" in response.text.lower():
                 return []
+            # Return findings as a list of warnings
             return [line.strip() for line in response.text.split('\n') if line.strip()]
         return []
     except Exception as e:
         return [f"AVIXA compliance check failed: {str(e)}"]
+
 
 # --- Enhanced UI Components ---
 def create_project_header():
@@ -286,6 +281,7 @@ def create_room_calculator():
         room_area = room_length * room_width
         st.metric("Room Area", f"{room_area:.0f} sq ft")
         
+        # Recommend room type based on area
         recommended_type = None
         for room_type, specs in ROOM_SPECS.items():
             if specs["area_sqft"][0] <= room_area <= specs["area_sqft"][1]:
@@ -309,16 +305,16 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available")
         network_capability = st.selectbox("Network Infrastructure", 
-                                            ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
+                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
         cable_management = st.selectbox("Cable Management", 
-                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
+                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required")
         security_clearance = st.selectbox("Security Level", 
-                                            ["Standard", "Restricted", "Classified"])
+                                          ["Standard", "Restricted", "Classified"])
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -332,6 +328,8 @@ def create_advanced_requirements():
 # --- Professional BOQ Document Generator ---
 def generate_professional_boq_document(boq_data, project_info, validation_results):
     """Generate a professional BOQ document with proper formatting."""
+    
+    # Create document header
     doc_content = f"""
 # Professional Bill of Quantities
 **Project:** {project_info['project_id']}  
@@ -346,13 +344,13 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
 ## Technical Validation
 """
     
-    if validation_results.get('issues'):
+    if validation_results['issues']:
         doc_content += "**⚠️ Critical Issues:**\n"
         for issue in validation_results['issues']:
             doc_content += f"- {issue}\n"
         doc_content += "\n"
     
-    if validation_results.get('warnings'):
+    if validation_results['warnings']:
         doc_content += "**⚡ Technical Recommendations & Compliance Notes:**\n"
         for warning in validation_results['warnings']:
             doc_content += f"- {warning}\n"
@@ -367,56 +365,63 @@ def extract_boq_items_from_response(boq_content, product_df):
     """Extract and match BOQ items from AI response with product database."""
     items = []
     
-    if not boq_content:
-        return items
-    
+    # Look for markdown table sections
     lines = boq_content.split('\n')
     in_table = False
     
     for line in lines:
         line = line.strip()
         
+        # Detect table start (header row with |)
         if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'brand', 'item', 'description']):
             in_table = True
             continue
             
+        # Skip separator lines (|---|---|)
         if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
             continue
             
+        # Process table rows
         if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
-            try:
-                parts = [part.strip() for part in line.split('|') if part.strip()]
-                if len(parts) >= 3:
-                    category = parts[0].lower() if len(parts) > 0 else 'general'
-                    brand = parts[1] if len(parts) > 1 else 'Unknown'
-                    product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
-                    
-                    quantity = 1
-                    for part in parts:
-                        if part.isdigit():
-                            quantity = int(part)
-                            break
-                    
-                    matched_product = match_product_in_database(product_name, brand, product_df)
-                    if matched_product is not None:
-                        price = float(matched_product.get('price', 0))
-                        actual_brand = matched_product.get('brand', brand)
-                        actual_category = matched_product.get('category', category)
-                        actual_name = matched_product.get('name', product_name)
-                    else:
-                        price = 0
-                        actual_brand = brand
-                        actual_category = normalize_category(category, product_name)
-                        actual_name = product_name
-                    
-                    items.append({
-                        'category': actual_category, 'name': actual_name, 'brand': actual_brand,
-                        'quantity': quantity, 'price': price, 'matched': matched_product is not None
-                    })
-            except Exception as e:
-                print(f"Error processing table row: {line}. Error: {e}")
-                continue
+            parts = [part.strip() for part in line.split('|') if part.strip()]
+            if len(parts) >= 3:
+                # Extract information from table row
+                category = parts[0].lower() if len(parts) > 0 else 'general'
+                brand = parts[1] if len(parts) > 1 else 'Unknown'
+                product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
                 
+                # Try to extract quantity and price if present
+                quantity = 1
+                price = 0
+                
+                # Look for quantity in the row (usually a number)
+                for part in parts:
+                    if part.isdigit():
+                        quantity = int(part)
+                        break
+                
+                # Try to match with actual product in database
+                matched_product = match_product_in_database(product_name, brand, product_df)
+                if matched_product is not None:
+                    price = float(matched_product.get('price', 0))
+                    actual_brand = matched_product.get('brand', brand)
+                    actual_category = matched_product.get('category', category)
+                    actual_name = matched_product.get('name', product_name)
+                else:
+                    actual_brand = brand
+                    actual_category = normalize_category(category, product_name)
+                    actual_name = product_name
+                
+                items.append({
+                    'category': actual_category,
+                    'name': actual_name,
+                    'brand': actual_brand,
+                    'quantity': quantity,
+                    'price': price,
+                    'matched': matched_product is not None
+                })
+                
+        # End table when we hit a line that doesn't start with |
         elif in_table and not line.startswith('|'):
             in_table = False
     
@@ -427,12 +432,14 @@ def match_product_in_database(product_name, brand, product_df):
     if product_df is None or len(product_df) == 0:
         return None
     
+    # First try exact brand and partial name match
     brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
     if len(brand_matches) > 0:
         name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
         if len(name_matches) > 0:
             return name_matches.iloc[0].to_dict()
     
+    # Try partial name match across all products
     name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
     if len(name_matches) > 0:
         return name_matches.iloc[0].to_dict()
@@ -444,6 +451,7 @@ def normalize_category(category_text, product_name):
     category_lower = category_text.lower()
     product_lower = product_name.lower()
     
+    # Map common category terms to standard categories
     if any(term in category_lower or term in product_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
         return 'Displays'
     elif any(term in category_lower or term in product_lower for term in ['audio', 'speaker', 'microphone', 'sound', 'amplifier']):
@@ -459,12 +467,14 @@ def normalize_category(category_text, product_name):
     else:
         return 'General'
 
+# --- NEW/UPDATED FUNCTIONS START HERE ---
+
 def update_boq_content_with_current_items():
     """Update the BOQ content in session state to reflect current items."""
     if not st.session_state.boq_items:
-        st.session_state.boq_content = ""
         return
     
+    # Generate updated BOQ content from current items
     boq_content = "## Updated Bill of Quantities\n\n"
     boq_content += "| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |\n"
     boq_content += "|----------|--------|--------------|----------|------------------|-------------|\n"
@@ -475,21 +485,27 @@ def update_boq_content_with_current_items():
         price = item.get('price', 0)
         total = quantity * price
         total_cost += total
+        
         boq_content += f"| {item.get('category', 'General')} | {item.get('brand', 'Unknown')} | {item.get('name', 'Unknown')} | {quantity} | ${price:,.2f} | ${total:,.2f} |\n"
     
+    # Add totals
     boq_content += f"|||||**SUBTOTAL**|**${total_cost:,.2f}**|\n"
     boq_content += f"|||||Installation & Labor (15%)|**${total_cost * 0.15:,.2f}**|\n"
     boq_content += f"|||||System Warranty (5%)|**${total_cost * 0.05:,.2f}**|\n"
     boq_content += f"|||||Project Contingency (10%)|**${total_cost * 0.10:,.2f}**|\n"
     boq_content += f"|||||**TOTAL PROJECT COST**|**${total_cost * 1.30:,.2f}**|\n"
     
+    # Update session state
     st.session_state.boq_content = boq_content
 
 def display_boq_results(boq_content, validation_results, project_id, quote_valid_days):
     """Display BOQ results with interactive editing capabilities."""
+    
+    # Show current BOQ item count at the top
     item_count = len(st.session_state.boq_items) if st.session_state.boq_items else 0
     st.subheader(f"Generated Bill of Quantities ({item_count} items)")
     
+    # Show validation results first
     if validation_results and validation_results.get('issues'):
         st.error("Critical Issues Found:")
         for issue in validation_results['issues']:
@@ -500,12 +516,15 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         for warning in validation_results['warnings']:
             st.write(f"- {warning}")
     
+    # Display BOQ content
     if boq_content:
         st.markdown(boq_content)
     else:
         st.info("No BOQ content generated yet. Use the interactive editor below to add items manually.")
     
+    # Show current total if items exist
     if st.session_state.boq_items:
+        # Get currency preference
         currency = st.session_state.get('currency', 'USD')
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
         
@@ -515,37 +534,56 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         else:
             st.metric("Current BOQ Total", format_currency(total_cost * 1.30, 'USD'), help="Includes installation, warranty, and contingency")
     
+    # Add interactive BOQ editor
     st.markdown("---")
     create_interactive_boq_editor()
     
+    # Add download functionality
     col1, col2 = st.columns(2)
+    
     with col1:
         if boq_content and st.session_state.boq_items:
+            # Generate Markdown/PDF-ready content
             doc_content = generate_professional_boq_document(
                 {'design_summary': boq_content.split('---')[0] if '---' in boq_content else boq_content[:200]}, 
                 {'project_id': project_id, 'quote_valid_days': quote_valid_days},
                 validation_results or {}
             )
             final_doc = doc_content + "\n" + boq_content
-            st.download_button("Download BOQ (Markdown)", final_doc, f"{project_id}_BOQ.md", "text/markdown")
+            
+            st.download_button(
+                label="Download BOQ (Markdown)",
+                data=final_doc,
+                file_name=f"{project_id}_BOQ_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
         else:
-            st.button("Download BOQ (Markdown)", disabled=True)
+            st.button("Download BOQ (Markdown)", disabled=True, help="Generate a BOQ first")
     
     with col2:
         if st.session_state.boq_items:
+            # Generate CSV for further processing
             df_to_download = pd.DataFrame(st.session_state.boq_items)
+            # Ensure price and quantity are numeric for calculation
             df_to_download['price'] = pd.to_numeric(df_to_download['price'], errors='coerce').fillna(0)
             df_to_download['quantity'] = pd.to_numeric(df_to_download['quantity'], errors='coerce').fillna(0)
             df_to_download['total'] = df_to_download['price'] * df_to_download['quantity']
             csv_data = df_to_download[['category', 'brand', 'name', 'quantity', 'price', 'total']].to_csv(index=False).encode('utf-8')
-            st.download_button("Download BOQ (CSV)", csv_data, f"{project_id}_BOQ.csv", "text/csv")
+            
+            st.download_button(
+                label="Download BOQ (CSV)",
+                data=csv_data,
+                file_name=f"{project_id}_BOQ_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
         else:
-            st.button("Download BOQ (CSV)", disabled=True)
+            st.button("Download BOQ (CSV)", disabled=True, help="Add items to BOQ first")
 
 def create_interactive_boq_editor():
     """Create interactive BOQ editing interface."""
     st.subheader("Interactive BOQ Editor")
     
+    # Real-time status indicator
     item_count = len(st.session_state.boq_items) if st.session_state.boq_items else 0
     col_status1, col_status2, col_status3 = st.columns(3)
     
@@ -553,93 +591,173 @@ def create_interactive_boq_editor():
         st.metric("Items in BOQ", item_count)
     
     with col_status2:
-        currency = st.session_state.get('currency', 'USD')
         if st.session_state.boq_items:
             total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-            display_total = convert_currency(total_cost, 'INR') if currency == 'INR' else total_cost
-            st.metric("Subtotal", format_currency(display_total, currency))
+            currency = st.session_state.get('currency', 'USD')
+            if currency == 'INR':
+                display_total = convert_currency(total_cost, 'INR')
+                st.metric("Subtotal", format_currency(display_total, 'INR'))
+            else:
+                st.metric("Subtotal", format_currency(total_cost, 'USD'))
         else:
-            st.metric("Subtotal", format_currency(0, currency))
+            st.metric("Subtotal", "₹0" if st.session_state.get('currency', 'USD') == 'INR' else "$0")
     
     with col_status3:
-        if st.button("🔄 Refresh BOQ Display"):
+        if st.button("🔄 Refresh BOQ Display", help="Update the main BOQ display with current items"):
             update_boq_content_with_current_items()
             st.success("BOQ display updated!")
             st.rerun()
     
+    # Get product data for editing
     product_df, _, _ = load_and_validate_data()
     if product_df is None:
         st.error("Cannot load product catalog for editing")
         return
     
+    # Currency selection for editor
+    currency = st.session_state.get('currency', 'USD')
+    
     tabs = st.tabs(["Edit Current BOQ", "Add Products", "Product Search"])
-    with tabs[0]: edit_current_boq(currency)
-    with tabs[1]: add_products_interface(product_df, currency)
-    with tabs[2]: product_search_interface(product_df, currency)
+    
+    with tabs[0]:
+        edit_current_boq(currency)
+    
+    with tabs[1]:
+        add_products_interface(product_df, currency)
+    
+    with tabs[2]:
+        product_search_interface(product_df, currency)
 
 def add_products_interface(product_df, currency):
     """Interface for adding new products to BOQ."""
     st.write("**Add Products to BOQ:**")
+    
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        categories = ['All'] + sorted(list(product_df['category'].unique()))
+        # Category filter
+        categories = ['All'] + sorted(list(product_df['category'].unique())) if 'category' in product_df.columns else ['All']
         selected_category = st.selectbox("Filter by Category", categories)
-        filtered_df = product_df[product_df['category'] == selected_category] if selected_category != 'All' else product_df
         
+        # Filter products
+        if selected_category != 'All':
+            filtered_df = product_df[product_df['category'] == selected_category]
+        else:
+            filtered_df = product_df
+        
+        # Product selection
         product_options = [f"{row['brand']} - {row['name']}" for _, row in filtered_df.iterrows()]
-        if not product_options:
+        if product_options:
+            selected_product_str = st.selectbox("Select Product", product_options)
+            
+            # Find selected product
+            selected_product = None
+            for _, row in filtered_df.iterrows():
+                if f"{row['brand']} - {row['name']}" == selected_product_str:
+                    selected_product = row
+                    break
+        else:
             st.warning("No products found in selected category")
             return
-            
-        selected_product_str = st.selectbox("Select Product", product_options)
-        selected_product = filtered_df[filtered_df.apply(lambda row: f"{row['brand']} - {row['name']}" == selected_product_str, axis=1)].iloc[0]
     
     with col2:
-        quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
-        base_price = float(selected_product.get('price', 0))
-        display_price = convert_currency(base_price, 'INR') if currency == 'INR' else base_price
-        st.metric("Unit Price", format_currency(display_price, currency))
-        
-        if st.button("Add to BOQ", type="primary"):
-            st.session_state.boq_items.append({
-                'category': selected_product.get('category', 'General'), 'name': selected_product.get('name', ''),
-                'brand': selected_product.get('brand', ''), 'quantity': quantity, 'price': base_price, 'matched': True
-            })
-            update_boq_content_with_current_items()
-            st.success(f"Added {quantity}x {selected_product['name']} to BOQ!")
-            st.rerun()
+        if 'selected_product' in locals() and selected_product is not None:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
+            
+            # Display price in selected currency
+            base_price = float(selected_product.get('price', 0))
+            if currency == 'INR' and base_price > 0:
+                display_price = convert_currency(base_price, 'INR')
+                st.metric("Unit Price", format_currency(display_price, 'INR'))
+                total = display_price * quantity
+                st.metric("Total", format_currency(total, 'INR'))
+            else:
+                st.metric("Unit Price", format_currency(base_price, 'USD'))
+                total = base_price * quantity
+                st.metric("Total", format_currency(total, 'USD'))
+            
+            if st.button("Add to BOQ", type="primary"):
+                # Add to BOQ items
+                new_item = {
+                    'category': selected_product.get('category', 'General'),
+                    'name': selected_product.get('name', ''),
+                    'brand': selected_product.get('brand', ''),
+                    'quantity': quantity,
+                    'price': base_price,  # Always store in USD
+                    'matched': True
+                }
+                st.session_state.boq_items.append(new_item)
+                
+                # FIX: Force update the BOQ content to reflect new items
+                update_boq_content_with_current_items()
+                
+                st.success(f"Added {quantity}x {selected_product['name']} to BOQ!")
+                # Remove the sleep and rerun - let Streamlit handle the update naturally
+                st.rerun()
 
 def product_search_interface(product_df, currency):
     """Advanced product search interface."""
     st.write("**Search Product Catalog:**")
-    search_term = st.text_input("Search products...", placeholder="Enter product name, brand, or features")
     
-    if search_term:
-        search_cols = ['name', 'brand', 'features']
-        mask = product_df[search_cols].apply(lambda x: x.astype(str).str.contains(search_term, case=False, na=False)).any(axis=1)
-        search_results = product_df[mask]
-        st.write(f"Found {len(search_results)} products:")
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        search_term = st.text_input("Search products...", placeholder="Enter product name, brand, or features")
         
-        for i, product in search_results.head(10).iterrows():
-            with st.expander(f"{product.get('brand', 'Unknown')} - {product.get('name', 'Unknown')[:60]}..."):
-                col_a, col_b, col_c = st.columns([2, 1, 1])
-                with col_a:
-                    st.write(f"**Category:** {product.get('category', 'N/A')}")
-                with col_b:
-                    price = float(product.get('price', 0))
-                    display_price = convert_currency(price, 'INR') if currency == 'INR' else price
-                    st.metric("Price", format_currency(display_price, currency))
-                with col_c:
-                    add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{i}")
-                    if st.button("Add", key=f"search_add_{i}"):
-                        st.session_state.boq_items.append({
-                            'category': product.get('category', 'General'), 'name': product.get('name', ''),
-                            'brand': product.get('brand', ''), 'quantity': add_qty, 'price': price, 'matched': True
-                        })
-                        update_boq_content_with_current_items()
-                        st.success(f"Added {add_qty}x {product['name']} to BOQ!")
-                        st.rerun()
+        if search_term:
+            # Search across multiple columns
+            search_cols = ['name', 'brand']
+            if 'features' in product_df.columns:
+                search_cols.append('features')
+            
+            mask = product_df[search_cols].apply(
+                lambda x: x.astype(str).str.contains(search_term, case=False, na=False)
+            ).any(axis=1)
+            
+            search_results = product_df[mask]
+            
+            st.write(f"Found {len(search_results)} products:")
+            
+            # Display search results
+            for i, product in search_results.head(10).iterrows():  # Limit to first 10 results
+                with st.expander(f"{product.get('brand', 'Unknown')} - {product.get('name', 'Unknown')[:60]}..."):
+                    col_a, col_b, col_c = st.columns([2, 1, 1])
+                    
+                    with col_a:
+                        st.write(f"**Category:** {product.get('category', 'N/A')}")
+                        st.write(f"**Brand:** {product.get('brand', 'N/A')}")
+                        if 'features' in product and pd.notna(product['features']):
+                            st.write(f"**Features:** {str(product['features'])[:100]}...")
+                    
+                    with col_b:
+                        price = float(product.get('price', 0))
+                        if currency == 'INR' and price > 0:
+                            display_price = convert_currency(price, 'INR')
+                            st.metric("Price", format_currency(display_price, 'INR'))
+                        else:
+                            st.metric("Price", format_currency(price, 'USD'))
+                    
+                    with col_c:
+                        # Use a unique key for each number input
+                        add_qty = st.number_input(f"Qty", min_value=1, value=1, key=f"search_qty_{i}")
+                        if st.button(f"Add", key=f"search_add_{i}"):
+                            new_item = {
+                                'category': product.get('category', 'General'),
+                                'name': product.get('name', ''),
+                                'brand': product.get('brand', ''),
+                                'quantity': add_qty,
+                                'price': price,
+                                'matched': True
+                            }
+                            st.session_state.boq_items.append(new_item)
+                            
+                            # FIX: Force update the BOQ content to reflect new items
+                            update_boq_content_with_current_items()
+                            
+                            st.success(f"Added {add_qty}x {product['name']} to BOQ!")
+                            st.rerun()
+
+# --- ORIGINAL FUNCTIONS (UNCHANGED) ---
 
 def edit_current_boq(currency):
     """Interface for editing current BOQ items."""
@@ -647,388 +765,645 @@ def edit_current_boq(currency):
         st.info("No BOQ items loaded. Generate a BOQ first or add products manually.")
         return
     
+    st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
+    
+    # Create editable table
     items_to_remove = []
     for i, item in enumerate(st.session_state.boq_items):
         with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}..."):
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+            
             with col1:
-                new_name = st.text_input("Product Name", value=item.get('name', ''), key=f"name_{i}")
-                new_brand = st.text_input("Brand", value=item.get('brand', ''), key=f"brand_{i}")
+                new_name = st.text_input(f"Product Name", value=item.get('name', ''), key=f"name_{i}")
+                new_brand = st.text_input(f"Brand", value=item.get('brand', ''), key=f"brand_{i}")
+            
             with col2:
+                # Handle potential missing categories
                 category_list = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General']
                 current_category = item.get('category', 'General')
-                cat_index = category_list.index(current_category) if current_category in category_list else len(category_list) - 1
-                new_category = st.selectbox("Category", category_list, index=cat_index, key=f"category_{i}")
+                if current_category not in category_list:
+                    current_category = 'General'
+                
+                new_category = st.selectbox(
+                    "Category", 
+                    category_list,
+                    index=category_list.index(current_category),
+                    key=f"category_{i}"
+                )
+            
             with col3:
-                safe_quantity = max(1, int(float(item.get('quantity', 1))))
-                new_quantity = st.number_input("Quantity", min_value=1, value=safe_quantity, key=f"qty_{i}")
-                current_price = float(item.get('price', 0))
-                display_price = convert_currency(current_price, 'INR') if currency == 'INR' else current_price
-                new_price = st.number_input(f"Unit Price ({currency})", min_value=0.0, value=display_price, key=f"price_{i}")
-                stored_price = new_price / get_usd_to_inr_rate() if currency == 'INR' else new_price
+                # FIX: Ensure quantity is at least 1 and handle potential float/invalid values
+                current_quantity = item.get('quantity', 1)
+                try:
+                    # Convert to int and ensure it's at least 1
+                    safe_quantity = max(1, int(float(current_quantity))) if current_quantity else 1
+                except (ValueError, TypeError):
+                    safe_quantity = 1
+                
+                new_quantity = st.number_input(
+                    "Quantity", 
+                    min_value=1, 
+                    value=safe_quantity, 
+                    key=f"qty_{i}"
+                )
+                
+                # Price input with currency conversion
+                current_price = item.get('price', 0)
+                try:
+                    current_price = float(current_price) if current_price else 0
+                except (ValueError, TypeError):
+                    current_price = 0
+                
+                if currency == 'INR' and current_price > 0:
+                    display_price = convert_currency(current_price, 'INR')
+                else:
+                    display_price = current_price
+                
+                new_price = st.number_input(
+                    f"Unit Price ({currency})", 
+                    min_value=0.0, 
+                    value=float(display_price), 
+                    key=f"price_{i}"
+                )
+                
+                # Convert back to USD if needed for storage
+                if currency == 'INR':
+                    stored_price = new_price / get_usd_to_inr_rate()
+                else:
+                    stored_price = new_price
+            
             with col4:
-                display_total = new_price * new_quantity
-                st.metric("Total", format_currency(display_total, currency))
-                if st.button("Remove", key=f"remove_{i}", type="secondary"):
+                total_price = stored_price * new_quantity
+                if currency == 'INR':
+                    display_total = convert_currency(total_price, 'INR')
+                    st.metric("Total", format_currency(display_total, 'INR'))
+                else:
+                    st.metric("Total", format_currency(total_price, 'USD'))
+                
+                if st.button(f"Remove", key=f"remove_{i}", type="secondary"):
                     items_to_remove.append(i)
             
+            # Update item if changed
             st.session_state.boq_items[i].update({
-                'name': new_name, 'brand': new_brand, 'category': new_category, 'quantity': new_quantity, 'price': stored_price
+                'name': new_name,
+                'brand': new_brand,
+                'category': new_category,
+                'quantity': new_quantity,
+                'price': stored_price
             })
 
     if items_to_remove:
+        # Remove items in reverse order to avoid index issues
         for index in sorted(items_to_remove, reverse=True):
             st.session_state.boq_items.pop(index)
         st.rerun()
 
-# --- BOQ Generation Logic ---
-def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Generates the BOQ using the Gemini model and validates the result."""
-    with st.spinner("🤖 Generating professional BOQ... This may take a moment."):
-        try:
-            if not model or product_df is None or product_df.empty:
-                st.error("Model or product data not available.")
-                return
-            
-            room_spec = ROOM_SPECS.get(room_type, {})
-            sample_size = min(100, len(product_df))
-            product_catalog_sample_df = product_df.sample(n=sample_size, random_state=1)
-            
-            if 'features' not in product_catalog_sample_df.columns:
-                product_catalog_sample_df['features'] = product_catalog_sample_df['name']
-            
-            product_catalog_string = product_catalog_sample_df[['category', 'brand', 'name', 'price', 'features']].to_string()
-
-            prompt = f"""
-            You are a Professional AV Systems Engineer. Create a production-ready BOQ.
-            **PROJECT SPECIFICATIONS:**
-            - Room Type: {room_type} ({room_area:.0f} sq ft), Budget: {budget_tier}
-            - Requirements: {features}, Infrastructure: {json.dumps(technical_reqs)}
-            **GUIDELINES:**
-            - Use products from the catalog sample ONLY.
-            - Include all necessary mounts, cables, and power components.
-            - Add line items for 'Installation Labor' (15%), 'System Warranty' (5%), and 'Project Contingency' (10%).
-            **OUTPUT FORMAT:**
-            - Start with a 2-sentence 'System Design Summary'.
-            - Then, provide a markdown table: | Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |
-            **PRODUCT CATALOG SAMPLE:**
-            {product_catalog_string}
-            **AVIXA GUIDELINES:**
-            {guidelines}
-            Generate the BOQ now:
-            """
-            
-            response = generate_with_retry(model, prompt)
-            
-            if response and response.text:
-                boq_content = response.text
-                boq_items = extract_boq_items_from_response(boq_content, product_df)
-                
-                validator = BOQValidator(ROOM_SPECS, product_df)
-                tech_issues, tech_warnings = validator.validate_technical_requirements(boq_items, room_type, room_area)
-                avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
-                
-                st.session_state.boq_content = boq_content
-                st.session_state.boq_items = boq_items
-                st.session_state.validation_results = {'issues': tech_issues, 'warnings': tech_warnings + avixa_warnings}
-                st.success("✅ BOQ Generated and Validated Successfully!")
-            else:
-                st.error("Failed to generate BOQ content from the AI model.")
-                st.session_state.boq_items, st.session_state.validation_results = [], None
-
-        except Exception as e:
-            st.error(f"An error occurred during BOQ generation: {e}")
-            st.session_state.boq_items, st.session_state.validation_results = [], None
-
-# --- 3D Visualization ---
-def map_equipment_type(category):
-    """Map BOQ categories to 3D visualization equipment types."""
-    category_lower = category.lower()
-    if 'display' in category_lower or 'monitor' in category_lower or 'screen' in category_lower: return 'display'
-    if 'audio' in category_lower or 'speaker' in category_lower or 'microphone' in category_lower: return 'audio'
-    if 'video' in category_lower or 'camera' in category_lower: return 'camera'
-    if 'control' in category_lower: return 'control'
-    return 'general'
+    # Summary
+    if st.session_state.boq_items:
+        st.markdown("---")
+        total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+        if currency == 'INR':
+            display_total = convert_currency(total_cost, 'INR')
+            st.markdown(f"### **Total Project Cost: {format_currency(display_total, 'INR')}**")
+        else:
+            st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
 
 def create_3d_visualization():
-    """Create production-ready 3D room visualization with realistic AV equipment."""
+    """Create 3D room visualization using Three.js in Streamlit."""
     st.subheader("3D Room Visualization")
     
+    # Get current BOQ items for visualization
     equipment_data = st.session_state.get('boq_items', [])
-    if not equipment_data:
-        st.info("🛋️ No equipment in the BOQ to visualize. Please generate a BOQ first.")
-        return
-
-    js_equipment = [{
-        'id': i + 1, 'type': map_equipment_type(item.get('category', '')),
-        'name': item.get('name', 'Unknown'), 'brand': item.get('brand', 'Unknown'),
-        'quantity': item.get('quantity', 1), 'price': item.get('price', 0),
-        'category': item.get('category', 'General')
-    } for i, item in enumerate(equipment_data)]
     
-    # SOLVED: Embed the JSON data directly and safely as a JavaScript literal
-    js_equipment_json = json.dumps(js_equipment)
-
+    # Convert BOQ items to JavaScript format
+    js_equipment = []
+    for item in equipment_data:
+        # Map equipment types and create 3D positions
+        equipment_type = map_equipment_type(item.get('category', ''))
+        if equipment_type:
+            js_equipment.append({
+                'id': len(js_equipment) + 1,
+                'type': equipment_type,
+                'name': item.get('name', 'Unknown'),
+                'brand': item.get('brand', 'Unknown'),
+                'quantity': item.get('quantity', 1),
+                'price': item.get('price', 0)
+            })
+    
+    # Create the HTML/JavaScript for 3D visualization
     html_content = f"""
-    <!DOCTYPE html><html><head>
+    <!DOCTYPE html>
+    <html>
+    <head>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
         <style>
-            body {{ margin: 0; font-family: sans-serif; background: #111; overflow: hidden; }}
-            #container {{ width: 100%; height: 700px; position: relative; }}
-            .overlay {{ position: absolute; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); font-size: 14px; pointer-events: none; }}
-            #info {{ top: 20px; left: 20px; min-width: 280px; }}
-            #controls-info {{ bottom: 20px; left: 20px; font-size: 12px; }}
-            #equipment-details {{ top: 20px; right: 20px; max-width: 300px; display: none; }}
-            .metric {{ display: flex; justify-content: space-between; margin: 6px 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-            .metric:last-child {{ border-bottom: none; }}
-            .metric-label {{ color: #bbb; }}
-            h3 {{ margin: 0 0 10px 0; font-size: 18px; }}
+            body {{ margin: 0; font-family: Arial, sans-serif; }}
+            #container {{ width: 100%; height: 600px; position: relative; }}
+            #info {{ position: absolute; top: 10px; left: 10px; color: white; 
+                     background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }}
+            #controls {{ position: absolute; bottom: 10px; left: 10px; color: white;
+                        background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }}
         </style>
-    </head><body>
+    </head>
+    <body>
         <div id="container">
-            <div id="info" class="overlay">
-                <h3>Professional AV Room</h3>
-                <div class="metric"><span class="metric-label">Room Dimensions:</span><span>24' × 16' × 10'</span></div>
-                <div class="metric"><span class="metric-label">Total Cost:</span><span id="totalCost">Calculating...</span></div>
+            <div id="info">
+                <h3>AV Room Layout</h3>
+                <p>Equipment Count: {len(js_equipment)}</p>
+                <p id="selectedItem">Click equipment to see details</p>
             </div>
-            <div id="equipment-details" class="overlay">
-                <h3 id="equipmentName">Details</h3>
-                <div class="metric"><span class="metric-label">Brand:</span><span id="equipmentBrand">-</span></div>
-                <div class="metric"><span class="metric-label">Quantity:</span><span id="equipmentQuantity">-</span></div>
-                <div class="metric"><span class="metric-label">Unit Price:</span><span id="equipmentPrice">-</span></div>
-            </div>
-            <div id="controls-info" class="overlay">
-                <strong>Controls:</strong> Drag to orbit, Scroll to zoom, Right-drag to pan
+            <div id="controls">
+                Mouse: Drag to orbit • Scroll to zoom
             </div>
         </div>
+        
         <script>
-            let scene, camera, renderer, controls, raycaster, mouse;
-            let selectedObject = null;
-            const equipmentGroups = [];
-            const roomConfig = {{ length: 24, width: 16, height: 10 }};
-            // SOLVED: Directly assign the valid JSON object. No parsing needed.
-            const avEquipment = {js_equipment_json};
+            // Initialize Three.js scene
+            let scene, camera, renderer, controls;
+            let roomConfig = {{
+                length: 24,
+                width: 16,
+                height: 10
+            }};
+            
+            // Equipment data from Streamlit
+            let avEquipment = {js_equipment};
             
             function init() {{
-                const container = document.getElementById('container');
+                // Create scene
                 scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x222233);
+                scene.background = new THREE.Color(0xf0f0f0);
                 
-                camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-                camera.position.set(18, 12, 18);
+                // Create camera
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / 600, 0.1, 1000);
+                camera.position.set(20, 15, 20);
+                camera.lookAt(0, 0, 0);
                 
+                // Create renderer
                 renderer = new THREE.WebGLRenderer({{ antialias: true }});
-                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setSize(document.getElementById('container').clientWidth, 600);
                 renderer.shadowMap.enabled = true;
                 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                container.appendChild(renderer.domElement);
+                document.getElementById('container').appendChild(renderer.domElement);
                 
-                controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.target.set(0, 4, 0);
-                controls.enableDamping = true;
-                controls.minDistance = 10;
-                controls.maxDistance = 50;
-                controls.maxPolarAngle = Math.PI / 2;
-
-                raycaster = new THREE.Raycaster();
-                mouse = new THREE.Vector2();
+                // Create room
+                createRoom();
+                createLighting();
+                createEquipment();
                 
-                createScene();
-                updateTotalCost();
+                // Add mouse controls
+                addMouseControls();
                 
-                renderer.domElement.addEventListener('click', onObjectClick);
+                // Start animation loop
                 animate();
             }}
             
-            function createScene() {{
-                const floor = new THREE.Mesh(
-                    new THREE.PlaneGeometry(roomConfig.length, roomConfig.width),
-                    new THREE.MeshStandardMaterial({{ color: 0x4a4a4a, roughness: 0.8 }})
-                );
+            function createRoom() {{
+                const materials = {{
+                    floor: new THREE.MeshLambertMaterial({{ color: 0x8B4513 }}),
+                    wall: new THREE.MeshLambertMaterial({{ color: 0xE5E5E5 }}),
+                    ceiling: new THREE.MeshLambertMaterial({{ color: 0xFFFFFF }})
+                }};
+                
+                // Floor
+                const floorGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.width);
+                const floor = new THREE.Mesh(floorGeometry, materials.floor);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
                 scene.add(floor);
                 
-                const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0xcccccc, roughness: 0.9 }});
-                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomConfig.length, roomConfig.height), wallMaterial);
-                backWall.position.set(0, roomConfig.height / 2, -roomConfig.width / 2);
-                backWall.receiveShadow = true;
+                // Back wall
+                const backWallGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.height);
+                const backWall = new THREE.Mesh(backWallGeometry, materials.wall);
+                backWall.position.set(0, roomConfig.height/2, -roomConfig.width/2);
                 scene.add(backWall);
-
-                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomConfig.width, roomConfig.height), wallMaterial);
-                leftWall.position.set(-roomConfig.length / 2, roomConfig.height / 2, 0);
-                leftWall.rotation.y = Math.PI / 2;
-                leftWall.receiveShadow = true;
+                
+                // Side walls
+                const sideWallGeometry = new THREE.PlaneGeometry(roomConfig.width, roomConfig.height);
+                const leftWall = new THREE.Mesh(sideWallGeometry, materials.wall);
+                leftWall.position.set(-roomConfig.length/2, roomConfig.height/2, 0);
+                leftWall.rotation.y = Math.PI/2;
                 scene.add(leftWall);
                 
-                // Lighting
-                scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-                const mainLight = new THREE.DirectionalLight(0xffffff, 0.7);
-                mainLight.position.set(10, 20, 10);
-                mainLight.castShadow = true;
-                mainLight.shadow.mapSize.set(2048, 2048);
-                scene.add(mainLight);
-
-                // Equipment and Furniture
-                createConferenceTable();
-                avEquipment.forEach(item => createEquipment(item));
-            }}
-
-            function createEquipment(item) {{
-                 const group = new THREE.Group();
-                 const material = new THREE.MeshStandardMaterial({{ color: 0x333333, roughness: 0.4 }});
-                 let geometry;
-
-                 switch(item.type) {{
-                    case 'display':
-                        geometry = new THREE.BoxGeometry(6, 3.5, 0.2);
-                        group.position.set(0, 5.5, -roomConfig.width / 2 + 0.2);
-                        break;
-                    case 'camera':
-                        geometry = new THREE.BoxGeometry(0.8, 0.5, 0.6);
-                        group.position.set(0, 7.5, -roomConfig.width / 2 + 0.5);
-                        break;
-                    case 'audio':
-                        geometry = new THREE.CylinderGeometry(0.7, 0.7, 0.3);
-                        group.position.set(0, roomConfig.height - 0.15, 0);
-                        break;
-                    default:
-                        geometry = new THREE.BoxGeometry(1, 1, 1);
-                        group.position.set(-6, 0.5, 4);
-                 }}
-                const mesh = new THREE.Mesh(geometry, material);
-                group.add(mesh);
-                group.traverse(child => {{ child.castShadow = true; child.receiveShadow = true; }});
-                group.userData = item;
-                equipmentGroups.push(group);
-                scene.add(group);
-            }}
-
-            function createConferenceTable() {{
-                const tableMaterial = new THREE.MeshStandardMaterial({{ color: 0x755c48, roughness: 0.6 }});
-                const tableTop = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 4), tableMaterial);
-                tableTop.position.y = 2.5;
-                const tableBase = new THREE.Mesh(new THREE.BoxGeometry(4, 2.5, 2), tableMaterial);
-                tableBase.position.y = 1.25;
-                const table = new THREE.Group();
-                table.add(tableTop, tableBase);
-                table.traverse(child => {{ child.castShadow = true; child.receiveShadow = true; }});
-                scene.add(table);
-            }}
-
-            function onObjectClick(event) {{
-                const rect = renderer.domElement.getBoundingClientRect();
-                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(equipmentGroups, true);
+                const rightWall = new THREE.Mesh(sideWallGeometry, materials.wall);
+                rightWall.position.set(roomConfig.length/2, roomConfig.height/2, 0);
+                rightWall.rotation.y = -Math.PI/2;
+                scene.add(rightWall);
                 
-                if (selectedObject) selectedObject.children[0].material.emissive.setHex(0x000000);
-                
-                if (intersects.length > 0) {{
-                    selectedObject = intersects[0].object.parent; // The group
-                    selectedObject.children[0].material.emissive.setHex(0x555555);
-                    showEquipmentDetails(selectedObject.userData);
-                }} else {{
-                    selectedObject = null;
-                    document.getElementById("equipment-details").style.display = "none";
-                }}
-            }}
-
-            function showEquipmentDetails(item) {{
-                const detailsPanel = document.getElementById("equipment-details");
-                detailsPanel.style.display = "block";
-                document.getElementById("equipmentName").textContent = item.name;
-                document.getElementById("equipmentBrand").textContent = item.brand;
-                document.getElementById("equipmentQuantity").textContent = item.quantity;
-                document.getElementById("equipmentPrice").textContent = "$" + item.price.toLocaleString();
+                // Ceiling
+                const ceilingGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.width);
+                const ceiling = new THREE.Mesh(ceilingGeometry, materials.ceiling);
+                ceiling.position.y = roomConfig.height;
+                ceiling.rotation.x = Math.PI / 2;
+                scene.add(ceiling);
             }}
             
-            function updateTotalCost() {{
-                const total = avEquipment.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                document.getElementById('totalCost').textContent = '$' + total.toLocaleString(undefined, {{minimumFractionDigits: 2}});
+            function createLighting() {{
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 10, 5);
+                directionalLight.castShadow = true;
+                scene.add(directionalLight);
+            }}
+            
+            function createEquipment() {{
+                const materials = {{
+                    display: new THREE.MeshPhongMaterial({{ color: 0x000000 }}),
+                    audio: new THREE.MeshPhongMaterial({{ color: 0x333333 }}),
+                    control: new THREE.MeshPhongMaterial({{ color: 0x0066CC }}),
+                    camera: new THREE.MeshPhongMaterial({{ color: 0x666666 }}),
+                    general: new THREE.MeshPhongMaterial({{ color: 0x999999 }})
+                }};
+                
+                avEquipment.forEach((item, index) => {{
+                    let geometry, material;
+                    let position = getEquipmentPosition(item.type, index);
+                    
+                    switch(item.type) {{
+                        case 'display':
+                            geometry = new THREE.BoxGeometry(4, 2.5, 0.2);
+                            material = materials.display;
+                            position.y = 5;
+                            break;
+                        case 'audio':
+                            geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.3);
+                            material = materials.audio;
+                            position.y = 8;
+                            break;
+                        case 'camera':
+                            geometry = new THREE.CylinderGeometry(0.3, 0.4, 0.5);
+                            material = materials.camera;
+                            position.y = 8.5;
+                            break;
+                        case 'control':
+                            geometry = new THREE.BoxGeometry(0.5, 0.3, 0.1);
+                            material = materials.control;
+                            position.y = 1.5;
+                            break;
+                        default:
+                            geometry = new THREE.BoxGeometry(1, 1, 1);
+                            material = materials.general;
+                            position.y = 1;
+                    }}
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.set(position.x, position.y, position.z);
+                    mesh.castShadow = true;
+                    mesh.userData = item;
+                    scene.add(mesh);
+                }});
+            }}
+            
+            function getEquipmentPosition(type, index) {{
+                const positions = {{
+                    'display': {{ x: 0, y: 5, z: -7 }},
+                    'audio': {{ x: -5 + (index * 3), y: 8, z: 0 }},
+                    'camera': {{ x: 0, y: 8.5, z: -6 }},
+                    'control': {{ x: 5, y: 1.5, z: 2 }},
+                    'general': {{ x: -3 + (index * 2), y: 1, z: 3 }}
+                }};
+                
+                return positions[type] || positions['general'];
+            }}
+            
+            function addMouseControls() {{
+                let isMouseDown = false;
+                let mouseX = 0, mouseY = 0;
+                let cameraTheta = 0.7, cameraPhi = 1.2;
+                const cameraRadius = 30;
+                
+                renderer.domElement.addEventListener('mousedown', (e) => {{
+                    isMouseDown = true;
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                }});
+                
+                renderer.domElement.addEventListener('mouseup', () => {{
+                    isMouseDown = false;
+                }});
+                
+                renderer.domElement.addEventListener('mousemove', (e) => {{
+                    if (!isMouseDown) return;
+                    
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    cameraTheta -= deltaX * 0.01;
+                    cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi + deltaY * 0.01));
+                    
+                    camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+                    camera.position.y = cameraRadius * Math.cos(cameraPhi);
+                    camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+                    camera.lookAt(0, 3, 0);
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                }});
+                
+                renderer.domElement.addEventListener('wheel', (e) => {{
+                    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+                    camera.position.multiplyScalar(factor);
+                }});
+                
+                // Click to select equipment
+                renderer.domElement.addEventListener('click', (event) => {{
+                    const mouse = new THREE.Vector2();
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    
+                    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                    
+                    const raycaster = new THREE.Raycaster();
+                    raycaster.setFromCamera(mouse, camera);
+                    
+                    const intersects = raycaster.intersectObjects(scene.children);
+                    
+                    if (intersects.length > 0 && intersects[0].object.userData.name) {{
+                        const item = intersects[0].object.userData;
+                        document.getElementById('selectedItem').innerHTML = 
+                            `Selected: ${{item.name}}<br>Brand: ${{item.brand}}<br>Quantity: ${{item.quantity}}<br>Price: $${{item.price.toLocaleString()}}`;
+                    }}
+                }});
             }}
             
             function animate() {{
                 requestAnimationFrame(animate);
-                controls.update();
                 renderer.render(scene, camera);
             }}
             
-            init();
+            // Handle window resize
+            window.addEventListener('resize', () => {{
+                camera.aspect = document.getElementById('container').clientWidth / 600;
+                camera.updateProjectionMatrix();
+                renderer.setSize(document.getElementById('container').clientWidth, 600);
+            }});
+            
+            // Initialize when page loads
+            window.addEventListener('load', init);
         </script>
-    </body></html>
+    </body>
+    </html>
     """
-    st.components.v1.html(html_content, height=720, scrolling=False)
     
-    st.subheader("Equipment Summary")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Items", sum(item.get('quantity', 0) for item in equipment_data))
-    with col2:
-        total_cost = sum(item.get('quantity', 0) * item.get('price', 0) for item in equipment_data)
-        st.metric("Hardware Cost", f"${total_cost:,.2f}")
-    with col3:
-        categories = set(item.get('category', 'General') for item in equipment_data)
-        st.metric("Categories", len(categories))
+    # Display the 3D visualization
+    components.html(html_content, height=650)
+    
+    # Add equipment summary below visualization
+    if equipment_data:
+        st.subheader("Equipment in Visualization")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            displays = [item for item in equipment_data if 'display' in item.get('category', '').lower()]
+            st.metric("Displays", len(displays))
+        
+        with col2:
+            audio = [item for item in equipment_data if 'audio' in item.get('category', '').lower()]
+            st.metric("Audio Equipment", len(audio))
+        
+        with col3:
+            cameras = [item for item in equipment_data if 'camera' in item.get('category', '').lower() or 'video' in item.get('category', '').lower()]
+            st.metric("Cameras", len(cameras))
+
+def map_equipment_type(category):
+    """Map BOQ categories to 3D visualization types."""
+    category_lower = category.lower()
+    
+    if 'display' in category_lower or 'monitor' in category_lower:
+        return 'display'
+    elif 'audio' in category_lower or 'speaker' in category_lower or 'microphone' in category_lower:
+        return 'audio'
+    elif 'camera' in category_lower or 'video' in category_lower:
+        return 'camera'
+    elif 'control' in category_lower:
+        return 'control'
+    else:
+        return 'general'
 
 # --- Main Application ---
 def main():
-    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = None
+    # SOLVED: Initialize session state for all generated content to prevent it from disappearing on rerun.
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = None
     
+    # Load and validate data
     product_df, guidelines, data_issues = load_and_validate_data()
     
+    # Display data quality status
     if data_issues:
-        with st.expander("⚠️ Data Quality Issues"):
-            for issue in data_issues: st.warning(issue)
+        with st.expander("⚠️ Data Quality Issues", expanded=len(data_issues) > 3):
+            for issue in data_issues:
+                st.warning(issue)
     
     if product_df is None:
         st.error("Cannot load product catalog. Please check data files.")
         return
     
+    # Setup Gemini
     model = setup_gemini()
-    if not model: return
+    if not model:
+        return
     
+    # Create professional header
     project_id, quote_valid_days = create_project_header()
     
+    # Sidebar for project settings
     with st.sidebar:
         st.header("Project Configuration")
-        st.text_input("Client Name")
-        st.text_input("Project Name")
-        currency = st.selectbox("Currency", ["USD", "INR"])
-        st.session_state['currency'] = currency
+        
+        client_name = st.text_input("Client Name", value="")
+        project_name = st.text_input("Project Name", value="")
+        
+        # Currency selection
+        currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0)
+        st.session_state['currency'] = currency  # Store in session state
         
         st.markdown("---")
-        room_type = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()))
-        budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard")
         
+        room_type = st.selectbox(
+            "Primary Space Type:",
+            list(ROOM_SPECS.keys())
+        )
+        
+        budget_tier = st.select_slider(
+            "Budget Tier:",
+            options=["Economy", "Standard", "Premium", "Enterprise"],
+            value="Standard"
+        )
+        
+        # Display room specifications
         room_spec = ROOM_SPECS[room_type]
         st.markdown("### Room Guidelines")
-        st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
-        st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
-        st.caption(f"Budget: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
+        st.caption(f"Typical area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
+        st.caption(f"Display size: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
+        st.caption(f"Budget range: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
     
-    # SOLVED: Corrected the language in the tab headers
+    # Main content areas
     tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
     
     with tab1:
-        room_area, _ = create_room_calculator()
+        room_area, ceiling_height = create_room_calculator()
+    
     with tab2:
-        features = st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", height=100)
+        features = st.text_area(
+            "Specific Requirements & Features:",
+            placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified, recording capability'",
+            height=100
+        )
+        
         technical_reqs = create_advanced_requirements()
+    
     with tab3:
         st.subheader("BOQ Generation")
-        if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
-            generate_boq(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area)
         
-        if st.session_state.get('boq_content') or st.session_state.get('boq_items'):
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
+                # This function now saves results to session_state instead of directly displaying them.
+                generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
+                             technical_reqs, room_area)
+        
+        with col2:
+            st.markdown("**Product Stats:**")
+            st.metric("Total Products", len(product_df))
+            st.metric("Brands", product_df['brand'].nunique())
+            if 'price' in product_df.columns:
+                try:
+                    # Convert price column to numeric, handling errors
+                    numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
+                    valid_prices = numeric_prices[numeric_prices > 0]
+                    avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
+                    
+                    if avg_price_usd and not pd.isna(avg_price_usd):
+                        # Get currency preference from session state
+                        display_currency = st.session_state.get('currency', 'USD')
+                        
+                        if display_currency == "INR":
+                            avg_price_inr = convert_currency(avg_price_usd, "INR")
+                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
+                        else:
+                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
+                    else:
+                        st.metric("Avg Price", "N/A")
+                except Exception:
+                    st.metric("Avg Price", "N/A")
+        
+        # SOLVED: Display results from session_state. This ensures they persist on reruns.
+        if st.session_state.boq_content or st.session_state.boq_items:
             st.markdown("---")
-            display_boq_results(st.session_state.boq_content, st.session_state.validation_results, project_id, quote_valid_days)
+            display_boq_results(
+                st.session_state.boq_content,
+                st.session_state.validation_results,
+                project_id,
+                quote_valid_days
+            )
+        
     with tab4:
         create_3d_visualization()
 
+def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
+                 technical_reqs, room_area):
+    """Enhanced BOQ generation that saves results to session_state."""
+    
+    with st.spinner("Engineering professional BOQ with technical validation..."):
+        
+        # Create enhanced prompt
+        prompt = create_enhanced_prompt(product_df, guidelines, room_type, budget_tier, 
+                                        features, technical_reqs, room_area)
+        
+        try:
+            # Generate BOQ with retry logic
+            response = generate_with_retry(model, prompt)
+            
+            if response:
+                boq_content = response.text
+                
+                # Extract structured data
+                boq_items = extract_boq_items_from_response(boq_content, product_df)
+                
+                # Validate BOQ
+                validator = BOQValidator(ROOM_SPECS, product_df)
+                issues, warnings = validator.validate_technical_requirements(
+                    boq_items, room_type, room_area
+                )
+                
+                # NEW: Add AI-powered AVIXA compliance validation
+                avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
+                warnings.extend(avixa_warnings)
+                
+                validation_results = {"issues": issues, "warnings": warnings}
+                
+                # SOLVED: Store all generated content in session_state to persist across reruns.
+                st.session_state.boq_content = boq_content
+                st.session_state.boq_items = boq_items
+                st.session_state.validation_results = validation_results
+                
+                if boq_items:
+                    st.success(f"✅ Successfully generated and loaded {len(boq_items)} items!")
+                else:
+                    st.warning("⚠️ BOQ generated, but no items could be parsed. Check the raw output.")
+
+        except Exception as e:
+            st.error(f"BOQ generation failed: {str(e)}")
+            with st.expander("Technical Details"):
+                st.code(str(e))
+
+def create_enhanced_prompt(product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """Create comprehensive prompt for BOQ generation."""
+    
+    room_spec = ROOM_SPECS[room_type]
+    # Provide a sample of the catalog instead of the full CSV to avoid overly large prompts
+    def intelligent_product_selection(requirements, product_df, limit=50):
+        
+    
+    prompt = f"""
+You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
+
+**PROJECT SPECIFICATIONS:**
+- Room Type: {room_type}
+- Room Area: {room_area:.0f} sq ft
+- Budget Tier: {budget_tier}
+- Special Requirements: {features}
+- Infrastructure: {technical_reqs}
+
+**TECHNICAL CONSTRAINTS & GUIDELINES:**
+- Adhere to the provided AVIXA standards for all design choices.
+- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
+- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
+- Audio coverage: {room_spec['audio_coverage']}
+- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
+
+**MANDATORY REQUIREMENTS:**
+1. ONLY use products from the provided product catalog sample. If a suitable product is not in the sample, note it.
+2. Verify all components are compatible (e.g., mounts fit displays).
+3. Include appropriate mounting hardware, cabling (HDMI, USB, Ethernet), and power distribution.
+4. Add a line item for 'Installation & Commissioning Labor' as 15% of the total hardware cost.
+5. Add a line item for 'System Warranty (3 Years)' as 5% of the total hardware cost.
+6. Add a line item for 'Project Contingency' as 10% of the total hardware cost.
+
+**OUTPUT FORMAT REQUIREMENT:**
+- Start with a brief 2-3 sentence 'System Design Summary'.
+- Then, provide the BOQ in a clear markdown table with the following columns:
+| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |
+
+**PRODUCT CATALOG SAMPLE:**
+{product_catalog_string}
+
+**AVIXA GUIDELINES:**
+{guidelines}
+
+Generate the BOQ now:
+"""
+    
+    return prompt
+
+# Run the application
 if __name__ == "__main__":
     main()
