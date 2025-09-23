@@ -1305,8 +1305,10 @@ def main():
                 quote_valid_days
             )
         
-    with tab4:
-       def create_3d_visualization():
+with tab4:
+        create_3d_visualization()
+
+def create_3d_visualization():
     """Create production-ready 3D room visualization with realistic AV equipment."""
     st.subheader("3D Room Visualization")
     
