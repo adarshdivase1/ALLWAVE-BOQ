@@ -931,7 +931,7 @@ def get_equipment_specs(equipment_type, product_name):
     
     return base_spec
 
-# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION (CORRECTED) ---
+# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION (CORRECTED V2) ---
 def create_3d_visualization():
     """Create an interactive, realistic 3D room visualization with detailed feedback."""
     st.subheader("3D Room Visualization")
@@ -1122,9 +1122,9 @@ def create_3d_visualization():
             function createEquipmentMesh(item) {{
                 const group = new THREE.Group();
                 const size = item.specs;
-                
                 // BUG FIX: Initialize materialOptions with a default color
                 const materialOptions = {{ color: 0x333333, roughness: 0.5, metalness: 0.1 }};
+                
                 switch(item.type) {{
                     case 'display':
                         materialOptions.color = 0x050505; materialOptions.metalness = 0.5;
@@ -1140,8 +1140,7 @@ def create_3d_visualization():
 
                 if (group.children.length === 0) {{
                     const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
-                    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions));
-                    group.add(mesh);
+                    group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions)));
                 }}
 
                 group.traverse(obj => {{ if(obj.isMesh) obj.castShadow = true; }});
@@ -1154,9 +1153,11 @@ def create_3d_visualization():
                 return group;
             }}
 
+            // BUG FIX: Rewritten positioning logic for miscellaneous items
             function getSmartPosition(type, instanceIndex, size, quantity) {{
                 let x = 0, y = 0, z = 0, rotation = 0;
                 const spacing = size[0] + 0.5;
+                
                 switch(type) {{
                     case 'display':
                         x = toUnits(-(quantity - 1) * spacing / 2 + (instanceIndex * spacing));
@@ -1164,21 +1165,25 @@ def create_3d_visualization():
                         z = -toUnits({room_width}/2 - 0.2);
                         break;
                     case 'audio_speaker':
-                        x = toUnits(-{room_length}/2 + 2 + (instanceIndex * 4));
+                    case 'camera':
+                        x = toUnits(-{room_length}/2.5 + (instanceIndex * 4));
                         y = toUnits({room_height} - 0.5);
                         z = toUnits({room_width}/4 * (instanceIndex % 2 === 0 ? 1 : -1));
                         break;
                     case 'control':
                     case 'audio_microphone':
                         x = toUnits(-3 + (instanceIndex * 2));
-                        y = toUnits(2.6);
-                        z = toUnits(3);
+                        y = toUnits(2.6); // On the table
+                        z = 0;
                         break;
-                    default: // IMPROVED: Stack unknown items neatly in a corner
-                        x = toUnits({room_length}/2 - 1.5);
-                        y = toUnits(size[1]/2 + instanceIndex * (size[1] + 0.2));
-                        z = toUnits(-{room_width}/4);
-                        rotation = -Math.PI/2;
+                    case 'rack':
+                    case 'mount':
+                    default: // Stack all other items in a visible corner
+                        x = -toUnits({room_length}/2 - 1.5); // Against the left wall
+                        y = toUnits(size[1]/2 + instanceIndex * (size[1] + 0.2)); // Stack vertically
+                        z = toUnits({room_width}/2 - 1.5); // In the front corner
+                        rotation = Math.PI / 2; // Face into the room
+                        break;
                 }}
                 return {{ x, y, z, rotation }};
             }}
@@ -1237,10 +1242,8 @@ def create_3d_visualization():
                 const rect = renderer.domElement.getBoundingClientRect();
                 mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-                
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-                
                 let foundObject = null;
                 for (let intersect of intersects) {{
                     let obj = intersect.object;
@@ -1258,23 +1261,23 @@ def create_3d_visualization():
                 let isMouseDown = false, mouseX = 0, mouseY = 0, isPanning = false;
                 let cameraTarget = new THREE.Vector3(0, toUnits({room_height} * 0.2), 0);
                 camera.lookAt(cameraTarget);
+                const domElement = renderer.domElement;
 
-                renderer.domElement.addEventListener('mousedown', (e) => {{ isMouseDown = true; isPanning = e.button === 2; mouseX = e.clientX; mouseY = e.clientY; }});
-                renderer.domElement.addEventListener('mouseup', () => {{ isMouseDown = false; isPanning = false; }});
-                renderer.domElement.addEventListener('mouseleave', () => {{ isMouseDown = false; isPanning = false; }});
-                renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+                domElement.addEventListener('mousedown', (e) => {{ isMouseDown = true; isPanning = e.button === 2; mouseX = e.clientX; mouseY = e.clientY; }});
+                domElement.addEventListener('mouseup', () => {{ isMouseDown = false; isPanning = false; }});
+                domElement.addEventListener('mouseleave', () => {{ isMouseDown = false; isPanning = false; }});
+                domElement.addEventListener('contextmenu', (e) => e.preventDefault());
                 
-                renderer.domElement.addEventListener('mousemove', (e) => {{
+                domElement.addEventListener('mousemove', (e) => {{
                     if (!isMouseDown) return;
                     const deltaX = e.clientX - mouseX, deltaY = e.clientY - mouseY;
+                    const panSpeed = 0.01, orbitSpeed = 0.005;
                     if (isPanning) {{
-                        const panSpeed = 0.01;
-                        camera.translateX(-deltaX * panSpeed);
-                        camera.translateY(deltaY * panSpeed);
+                        const FWD = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                        const RIGHT = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                        cameraTarget.add(RIGHT.multiplyScalar(-deltaX * panSpeed)).add(FWD.clone().cross(RIGHT).multiplyScalar(deltaY * panSpeed));
                     }} else {{
-                        const orbitSpeed = 0.005;
-                        camera.position.sub(cameraTarget);
-                        const spherical = new THREE.Spherical().setFromVector3(camera.position);
+                        const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(cameraTarget));
                         spherical.theta -= deltaX * orbitSpeed;
                         spherical.phi -= deltaY * orbitSpeed;
                         spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
@@ -1284,11 +1287,16 @@ def create_3d_visualization():
                     mouseX = e.clientX; mouseY = e.clientY;
                 }});
                 
-                renderer.domElement.addEventListener('wheel', (e) => {{
+                domElement.addEventListener('wheel', (e) => {{
                     const zoomSpeed = 0.9;
-                    camera.position.sub(cameraTarget).multiplyScalar(e.deltaY > 0 ? 1 / zoomSpeed : zoomSpeed).add(cameraTarget);
+                    const zoomAmount = e.deltaY > 0 ? 1 / zoomSpeed : zoomSpeed;
+                    camera.position.sub(cameraTarget).multiplyScalar(zoomAmount).add(cameraTarget);
                 }});
-                 renderer.domElement.addEventListener('dblclick', () => camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1)));
+                domElement.addEventListener('dblclick', () => {{
+                     camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1));
+                     cameraTarget.set(0, toUnits({room_height} * 0.2), 0);
+                     camera.lookAt(cameraTarget);
+                }});
             }}
 
             function animate() {{
