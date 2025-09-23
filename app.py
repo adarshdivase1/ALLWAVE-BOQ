@@ -307,7 +307,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                           ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -1350,9 +1350,9 @@ def create_3d_visualization():
                     const instanceText = item.original_quantity > 1 ? ` (${{item.instance}}/${{item.original_quantity}})` : '';
                     const typeDisplay = item.type.replace('_', ' ').replace(/\\b\\w/g, l => l.toUpperCase());
                     listHtml += `<div class="equipment-item" id="list-item-${{item.id}}" onclick="highlightObjectById(${{item.id}})">
-                                        <div class="equipment-name">${{item.name}}${{instanceText}}</div>
-                                        <div class="equipment-details">${{item.brand}} - ${{typeDisplay}}</div>
-                                   </div>`;
+                                    <div class="equipment-name">${{item.name}}${{instanceText}}</div>
+                                    <div class="equipment-details">${{item.brand}} - ${{typeDisplay}}</div>
+                                </div>`;
                 }});
                 listContainer.innerHTML = listHtml;
             }}
