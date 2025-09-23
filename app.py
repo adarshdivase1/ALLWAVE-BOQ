@@ -1992,23 +1992,22 @@ def create_3d_visualization():
                 }});
             }}
             
-            function showEquipmentDetails(item) {{
-                const detailsPanel = document.getElementById('equipment-details');
-                
-                document.getElementById('equipmentName').textContent = item.name;
-                document.getElementById('equipmentType').textContent = item.category;
-                document.getElementById('equipmentBrand').
-                textContent = item.brand;
-                document.getElementById('equipmentQuantity').textContent = item.quantity;
-                document.getElementById('equipmentPrice').textContent = '$' + item.price.toLocaleString();
-                document.getElementById('equipmentTotal').textContent = '$' + (item.quantity * item.price).toLocaleString();
-                
-                detailsPanel.style.display = 'block';
-            }}
-            
-            function hideEquipmentDetails() {
-                document.getElementById('equipment-details').style.display = 'none';
-            }
+function showEquipmentDetails(item) {{
+    const detailsPanel = document.getElementById("equipment-details");
+    
+    document.getElementById("equipmentName").textContent = item.name;
+    document.getElementById("equipmentType").textContent = item.category;
+    document.getElementById("equipmentBrand").textContent = item.brand;
+    document.getElementById("equipmentQuantity").textContent = item.quantity;
+    document.getElementById("equipmentPrice").textContent = "$" + item.price.toLocaleString();
+    document.getElementById("equipmentTotal").textContent = "$" + (item.quantity * item.price).toLocaleString();
+    
+    detailsPanel.style.display = "block";
+}}
+
+function hideEquipmentDetails() {{
+    document.getElementById("equipment-details").style.display = "none";
+}}
             
             function updateTotalCost() {
                 let total = 0;
