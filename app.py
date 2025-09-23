@@ -931,7 +931,7 @@ def get_equipment_specs(equipment_type, product_name):
     
     return base_spec
 
-# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION ---
+# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION (CORRECTED) ---
 def create_3d_visualization():
     """Create an interactive, realistic 3D room visualization with detailed feedback."""
     st.subheader("3D Room Visualization")
@@ -978,7 +978,8 @@ def create_3d_visualization():
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
         <style>
             body {{ margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
-            #container {{ width: 100%; height: 600px; position: relative; }}
+            #container {{ width: 100%; height: 600px; position: relative; cursor: grab; }}
+            #container:active {{ cursor: grabbing; }}
             #info {{ 
                 position: absolute; top: 15px; left: 15px; color: #ffffff; 
                 background: linear-gradient(135deg, rgba(0,0,0,0.9), rgba(20,20,20,0.8));
@@ -1031,7 +1032,6 @@ def create_3d_visualization():
                 const container = document.getElementById('container');
                 camera = new THREE.PerspectiveCamera(50, container.clientWidth / 600, 0.1, 1000);
                 camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1));
-                camera.lookAt(0, toUnits({room_height} * 0.2), 0);
                 
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, 600);
@@ -1050,7 +1050,7 @@ def create_3d_visualization():
                 createRealisticLighting();
                 createRoomFurniture();
                 createAllEquipmentObjects();
-                createInteractiveControls();
+                setupCameraControls(); // RESTORED CAMERA CONTROLS
                 updateEquipmentList();
                 animate();
             }}
@@ -1122,13 +1122,12 @@ def create_3d_visualization():
             function createEquipmentMesh(item) {{
                 const group = new THREE.Group();
                 const size = item.specs;
-                let mesh;
                 
-                const materialOptions = {{ roughness: 0.5, metalness: 0.1 }};
+                // BUG FIX: Initialize materialOptions with a default color
+                const materialOptions = {{ color: 0x333333, roughness: 0.5, metalness: 0.1 }};
                 switch(item.type) {{
                     case 'display':
-                        materialOptions.color = 0x050505;
-                        materialOptions.metalness = 0.5;
+                        materialOptions.color = 0x050505; materialOptions.metalness = 0.5;
                         const bezel = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), new THREE.MeshStandardMaterial(materialOptions));
                         const screen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.9), toUnits(size[1]*0.9)), new THREE.MeshBasicMaterial({{color: 0x1a1a2e}}));
                         screen.position.z = toUnits(size[2]/2 + 0.01);
@@ -1137,12 +1136,11 @@ def create_3d_visualization():
                         break;
                     case 'mount': materialOptions.color = 0xaaaaaa; break;
                     case 'cable': materialOptions.color = 0x222255; break;
-                    default: materialOptions.color = 0x333333;
                 }}
 
                 if (group.children.length === 0) {{
                     const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
-                    mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions));
+                    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions));
                     group.add(mesh);
                 }}
 
@@ -1157,10 +1155,8 @@ def create_3d_visualization():
             }}
 
             function getSmartPosition(type, instanceIndex, size, quantity) {{
-                // Simplified positioning logic for clarity
                 let x = 0, y = 0, z = 0, rotation = 0;
                 const spacing = size[0] + 0.5;
-
                 switch(type) {{
                     case 'display':
                         x = toUnits(-(quantity - 1) * spacing / 2 + (instanceIndex * spacing));
@@ -1175,12 +1171,12 @@ def create_3d_visualization():
                     case 'control':
                     case 'audio_microphone':
                         x = toUnits(-3 + (instanceIndex * 2));
-                        y = toUnits(2.6); // On table
+                        y = toUnits(2.6);
                         z = toUnits(3);
                         break;
-                    default:
+                    default: // IMPROVED: Stack unknown items neatly in a corner
                         x = toUnits({room_length}/2 - 1.5);
-                        y = toUnits(1 + instanceIndex * 1.5);
+                        y = toUnits(size[1]/2 + instanceIndex * (size[1] + 0.2));
                         z = toUnits(-{room_width}/4);
                         rotation = -Math.PI/2;
                 }}
@@ -1191,7 +1187,6 @@ def create_3d_visualization():
                 if (selectedObject) {{
                     selectedObject.traverse(child => {{ if (child.isMesh) child.material.emissive.setHex(0x000000); }});
                 }}
-                
                 const listItems = document.querySelectorAll('.equipment-item');
                 listItems.forEach(li => li.classList.remove('selected-item'));
                 
@@ -1202,7 +1197,6 @@ def create_3d_visualization():
                 }}
                 
                 selectedObject.traverse(child => {{ if (child.isMesh) child.material.emissive.setHex(0x555555); }});
-                
                 const item = selectedObject.userData;
                 const instanceText = item.original_quantity > 1 ? ` (Instance ${{item.instance}}/${{item.original_quantity}})` : '';
                 
@@ -1212,8 +1206,7 @@ def create_3d_visualization():
                         <div><strong>Brand:</strong> ${{item.brand}}</div>
                         <div><strong>Category:</strong> ${{item.type.replace('_', ' ')}}</div>
                         <div><strong>Unit Price:</strong> $$${{item.price.toLocaleString()}}</div>
-                    </div>
-                `;
+                    </div>`;
 
                 const listItem = document.getElementById(`list-item-${{item.id}}`);
                 if (listItem) {{
@@ -1227,21 +1220,17 @@ def create_3d_visualization():
                 let listHtml = '';
                 avEquipment.forEach(item => {{
                     const instanceText = item.original_quantity > 1 ? ` (${{item.instance}}/${{item.original_quantity}})` : '';
-                    listHtml += `
-                        <div class="equipment-item" id="list-item-${{item.id}}" onclick="highlightObjectById(${{item.id}})">
-                            <div class="equipment-name">${{item.name}}${{instanceText}}</div>
-                            <div class="equipment-details">${{item.brand}}</div>
-                        </div>
-                    `;
+                    listHtml += `<div class="equipment-item" id="list-item-${{item.id}}" onclick="highlightObjectById(${{item.id}})">
+                                    <div class="equipment-name">${{item.name}}${{instanceText}}</div>
+                                    <div class="equipment-details">${{item.brand}}</div>
+                                 </div>`;
                 }});
                 listContainer.innerHTML = listHtml;
             }}
 
             function highlightObjectById(id) {{
                 const object = scene.getObjectByName(`equipment_${{id}}`);
-                if (object) {{
-                    selectObject(object);
-                }}
+                if (object) selectObject(object);
             }}
             
             function onMouseClick(event) {{
@@ -1264,8 +1253,42 @@ def create_3d_visualization():
                 selectObject(foundObject);
             }}
 
-            function createInteractiveControls() {{
-                // This function can be expanded with more controls later
+            // BUG FIX: Added this entire function to restore camera controls
+            function setupCameraControls() {{
+                let isMouseDown = false, mouseX = 0, mouseY = 0, isPanning = false;
+                let cameraTarget = new THREE.Vector3(0, toUnits({room_height} * 0.2), 0);
+                camera.lookAt(cameraTarget);
+
+                renderer.domElement.addEventListener('mousedown', (e) => {{ isMouseDown = true; isPanning = e.button === 2; mouseX = e.clientX; mouseY = e.clientY; }});
+                renderer.domElement.addEventListener('mouseup', () => {{ isMouseDown = false; isPanning = false; }});
+                renderer.domElement.addEventListener('mouseleave', () => {{ isMouseDown = false; isPanning = false; }});
+                renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+                
+                renderer.domElement.addEventListener('mousemove', (e) => {{
+                    if (!isMouseDown) return;
+                    const deltaX = e.clientX - mouseX, deltaY = e.clientY - mouseY;
+                    if (isPanning) {{
+                        const panSpeed = 0.01;
+                        camera.translateX(-deltaX * panSpeed);
+                        camera.translateY(deltaY * panSpeed);
+                    }} else {{
+                        const orbitSpeed = 0.005;
+                        camera.position.sub(cameraTarget);
+                        const spherical = new THREE.Spherical().setFromVector3(camera.position);
+                        spherical.theta -= deltaX * orbitSpeed;
+                        spherical.phi -= deltaY * orbitSpeed;
+                        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+                        camera.position.setFromSpherical(spherical).add(cameraTarget);
+                    }}
+                    camera.lookAt(cameraTarget);
+                    mouseX = e.clientX; mouseY = e.clientY;
+                }});
+                
+                renderer.domElement.addEventListener('wheel', (e) => {{
+                    const zoomSpeed = 0.9;
+                    camera.position.sub(cameraTarget).multiplyScalar(e.deltaY > 0 ? 1 / zoomSpeed : zoomSpeed).add(cameraTarget);
+                }});
+                 renderer.domElement.addEventListener('dblclick', () => camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1)));
             }}
 
             function animate() {{
