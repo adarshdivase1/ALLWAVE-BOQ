@@ -307,7 +307,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                           ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
         cable_management = st.selectbox("Cable Management", 
-                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -867,6 +867,69 @@ def edit_current_boq(currency):
             st.markdown(f"### **Total Project Cost: {format_currency(display_total, 'INR')}**")
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
+
+# --- NEW FUNCTIONS ADDED HERE ---
+
+def map_equipment_type(category):
+    """Map product category to equipment type for 3D visualization."""
+    category_lower = category.lower() if category else ''
+    
+    # Map categories to 3D equipment types
+    if any(term in category_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
+        return 'display'
+    elif any(term in category_lower for term in ['speaker', 'audio']):
+        return 'audio_speaker'
+    elif any(term in category_lower for term in ['microphone', 'mic']):
+        return 'audio_microphone'
+    elif any(term in category_lower for term in ['camera', 'video']):
+        return 'camera'
+    elif any(term in category_lower for term in ['control', 'processor', 'switch']):
+        return 'control'
+    elif any(term in category_lower for term in ['rack', 'cabinet']):
+        return 'rack'
+    elif any(term in category_lower for term in ['mount', 'bracket']):
+        return 'mount'
+    elif any(term in category_lower for term in ['cable', 'wire']):
+        return 'cable'
+    else:
+        return None  # Skip items that don't map to visual equipment
+
+def get_equipment_specs(equipment_type, product_name):
+    """Get realistic specifications for equipment based on type and name."""
+    
+    # Default specifications by equipment type (width, height, depth in feet)
+    default_specs = {
+        'display': [4, 2.5, 0.2],
+        'audio_speaker': [0.6, 1.0, 0.6],
+        'audio_microphone': [0.2, 0.1, 0.2],
+        'camera': [0.6, 0.4, 0.6],
+        'control': [1.2, 0.6, 0.2],
+        'rack': [1.5, 5, 1.5],
+        'mount': [0.3, 0.3, 0.8],
+        'cable': [0.1, 0.1, 2]
+    }
+    
+    base_spec = default_specs.get(equipment_type, [1, 1, 1])
+    
+    # Try to extract size from product name for displays
+    if equipment_type == 'display' and product_name:
+        import re
+        size_match = re.search(r'(\d+)"', product_name)
+        if size_match:
+            size_inches = int(size_match.group(1))
+            # Convert diagonal size to approximate width/height (16:9 ratio)
+            width_inches = size_inches * 0.87
+            height_inches = size_inches * 0.49
+            return [width_inches / 12, height_inches / 12, 0.2]  # Convert to feet
+    
+    # Scale based on product name keywords for other equipment
+    if equipment_type == 'audio_speaker' and product_name:
+        if any(term in product_name.lower() for term in ['large', 'big', 'tower']):
+            return [base_spec[0] * 1.5, base_spec[1] * 1.5, base_spec[2] * 1.5]
+        elif any(term in product_name.lower() for term in ['small', 'compact', 'mini']):
+            return [base_spec[0] * 0.7, base_spec[1] * 0.7, base_spec[2] * 0.7]
+    
+    return base_spec
 
 def create_3d_visualization():
     """Create realistic 3D room visualization using Three.js in Streamlit."""
@@ -1634,7 +1697,7 @@ def main():
                 project_id,
                 quote_valid_days
             )
-        
+    
     with tab4:
         create_3d_visualization()
 
