@@ -868,31 +868,42 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
 
-# --- UTILITY FUNCTIONS FOR VISUALIZATION ---
+# --- UTILITY FUNCTIONS FOR VISUALIZATION (UPDATED) ---
 
 def map_equipment_type(category):
-    """Map product category to equipment type for 3D visualization."""
-    category_lower = category.lower() if category else ''
+    """Map product category to equipment type for 3D visualization - FIXED VERSION."""
+    if not category:
+        return 'control'  # Default fallback instead of None
     
-    # Map categories to 3D equipment types
-    if any(term in category_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
+    category_lower = category.lower()
+    
+    # Map categories to 3D equipment types with broader matching
+    if any(term in category_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv', 'panel']):
         return 'display'
-    elif any(term in category_lower for term in ['speaker', 'audio']):
+    elif any(term in category_lower for term in ['speaker', 'audio', 'sound', 'amplifier', 'amp']):
         return 'audio_speaker'
     elif any(term in category_lower for term in ['microphone', 'mic']):
         return 'audio_microphone'
-    elif any(term in category_lower for term in ['camera', 'video']):
+    elif any(term in category_lower for term in ['camera', 'video', 'conferencing', 'codec', 'webcam']):
         return 'camera'
-    elif any(term in category_lower for term in ['control', 'processor', 'switch']):
+    elif any(term in category_lower for term in ['control', 'processor', 'switch', 'matrix', 'hub', 'interface']):
         return 'control'
-    elif any(term in category_lower for term in ['rack', 'cabinet']):
+    elif any(term in category_lower for term in ['rack', 'cabinet', 'enclosure']):
         return 'rack'
-    elif any(term in category_lower for term in ['mount', 'bracket']):
+    elif any(term in category_lower for term in ['mount', 'bracket', 'stand', 'arm']):
         return 'mount'
-    elif any(term in category_lower for term in ['cable', 'wire']):
+    elif any(term in category_lower for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb', 'ethernet']):
         return 'cable'
+    elif any(term in category_lower for term in ['power', 'ups', 'supply', 'conditioner']):
+        return 'control'  # Group power equipment with control
+    elif any(term in category_lower for term in ['lighting', 'light', 'led']):
+        return 'control'  # Group lighting with control
+    elif any(term in category_lower for term in ['general', 'accessory', 'misc', 'other']):
+        return 'control'  # Group miscellaneous items with control
     else:
-        return None  # Skip items that don't map to visual equipment
+        # Instead of returning None, return a default type
+        return 'control'  # Everything else gets visualized as control equipment
+
 
 def get_equipment_specs(equipment_type, product_name):
     """Get realistic specifications for equipment based on type and name."""
@@ -931,9 +942,9 @@ def get_equipment_specs(equipment_type, product_name):
     
     return base_spec
 
-# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION (CORRECTED V2) ---
+# --- PRODUCTION-READY 3D VISUALIZATION FUNCTION (CORRECTED/UPDATED) ---
 def create_3d_visualization():
-    """Create an interactive, realistic 3D room visualization with detailed feedback."""
+    """Create an interactive, realistic 3D room visualization - FIXED VERSION."""
     st.subheader("3D Room Visualization")
     
     equipment_data = st.session_state.get('boq_items', [])
@@ -945,8 +956,6 @@ def create_3d_visualization():
     js_equipment = []
     for item in equipment_data:
         equipment_type = map_equipment_type(item.get('category', ''))
-        if not equipment_type:
-            equipment_type = 'control'
         
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
         
@@ -1050,7 +1059,7 @@ def create_3d_visualization():
                 createRealisticLighting();
                 createRoomFurniture();
                 createAllEquipmentObjects();
-                setupCameraControls(); // RESTORED CAMERA CONTROLS
+                setupCameraControls();
                 updateEquipmentList();
                 animate();
             }}
@@ -1122,7 +1131,6 @@ def create_3d_visualization():
             function createEquipmentMesh(item) {{
                 const group = new THREE.Group();
                 const size = item.specs;
-                // BUG FIX: Initialize materialOptions with a default color
                 const materialOptions = {{ color: 0x333333, roughness: 0.5, metalness: 0.1 }};
                 
                 switch(item.type) {{
@@ -1153,39 +1161,50 @@ def create_3d_visualization():
                 return group;
             }}
 
-            // BUG FIX: Rewritten positioning logic for miscellaneous items
+            // UPDATED POSITIONING LOGIC
             function getSmartPosition(type, instanceIndex, size, quantity) {{
-                let x = 0, y = 0, z = 0, rotation = 0;
-                const spacing = size[0] + 0.5;
-                
-                switch(type) {{
-                    case 'display':
-                        x = toUnits(-(quantity - 1) * spacing / 2 + (instanceIndex * spacing));
-                        y = toUnits({room_height} * 0.6);
-                        z = -toUnits({room_width}/2 - 0.2);
-                        break;
-                    case 'audio_speaker':
-                    case 'camera':
-                        x = toUnits(-{room_length}/2.5 + (instanceIndex * 4));
-                        y = toUnits({room_height} - 0.5);
-                        z = toUnits({room_width}/4 * (instanceIndex % 2 === 0 ? 1 : -1));
-                        break;
-                    case 'control':
-                    case 'audio_microphone':
-                        x = toUnits(-3 + (instanceIndex * 2));
-                        y = toUnits(2.6); // On the table
-                        z = 0;
-                        break;
-                    case 'rack':
-                    case 'mount':
-                    default: // Stack all other items in a visible corner
-                        x = -toUnits({room_length}/2 - 1.5); // Against the left wall
-                        y = toUnits(size[1]/2 + instanceIndex * (size[1] + 0.2)); // Stack vertically
-                        z = toUnits({room_width}/2 - 1.5); // In the front corner
-                        rotation = Math.PI / 2; // Face into the room
-                        break;
+                let x_ft = 0, y_ft = 0, z_ft = 0, rotation = 0;
+                const spacing_ft = Math.max(size[0] + 0.5, 1.0); // Minimum 1 foot spacing
+
+                if (type === 'display') {{
+                    x_ft = -(quantity - 1) * spacing_ft / 2 + (instanceIndex * spacing_ft);
+                    y_ft = {room_height} * 0.6;
+                    z_ft = -{room_width} / 2 + 0.2;
+                }} else if (type === 'audio_speaker' || type === 'camera') {{
+                    x_ft = -{room_length} / 2.5 + (instanceIndex * 4);
+                    y_ft = {room_height} - 0.5;
+                    z_ft = {room_width} / 4 * (instanceIndex % 2 === 0 ? 1 : -1);
+                }} else if (type === 'control' || type === 'audio_microphone') {{
+                    x_ft = -3 + (instanceIndex * 2);
+                    y_ft = 2.6;
+                    z_ft = 0;
+                }} else if (type === 'rack') {{
+                    x_ft = -{room_length} / 2 + 2;
+                    y_ft = size[1] / 2;
+                    z_ft = {room_width} / 2 - 2;
+                    rotation = Math.PI / 2;
+                }} else if (type === 'mount') {{
+                    const wall_positions = [
+                        [-{room_length} / 2 + 0.5, {room_height} / 2, 0], // Left wall
+                        [0, {room_height} / 2, -{room_width} / 2 + 0.5],  // Back wall
+                    ];
+                    const pos_idx = instanceIndex % wall_positions.length;
+                    [x_ft, y_ft, z_ft] = wall_positions[pos_idx];
+                    y_ft += Math.floor(instanceIndex / wall_positions.length) * (size[1] + 0.3); // Stack vertically
+                }} else if (type === 'cable') {{
+                    x_ft = -{room_length} / 2 + (instanceIndex * 2);
+                    y_ft = (instanceIndex % 2 === 0) ? 0.1 : {room_height} - 0.1; // Floor or ceiling
+                    z_ft = -{room_width} / 4;
+                }} else {{ // Default for other items
+                    const items_per_row = 3;
+                    const row = Math.floor(instanceIndex / items_per_row);
+                    const col = instanceIndex % items_per_row;
+                    x_ft = -{room_length} / 3 + (col * spacing_ft);
+                    y_ft = size[1] / 2 + (row * (size[1] + 0.2));
+                    z_ft = {room_width} / 3;
                 }}
-                return {{ x, y, z, rotation }};
+                
+                return {{ x: toUnits(x_ft), y: toUnits(y_ft), z: toUnits(z_ft), rotation }};
             }}
             
             function selectObject(targetObject) {{
@@ -1256,7 +1275,6 @@ def create_3d_visualization():
                 selectObject(foundObject);
             }}
 
-            // BUG FIX: Added this entire function to restore camera controls
             function setupCameraControls() {{
                 let isMouseDown = false, mouseX = 0, mouseY = 0, isPanning = false;
                 let cameraTarget = new THREE.Vector3(0, toUnits({room_height} * 0.2), 0);
@@ -1305,6 +1323,8 @@ def create_3d_visualization():
             }}
             
             init();
+            // Add click listener
+            renderer.domElement.addEventListener('click', onMouseClick);
         </script>
     </body>
     </html>
@@ -1379,7 +1399,12 @@ def main():
     
     with tab1:
         room_area, ceiling_height = create_room_calculator()
-    
+        # Store room dimensions in session state for the visualizer
+        st.session_state.room_length = room_length if 'room_length' in locals() else 24
+        st.session_state.room_width = room_width if 'room_width' in locals() else 16
+        st.session_state.room_height = ceiling_height if 'ceiling_height' in locals() else 9
+
+
     with tab2:
         features = st.text_area(
             "Specific Requirements & Features:",
