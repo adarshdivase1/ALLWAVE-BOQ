@@ -628,6 +628,135 @@ def create_interactive_boq_editor():
     with tabs[2]:
         product_search_interface(product_df, currency)
 
+def add_products_interface(product_df, currency):
+    """Interface for adding new products to BOQ."""
+    st.write("**Add Products to BOQ:**")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Category filter
+        categories = ['All'] + sorted(list(product_df['category'].unique())) if 'category' in product_df.columns else ['All']
+        selected_category = st.selectbox("Filter by Category", categories)
+        
+        # Filter products
+        if selected_category != 'All':
+            filtered_df = product_df[product_df['category'] == selected_category]
+        else:
+            filtered_df = product_df
+        
+        # Product selection
+        product_options = [f"{row['brand']} - {row['name']}" for _, row in filtered_df.iterrows()]
+        if product_options:
+            selected_product_str = st.selectbox("Select Product", product_options)
+            
+            # Find selected product
+            selected_product = None
+            for _, row in filtered_df.iterrows():
+                if f"{row['brand']} - {row['name']}" == selected_product_str:
+                    selected_product = row
+                    break
+        else:
+            st.warning("No products found in selected category")
+            return
+    
+    with col2:
+        if 'selected_product' in locals() and selected_product is not None:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
+            
+            # Display price in selected currency
+            base_price = float(selected_product.get('price', 0))
+            if currency == 'INR' and base_price > 0:
+                display_price = convert_currency(base_price, 'INR')
+                st.metric("Unit Price", format_currency(display_price, 'INR'))
+                total = display_price * quantity
+                st.metric("Total", format_currency(total, 'INR'))
+            else:
+                st.metric("Unit Price", format_currency(base_price, 'USD'))
+                total = base_price * quantity
+                st.metric("Total", format_currency(total, 'USD'))
+            
+            if st.button("Add to BOQ", type="primary"):
+                # Add to BOQ items
+                new_item = {
+                    'category': selected_product.get('category', 'General'),
+                    'name': selected_product.get('name', ''),
+                    'brand': selected_product.get('brand', ''),
+                    'quantity': quantity,
+                    'price': base_price,  # Always store in USD
+                    'matched': True
+                }
+                st.session_state.boq_items.append(new_item)
+                
+                # FIX: Force update the BOQ content to reflect new items
+                update_boq_content_with_current_items()
+                
+                st.success(f"Added {quantity}x {selected_product['name']} to BOQ!")
+                # Remove the sleep and rerun - let Streamlit handle the update naturally
+                st.rerun()
+
+def product_search_interface(product_df, currency):
+    """Advanced product search interface."""
+    st.write("**Search Product Catalog:**")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        search_term = st.text_input("Search products...", placeholder="Enter product name, brand, or features")
+        
+        if search_term:
+            # Search across multiple columns
+            search_cols = ['name', 'brand']
+            if 'features' in product_df.columns:
+                search_cols.append('features')
+            
+            mask = product_df[search_cols].apply(
+                lambda x: x.astype(str).str.contains(search_term, case=False, na=False)
+            ).any(axis=1)
+            
+            search_results = product_df[mask]
+            
+            st.write(f"Found {len(search_results)} products:")
+            
+            # Display search results
+            for i, product in search_results.head(10).iterrows():  # Limit to first 10 results
+                with st.expander(f"{product.get('brand', 'Unknown')} - {product.get('name', 'Unknown')[:60]}..."):
+                    col_a, col_b, col_c = st.columns([2, 1, 1])
+                    
+                    with col_a:
+                        st.write(f"**Category:** {product.get('category', 'N/A')}")
+                        st.write(f"**Brand:** {product.get('brand', 'N/A')}")
+                        if 'features' in product and pd.notna(product['features']):
+                            st.write(f"**Features:** {str(product['features'])[:100]}...")
+                    
+                    with col_b:
+                        price = float(product.get('price', 0))
+                        if currency == 'INR' and price > 0:
+                            display_price = convert_currency(price, 'INR')
+                            st.metric("Price", format_currency(display_price, 'INR'))
+                        else:
+                            st.metric("Price", format_currency(price, 'USD'))
+                    
+                    with col_c:
+                        # Use a unique key for each number input
+                        add_qty = st.number_input(f"Qty", min_value=1, value=1, key=f"search_qty_{i}")
+                        if st.button(f"Add", key=f"search_add_{i}"):
+                            new_item = {
+                                'category': product.get('category', 'General'),
+                                'name': product.get('name', ''),
+                                'brand': product.get('brand', ''),
+                                'quantity': add_qty,
+                                'price': price,
+                                'matched': True
+                            }
+                            st.session_state.boq_items.append(new_item)
+                            
+                            # FIX: Force update the BOQ content to reflect new items
+                            update_boq_content_with_current_items()
+                            
+                            st.success(f"Added {add_qty}x {product['name']} to BOQ!")
+                            st.rerun()
+
 # --- ORIGINAL FUNCTIONS (UNCHANGED) ---
 
 def edit_current_boq(currency):
@@ -772,7 +901,7 @@ def map_equipment_type(category, product_name=""):
         return 'rack'
     elif any(term in search_text for term in ['mount', 'bracket', 'stand', 'arm', 'vesa']):
         return 'mount'
-    elif any(term in search_text for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb', 'ethernet', 'kit']):
+    elif any(term in search_text for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb']):
         return 'cable'
     elif any(term in search_text for term in ['installation', 'commissioning', 'testing', 'labor', 'service']):
         return 'service'  # Won't be visualized but handled properly
@@ -926,6 +1055,9 @@ def create_3d_visualization():
             let scene, camera, renderer, raycaster, mouse;
             let animationId, selectedObject = null;
             const toUnits = (feet) => feet * 0.4;
+            const roomLength = {room_length};
+            const roomWidth = {room_width};
+            const roomHeight = {room_height};
             let avEquipment = {js_equipment};
 
             function init() {{
@@ -935,7 +1067,7 @@ def create_3d_visualization():
                 
                 const container = document.getElementById('container');
                 camera = new THREE.PerspectiveCamera(50, container.clientWidth / 600, 0.1, 1000);
-                camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1));
+                camera.position.set(toUnits(-roomLength * 0.1), toUnits(roomHeight * 0.8), toUnits(roomWidth * 1.1));
                 
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, 600);
@@ -962,20 +1094,20 @@ def create_3d_visualization():
             function createRealisticRoom() {{
                 const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0xddeeff, roughness: 0.9 }});
                 const floorMaterial = new THREE.MeshStandardMaterial({{ color: 0x6e5a47, roughness: 0.7 }});
-                const wallHeight = toUnits({room_height});
+                const wallHeight = toUnits(roomHeight);
 
-                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_length}), toUnits({room_width})), floorMaterial);
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomLength), toUnits(roomWidth)), floorMaterial);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
                 scene.add(floor);
 
-                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_length}), wallHeight), wallMaterial);
-                backWall.position.set(0, wallHeight/2, -toUnits({room_width}/2));
+                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomLength), wallHeight), wallMaterial);
+                backWall.position.set(0, wallHeight/2, -toUnits(roomWidth/2));
                 backWall.receiveShadow = true;
                 scene.add(backWall);
 
-                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_width}), wallHeight), wallMaterial);
-                leftWall.position.set(-toUnits({room_length}/2), wallHeight/2, 0);
+                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomWidth), wallHeight), wallMaterial);
+                leftWall.position.set(-toUnits(roomLength/2), wallHeight/2, 0);
                 leftWall.rotation.y = Math.PI/2;
                 leftWall.receiveShadow = true;
                 scene.add(leftWall);
@@ -1083,7 +1215,7 @@ def create_3d_visualization():
                         break;
                     case 'cable':
                         materialOptions.color = 0x222255;
-                        # Create a curved cable representation
+                        // Create a curved cable representation
                         const curve = new THREE.QuadraticBezierCurve3(
                             new THREE.Vector3(-toUnits(size[2]/2), 0, 0),
                             new THREE.Vector3(0, toUnits(size[1]), 0),
@@ -1098,7 +1230,7 @@ def create_3d_visualization():
                         break;
                 }}
 
-                # Create default geometry if no specific type was handled
+                // Create default geometry if no specific type was handled
                 if (group.children.length === 0) {{
                     const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
                     group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions)));
@@ -1114,26 +1246,26 @@ def create_3d_visualization():
                 return group;
             }}
 
-            # ENHANCED POSITIONING LOGIC WITH NEW EQUIPMENT TYPES
+            // ENHANCED POSITIONING LOGIC WITH NEW EQUIPMENT TYPES
             function getSmartPosition(type, instanceIndex, size, quantity) {{
                 let x_ft = 0, y_ft = 0, z_ft = 0, rotation = 0;
                 const spacing_ft = Math.max(size[0] + 0.5, 1.0);
 
                 if (type === 'display') {{
                     x_ft = -(quantity - 1) * spacing_ft / 2 + (instanceIndex * spacing_ft);
-                    y_ft = {room_height} * 0.6;
-                    z_ft = -{room_width} / 2 + 0.2;
+                    y_ft = roomHeight * 0.6;
+                    z_ft = -roomWidth / 2 + 0.2;
                 }} else if (type === 'camera') {{
                     x_ft = -(quantity - 1) * 4 / 2 + (instanceIndex * 4);
-                    y_ft = {room_height} - 0.5;
-                    z_ft = -{room_width} / 2 + 1;
+                    y_ft = roomHeight - 0.5;
+                    z_ft = -roomWidth / 2 + 1;
                 }} else if (type === 'audio_speaker') {{
                     // Ceiling mounted pendant speakers
                     const positions = [
-                        [-{room_length}/4, {room_height} - 0.5, -{room_width}/4],
-                        [{room_length}/4, {room_height} - 0.5, -{room_width}/4],
-                        [-{room_length}/4, {room_height} - 0.5, {room_width}/4],
-                        [{room_length}/4, {room_height} - 0.5, {room_width}/4]
+                        [-roomLength/4, roomHeight - 0.5, -roomWidth/4],
+                        [roomLength/4, roomHeight - 0.5, -roomWidth/4],
+                        [-roomLength/4, roomHeight - 0.5, roomWidth/4],
+                        [roomLength/4, roomHeight - 0.5, roomWidth/4]
                     ];
                     const pos_idx = instanceIndex % positions.length;
                     [x_ft, y_ft, z_ft] = positions[pos_idx];
@@ -1144,45 +1276,45 @@ def create_3d_visualization():
                     z_ft = 0;
                 }} else if (type === 'network_switch') {{
                     // Rack or wall mounted
-                    x_ft = -{room_length} / 2 + 1;
+                    x_ft = -roomLength / 2 + 1;
                     y_ft = 5 + (instanceIndex * (size[1] + 0.1));
-                    z_ft = {room_width} / 2 - 2;
+                    z_ft = roomWidth / 2 - 2;
                 }} else if (type === 'network_device' || type === 'charging_station') {{
                     // Wall or table mounted
-                    x_ft = -{room_length} / 3 + (instanceIndex * 3);
+                    x_ft = -roomLength / 3 + (instanceIndex * 3);
                     y_ft = 4;
-                    z_ft = {room_width} / 2 - 1;
+                    z_ft = roomWidth / 2 - 1;
                 }} else if (type === 'control_panel') {{
                     // Wall or table mounted control panels
                     x_ft = -2 + (instanceIndex * 4);
                     y_ft = 3;
-                    z_ft = -{room_width} / 2 + 0.5;
+                    z_ft = -roomWidth / 2 + 0.5;
                     rotation = 0;
                 }} else if (type === 'mount') {{
                     const wall_positions = [
-                        [-{room_length} / 2 + 0.5, {room_height} / 2, 0],
-                        [0, {room_height} / 2, -{room_width} / 2 + 0.5],
+                        [-roomLength / 2 + 0.5, roomHeight / 2, 0],
+                        [0, roomHeight / 2, -roomWidth / 2 + 0.5],
                     ];
                     const pos_idx = instanceIndex % wall_positions.length;
                     [x_ft, y_ft, z_ft] = wall_positions[pos_idx];
                     y_ft += Math.floor(instanceIndex / wall_positions.length) * (size[1] + 0.3);
                 }} else if (type === 'cable') {{
-                    x_ft = -{room_length} / 2 + (instanceIndex * 2);
-                    y_ft = (instanceIndex % 2 === 0) ? 0.1 : {room_height} - 0.1;
-                    z_ft = -{room_width} / 4;
+                    x_ft = -roomLength / 2 + (instanceIndex * 2);
+                    y_ft = (instanceIndex % 2 === 0) ? 0.1 : roomHeight - 0.1;
+                    z_ft = -roomWidth / 4;
                 }} else if (type === 'power') {{
                     // Power equipment near walls
-                    x_ft = -{room_length} / 2 + 2;
+                    x_ft = -roomLength / 2 + 2;
                     y_ft = size[1] / 2;
-                    z_ft = -{room_width} / 2 + (instanceIndex * 2);
+                    z_ft = -roomWidth / 2 + (instanceIndex * 2);
                 }} else {{
                     // Default positioning for other items
                     const items_per_row = 3;
                     const row = Math.floor(instanceIndex / items_per_row);
                     const col = instanceIndex % items_per_row;
-                    x_ft = -{room_length} / 3 + (col * spacing_ft);
+                    x_ft = -roomLength / 3 + (col * spacing_ft);
                     y_ft = size[1] / 2 + (row * (size[1] + 0.2));
-                    z_ft = {room_width} / 3;
+                    z_ft = roomWidth / 3;
                 }}
                 
                 return {{ x: toUnits(x_ft), y: toUnits(y_ft), z: toUnits(z_ft), rotation }};
@@ -1294,7 +1426,7 @@ def create_3d_visualization():
                     isDragging = false;
                 }});
 
-                renderer.domElement.addEventListener('wheel', (e) => {{
+                renderer.dom element.addEventListener('wheel', (e) => {{
                     e.preventDefault();
                     const zoomFactor = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
                     camera.position.multiplyScalar(zoomFactor);
