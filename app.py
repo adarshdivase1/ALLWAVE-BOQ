@@ -275,6 +275,7 @@ def create_room_calculator():
     col1, col2 = st.columns(2)
     
     with col1:
+        # FIXED: Added a unique key to all number inputs
         room_length = st.number_input("Room Length (ft)", min_value=8.0, max_value=50.0, value=16.0, key="room_length_input")
         room_width = st.number_input("Room Width (ft)", min_value=6.0, max_value=30.0, value=12.0, key="room_width_input")
         ceiling_height = st.number_input("Ceiling Height (ft)", min_value=8.0, max_value=20.0, value=9.0, key="ceiling_height_input")
@@ -305,6 +306,7 @@ def create_advanced_requirements():
     
     with col1:
         st.write("**Infrastructure**")
+        # FIXED: Added a unique key to all widgets
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available", key="dedicated_circuit_checkbox")
         network_capability = st.selectbox("Network Infrastructure", 
                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
@@ -313,6 +315,7 @@ def create_advanced_requirements():
     
     with col2:
         st.write("**Compliance & Standards**")
+        # FIXED: Added a unique key to all widgets
         ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
         security_clearance = st.selectbox("Security Level", 
@@ -774,7 +777,7 @@ def edit_current_boq(currency):
     # Create editable table
     items_to_remove = []
     for i, item in enumerate(st.session_state.boq_items):
-        with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}..."):
+        with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}...", key=f"expander_{i}"):
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
             
             with col1:
@@ -1009,6 +1012,7 @@ def create_3d_visualization():
     # Display summary
     st.info(f"Visualizing {len(js_equipment)} equipment instances from BOQ")
     
+    # FIXED: Escaped all single curly braces within the f-string's embedded JavaScript
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1230,7 +1234,7 @@ def create_3d_visualization():
                     case 'power':
                         materialOptions.color = 0x444444;
                         break;
-                }
+                }}
 
                 # Create default geometry if no specific type was handled
                 if (group.children.length === 0) {{
@@ -1560,7 +1564,7 @@ def main():
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
+            if st.button("Generate Professional BOQ", type="primary", use_container_width=True, key="generate_boq_button"):
                 # This function now saves results to session_state instead of directly displaying them.
                 generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
                              technical_reqs, room_area)
