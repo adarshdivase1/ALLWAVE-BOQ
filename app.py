@@ -176,6 +176,7 @@ def generate_with_retry(model, prompt, max_retries=3):
     return None
 
 # --- BOQ Validation Engine ---
+# FIXED: Replaced with the new, more robust BOQValidator class
 class BOQValidator:
     def __init__(self, room_specs, product_df):
         self.room_specs = room_specs
@@ -186,6 +187,11 @@ class BOQValidator:
         issues = []
         warnings = []
         
+        # Add validation for empty boq_items
+        if not boq_items:
+            issues.append("No BOQ items found to validate")
+            return issues, warnings
+        
         # Check display sizing against room specifications
         displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
         if displays:
@@ -193,14 +199,26 @@ class BOQValidator:
             recommended_size = room_spec.get('recommended_display_size', (32, 98))
             
             for display in displays:
-                # Extract size from product name (rough heuristic)
-                size_match = re.search(r'(\d+)"', display.get('name', ''))
-                if size_match:
-                    size = int(size_match.group(1))
-                    if size < recommended_size[0]:
-                        warnings.append(f"Display size {size}\" may be too small for {room_type}")
-                    elif size > recommended_size[1]:
-                        warnings.append(f"Display size {size}\" may be too large for {room_type}")
+                # FIX: Add proper error handling for regex
+                try:
+                    product_name = display.get('name', '')
+                    # Ensure product_name is a string
+                    if not isinstance(product_name, str):
+                        product_name = str(product_name) if product_name is not None else ''
+                    
+                    # Only search if we have a valid string
+                    if product_name:
+                        size_match = re.search(r'(\d+)"', product_name)
+                        if size_match:
+                            size = int(size_match.group(1))
+                            if size < recommended_size[0]:
+                                warnings.append(f"Display size {size}\" may be too small for {room_type}")
+                            elif size > recommended_size[1]:
+                                warnings.append(f"Display size {size}\" may be too large for {room_type}")
+                except (re.error, ValueError, AttributeError) as e:
+                    # Log the error but don't crash the validation
+                    print(f"Error validating display size for {display.get('name', 'Unknown')}: {e}")
+                    continue
         
         # Check for essential components
         essential_categories = ['display', 'audio', 'control']
@@ -217,6 +235,7 @@ class BOQValidator:
             warnings.append("System may require dedicated 20A circuit")
         
         return issues, warnings
+
 
 def validate_against_avixa(model, guidelines, boq_items):
     """Use AI to validate the BOQ against AVIXA standards."""
@@ -305,7 +324,7 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available")
         network_capability = st.selectbox("Network Infrastructure", 
-                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
+                                        ["Standard 1Gb", "10Gb Capable", "Fiber Available"])
         cable_management = st.selectbox("Cable Management", 
                                         ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"])
     
@@ -314,7 +333,7 @@ def create_advanced_requirements():
         ada_compliance = st.checkbox("ADA Compliance Required")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required")
         security_clearance = st.selectbox("Security Level", 
-                                          ["Standard", "Restricted", "Classified"])
+                                        ["Standard", "Restricted", "Classified"])
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -361,9 +380,14 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
     return doc_content
 
 # --- Enhanced BOQ Item Extraction ---
+# FIXED: Replaced with the new, more robust extraction function
 def extract_boq_items_from_response(boq_content, product_df):
     """Extract and match BOQ items from AI response with product database."""
     items = []
+    
+    # Add error handling for empty content
+    if not boq_content:
+        return items
     
     # Look for markdown table sections
     lines = boq_content.split('\n')
@@ -383,43 +407,47 @@ def extract_boq_items_from_response(boq_content, product_df):
             
         # Process table rows
         if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
-            parts = [part.strip() for part in line.split('|') if part.strip()]
-            if len(parts) >= 3:
-                # Extract information from table row
-                category = parts[0].lower() if len(parts) > 0 else 'general'
-                brand = parts[1] if len(parts) > 1 else 'Unknown'
-                product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
-                
-                # Try to extract quantity and price if present
-                quantity = 1
-                price = 0
-                
-                # Look for quantity in the row (usually a number)
-                for part in parts:
-                    if part.isdigit():
-                        quantity = int(part)
-                        break
-                
-                # Try to match with actual product in database
-                matched_product = match_product_in_database(product_name, brand, product_df)
-                if matched_product is not None:
-                    price = float(matched_product.get('price', 0))
-                    actual_brand = matched_product.get('brand', brand)
-                    actual_category = matched_product.get('category', category)
-                    actual_name = matched_product.get('name', product_name)
-                else:
-                    actual_brand = brand
-                    actual_category = normalize_category(category, product_name)
-                    actual_name = product_name
-                
-                items.append({
-                    'category': actual_category,
-                    'name': actual_name,
-                    'brand': actual_brand,
-                    'quantity': quantity,
-                    'price': price,
-                    'matched': matched_product is not None
-                })
+            try:
+                parts = [part.strip() for part in line.split('|') if part.strip()]
+                if len(parts) >= 3:
+                    # Extract information from table row
+                    category = parts[0].lower() if len(parts) > 0 else 'general'
+                    brand = parts[1] if len(parts) > 1 else 'Unknown'
+                    product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
+                    
+                    # Try to extract quantity and price if present
+                    quantity = 1
+                    price = 0
+                    
+                    # Look for quantity in the row (usually a number)
+                    for part in parts:
+                        if part.isdigit():
+                            quantity = int(part)
+                            break
+                    
+                    # Try to match with actual product in database
+                    matched_product = match_product_in_database(product_name, brand, product_df)
+                    if matched_product is not None:
+                        price = float(matched_product.get('price', 0))
+                        actual_brand = matched_product.get('brand', brand)
+                        actual_category = matched_product.get('category', category)
+                        actual_name = matched_product.get('name', product_name)
+                    else:
+                        actual_brand = brand
+                        actual_category = normalize_category(category, product_name)
+                        actual_name = product_name
+                    
+                    items.append({
+                        'category': actual_category,
+                        'name': actual_name,
+                        'brand': actual_brand,
+                        'quantity': quantity,
+                        'price': price,
+                        'matched': matched_product is not None
+                    })
+            except Exception as e:
+                print(f"Error processing table row: {line}. Error: {e}")
+                continue
                 
         # End table when we hit a line that doesn't start with |
         elif in_table and not line.startswith('|'):
@@ -466,8 +494,6 @@ def normalize_category(category_text, product_name):
         return 'Cables'
     else:
         return 'General'
-
-# --- NEW/UPDATED FUNCTIONS START HERE ---
 
 def update_boq_content_with_current_items():
     """Update the BOQ content in session state to reflect current items."""
@@ -757,8 +783,6 @@ def product_search_interface(product_df, currency):
                             st.success(f"Added {add_qty}x {product['name']} to BOQ!")
                             st.rerun()
 
-# --- ORIGINAL FUNCTIONS (UNCHANGED) ---
-
 def edit_current_boq(currency):
     """Interface for editing current BOQ items."""
     if not st.session_state.boq_items:
@@ -869,15 +893,45 @@ def edit_current_boq(currency):
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
 
 # --- BOQ Generation Logic ---
+# FIXED: Replaced with the new, more robust generation function
 def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Generates the BOQ using the Gemini model and validates the result."""
     with st.spinner("🤖 Generating professional BOQ... This may take a moment."):
         try:
+            # Add validation for required parameters
+            if not model:
+                st.error("AI model not properly initialized")
+                return
+            
+            if product_df is None or len(product_df) == 0:
+                st.error("Product database is empty or not loaded")
+                return
+            
             room_spec = ROOM_SPECS.get(room_type, {})
             
             # Provide a sample of the catalog to avoid overly large prompts
-            product_catalog_sample_df = product_df.sample(n=min(100, len(product_df)), random_state=1)
-            product_catalog_string = product_catalog_sample_df[['category', 'brand', 'name', 'price', 'features']].to_string()
+            try:
+                sample_size = min(100, len(product_df))
+                product_catalog_sample_df = product_df.sample(n=sample_size, random_state=1)
+                
+                # Ensure required columns exist
+                required_columns = ['category', 'brand', 'name', 'price']
+                missing_columns = [col for col in required_columns if col not in product_catalog_sample_df.columns]
+                
+                if missing_columns:
+                    st.error(f"Missing required columns in product database: {missing_columns}")
+                    return
+                
+                # Add features column if missing
+                if 'features' not in product_catalog_sample_df.columns:
+                    product_catalog_sample_df = product_catalog_sample_df.copy()
+                    product_catalog_sample_df['features'] = product_catalog_sample_df['name']
+                
+                product_catalog_string = product_catalog_sample_df[['category', 'brand', 'name', 'price', 'features']].to_string()
+                
+            except Exception as e:
+                st.error(f"Error preparing product catalog: {e}")
+                return
 
             prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
@@ -913,7 +967,7 @@ You are a Professional AV Systems Engineer with 15+ years experience. Create a p
 {product_catalog_string}
 
 **AVIXA GUIDELINES:**
-{guidelines}
+{guidelines if guidelines else "Standard AV industry practices"}
 
 Generate the BOQ now:
 """
@@ -924,10 +978,19 @@ Generate the BOQ now:
                 boq_content = response.text
                 boq_items = extract_boq_items_from_response(boq_content, product_df)
                 
+                # Validate results
                 validator = BOQValidator(ROOM_SPECS, product_df)
                 tech_issues, tech_warnings = validator.validate_technical_requirements(boq_items, room_type, room_area)
-                avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
                 
+                # AVIXA validation with error handling
+                avixa_warnings = []
+                try:
+                    avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
+                except Exception as e:
+                    print(f"AVIXA validation failed: {e}")
+                    avixa_warnings = ["AVIXA compliance check failed - manual review recommended"]
+                
+                # Store results in session state
                 st.session_state.boq_content = boq_content
                 st.session_state.boq_items = boq_items
                 st.session_state.validation_results = {
@@ -935,6 +998,10 @@ Generate the BOQ now:
                     'warnings': tech_warnings + avixa_warnings
                 }
                 st.success("✅ BOQ Generated and Validated Successfully!")
+                
+                # Debug information
+                print(f"Generated {len(boq_items)} BOQ items")
+                
             else:
                 st.error("Failed to generate BOQ content from the AI model.")
                 st.session_state.boq_content = None
@@ -943,9 +1010,12 @@ Generate the BOQ now:
 
         except Exception as e:
             st.error(f"An error occurred during BOQ generation: {e}")
+            print(f"Full error details: {type(e).__name__}: {e}")
+            # Reset session state on error
             st.session_state.boq_content = None
             st.session_state.boq_items = []
             st.session_state.validation_results = None
+
 
 # --- 3D Visualization ---
 def map_equipment_type(category):
