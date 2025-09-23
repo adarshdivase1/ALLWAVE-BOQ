@@ -772,7 +772,7 @@ def edit_current_boq(currency):
         category_str = str(item.get('category', 'General'))
         name_str = str(item.get('name', 'Unknown'))
         
-        with st.expander(f"{category_str} - {name_str[:50]}...", key=f"expander_{i}"):
+        with st.expander(f"{category_str} - {name_str[:50]}..."):
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
             
             with col1:
