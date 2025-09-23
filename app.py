@@ -957,9 +957,9 @@ def get_equipment_specs(equipment_type, product_name=""):
     
     return base_spec
 
-# --- CORRECTED 3D VISUALIZATION FUNCTION ---
+# --- FINAL CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
-    """Create an interactive, realistic 3D room visualization - CORRECTED VERSION."""
+    """Create an interactive, realistic 3D room visualization - FINAL CORRECTED VERSION."""
     st.subheader("3D Room Visualization")
     
     equipment_data = st.session_state.get('boq_items', [])
@@ -1007,7 +1007,6 @@ def create_3d_visualization():
     # Display summary
     st.info(f"Visualizing {len(js_equipment)} equipment instances from BOQ")
     
-    # SOLVED: Correctly escaped all literal curly braces in the f-string.
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1313,7 +1312,12 @@ def create_3d_visualization():
             
             function selectObject(targetObject) {{
                 if (selectedObject) {{
-                    selectedObject.traverse(function(child) {{ if (child.isMesh) child.material.emissive.setHex(0x000000); }});
+                    selectedObject.traverse(function(child) {{ 
+                        // FIX: Check if material has emissive property before setting it
+                        if (child.isMesh && child.material.emissive) {{
+                            child.material.emissive.setHex(0x000000); 
+                        }}
+                    }});
                 }}
                 const listItems = document.querySelectorAll('.equipment-item');
                 listItems.forEach(li => li.classList.remove('selected-item'));
@@ -1324,7 +1328,12 @@ def create_3d_visualization():
                     return;
                 }}
                 
-                selectedObject.traverse(function(child) {{ if (child.isMesh) child.material.emissive.setHex(0x555555); }});
+                selectedObject.traverse(function(child) {{ 
+                    // FIX: Check if material has emissive property before setting it
+                    if (child.isMesh && child.material.emissive) {{
+                        child.material.emissive.setHex(0x555555); 
+                    }}
+                }});
                 const item = selectedObject.userData;
                 const instanceText = item.original_quantity > 1 ? ` (Instance ${{item.instance}}/${{item.original_quantity}})` : '';
                 
@@ -1381,77 +1390,23 @@ def create_3d_visualization():
             }}
 
             function setupCameraControls() {{
-                let isDragging = false;
-                let previousMousePosition = {{ x: 0, y: 0 }};
-                const rotationSpeed = 0.005;
-                const zoomSpeed = 0.1;
-
-                renderer.domElement.addEventListener('mousedown', (e) => {{
-                    if (e.button === 0) {{ // Left mouse button
-                        isDragging = true;
-                        previousMousePosition = {{ x: e.clientX, y: e.clientY }};
-                    }}
-                }});
-
-                renderer.domElement.addEventListener('mousemove', (e) => {{
-                    if (isDragging) {{
-                        const deltaMove = {{
-                            x: e.clientX - previousMousePosition.x,
-                            y: e.clientY - previousMousePosition.y
-                        }};
-
-                        const spherical = new THREE.Spherical();
-                        spherical.setFromVector3(camera.position);
-                        spherical.theta -= deltaMove.x * rotationSpeed;
-                        spherical.phi += deltaMove.y * rotationSpeed;
-                        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
-                        camera.position.setFromSpherical(spherical);
-                        camera.lookAt(0, toUnits(4), 0);
-
-                        previousMousePosition = {{ x: e.clientX, y: e.clientY }};
-                    }}
-                }});
-
-                renderer.domElement.addEventListener('mouseup', () => {{
-                    isDragging = false;
-                }});
-
-                renderer.domElement.addEventListener('wheel', (e) => {{
-                    e.preventDefault();
-                    const zoomFactor = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
-                    camera.position.multiplyScalar(zoomFactor);
-                    
-                    const distance = camera.position.length();
-                    if (distance < toUnits(5)) {{
-                        camera.position.normalize().multiplyScalar(toUnits(5));
-                    }} else if (distance > toUnits(50)) {{
-                        camera.position.normalize().multiplyScalar(toUnits(50));
-                    }}
-                }});
-
+                let isDragging = false, previousMousePosition = {{ x: 0, y: 0 }};
+                const rotationSpeed = 0.005, zoomSpeed = 0.1;
+                renderer.domElement.addEventListener('mousedown', (e) => {{ if (e.button === 0) {{ isDragging = true; previousMousePosition = {{ x: e.clientX, y: e.clientY }}; }} }});
+                renderer.domElement.addEventListener('mousemove', (e) => {{ if (isDragging) {{ const deltaMove = {{ x: e.clientX - previousMousePosition.x, y: e.clientY - previousMousePosition.y }}; const spherical = new THREE.Spherical(); spherical.setFromVector3(camera.position); spherical.theta -= deltaMove.x*rotationSpeed; spherical.phi += deltaMove.y*rotationSpeed; spherical.phi = Math.max(0.1, Math.min(Math.PI-0.1, spherical.phi)); camera.position.setFromSpherical(spherical); camera.lookAt(0, toUnits(4), 0); previousMousePosition = {{ x: e.clientX, y: e.clientY }}; }} }});
+                renderer.domElement.addEventListener('mouseup', () => {{ isDragging = false; }});
+                renderer.domElement.addEventListener('wheel', (e) => {{ e.preventDefault(); const zoomFactor = e.deltaY > 0 ? 1+zoomSpeed : 1-zoomSpeed; camera.position.multiplyScalar(zoomFactor); const d = camera.position.length(); if(d < toUnits(5)) camera.position.normalize().multiplyScalar(toUnits(5)); else if(d > toUnits(50)) camera.position.normalize().multiplyScalar(toUnits(50)); }});
                 renderer.domElement.addEventListener('click', onMouseClick);
             }}
 
-            function animate() {{
-                animationId = requestAnimationFrame(animate);
-                renderer.render(scene, camera);
-            }}
-
-            function handleResize() {{
-                const container = document.getElementById('container');
-                camera.aspect = container.clientWidth / 600;
-                camera.updateProjectionMatrix();
-                renderer.setSize(container.clientWidth, 600);
-            }}
-
+            function animate() {{ animationId = requestAnimationFrame(animate); renderer.render(scene, camera); }}
+            function handleResize() {{ const c = document.getElementById('container'); camera.aspect = c.clientWidth/600; camera.updateProjectionMatrix(); renderer.setSize(c.clientWidth, 600); }}
             window.addEventListener('resize', handleResize);
             init();
         </script>
     </body>
     </html>
     """
-
-    # Display the complete HTML visualization
     st.components.v1.html(html_content, height=650)
 
 
