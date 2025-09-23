@@ -931,7 +931,7 @@ def get_equipment_specs(equipment_type, product_name):
     
     return base_spec
 
-# --- NEW 3D VISUALIZATION FUNCTION ---
+# --- CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
     """Create realistic 3D room visualization using Three.js in Streamlit."""
     st.subheader("3D Room Visualization")
@@ -975,6 +975,7 @@ def create_3d_visualization():
     room_height = st.session_state.get('room_height', 9)
     
     # Create the enhanced HTML/JavaScript for 3D visualization
+    # FIX: Escaped all literal curly braces with double braces {{ }}
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1528,41 +1529,41 @@ def create_3d_visualization():
                 listContainer.innerHTML = listHtml;
             }}
             
-            function updateObjectCount() {
+            function updateObjectCount() {{
                 document.getElementById('objectCount').textContent = scene.children.length;
-            }
+            }}
             
-            function updateFPS() {
+            function updateFPS() {{
                 frameCount++;
                 const currentTime = performance.now();
-                if (currentTime >= lastTime + 1000) {
+                if (currentTime >= lastTime + 1000) {{
                     document.getElementById('fps').textContent = Math.round((frameCount * 1000) / (currentTime - lastTime));
                     frameCount = 0;
                     lastTime = currentTime;
-                }
-            }
+                }}
+            }}
             
-            function animate() {
+            function animate() {{
                 animationId = requestAnimationFrame(animate);
                 renderer.render(scene, camera);
                 updateFPS();
-            }
+            }}
             
-            function cleanup() {
-                if (animationId) {
+            function cleanup() {{
+                if (animationId) {{
                     cancelAnimationFrame(animationId);
-                }
-                if (renderer) {
+                }}
+                if (renderer) {{
                     renderer.dispose();
-                }
-            }
+                }}
+            }}
             
             // Initialize on load
             window.addEventListener('load', init);
             window.addEventListener('beforeunload', cleanup);
             
             // Handle resize
-            window.addEventListener('resize', () => {
+            window.addEventListener('resize', () => {{
                 const container = document.getElementById('container');
                 const width = container.clientWidth;
                 const height = 600;
@@ -1570,7 +1571,7 @@ def create_3d_visualization():
                 camera.aspect = width / height;
                 camera.updateProjectionMatrix();
                 renderer.setSize(width, height);
-            });
+            }});
         </script>
     </body>
     </html>
