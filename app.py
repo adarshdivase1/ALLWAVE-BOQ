@@ -2004,7 +2004,7 @@ def create_3d_visualization():
                 document.getElementById('equipmentTotal').textContent = '$' + (item.quantity * item.price).toLocaleString();
                 
                 detailsPanel.style.display = 'block';
-            }
+            }}
             
             function hideEquipmentDetails() {
                 document.getElementById('equipment-details').style.display = 'none';
