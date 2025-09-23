@@ -868,7 +868,7 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
 
-# --- NEW FUNCTIONS ADDED HERE ---
+# --- UTILITY FUNCTIONS FOR VISUALIZATION ---
 
 def map_equipment_type(category):
     """Map product category to equipment type for 3D visualization."""
@@ -931,6 +931,7 @@ def get_equipment_specs(equipment_type, product_name):
     
     return base_spec
 
+# --- NEW 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
     """Create realistic 3D room visualization using Three.js in Streamlit."""
     st.subheader("3D Room Visualization")
@@ -938,19 +939,32 @@ def create_3d_visualization():
     # Get current BOQ items for visualization
     equipment_data = st.session_state.get('boq_items', [])
     
-    # Convert BOQ items to JavaScript format with realistic specifications
+    if not equipment_data:
+        st.info("No BOQ items to visualize. Generate a BOQ first or add items manually.")
+        return
+    
+    # Convert ALL BOQ items to JavaScript format with realistic specifications
     js_equipment = []
     for item in equipment_data:
         equipment_type = map_equipment_type(item.get('category', ''))
-        if equipment_type:
-            # Add realistic dimensions based on equipment type
-            specs = get_equipment_specs(equipment_type, item.get('name', ''))
+        # Include ALL items, even if they don't map to a specific visual type
+        if not equipment_type:
+            equipment_type = 'control'  # Default type for items that don't map visually
+        
+        # Add realistic dimensions based on equipment type
+        specs = get_equipment_specs(equipment_type, item.get('name', ''))
+        
+        # Create multiple instances if quantity > 1
+        quantity = item.get('quantity', 1)
+        for i in range(quantity):
             js_equipment.append({
                 'id': len(js_equipment) + 1,
                 'type': equipment_type,
                 'name': item.get('name', 'Unknown'),
                 'brand': item.get('brand', 'Unknown'),
-                'quantity': item.get('quantity', 1),
+                'quantity': 1,  # Individual instance
+                'original_quantity': quantity,  # Store original quantity
+                'instance': i + 1,  # Instance number
                 'price': item.get('price', 0),
                 'specs': specs
             })
@@ -973,7 +987,7 @@ def create_3d_visualization():
                 position: absolute; top: 15px; left: 15px; color: #ffffff; 
                 background: linear-gradient(135deg, rgba(0,0,0,0.9), rgba(20,20,20,0.8));
                 padding: 15px; border-radius: 12px; backdrop-filter: blur(10px);
-                border: 1px solid rgba(255,255,255,0.1); min-width: 280px; max-height: 400px; overflow-y: auto;
+                border: 1px solid rgba(255,255,255,0.1); min-width: 300px; max-height: 450px; overflow-y: auto;
             }}
             #controls {{ 
                 position: absolute; bottom: 15px; left: 15px; color: #ffffff;
@@ -989,32 +1003,34 @@ def create_3d_visualization():
             }}
             .metric {{ margin: 5px 0; }}
             .metric-value {{ color: #4FC3F7; font-weight: bold; }}
-            .equipment-item {{ margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; }}
-            .equipment-name {{ color: #FFD54F; font-weight: bold; }}
+            .equipment-item {{ margin: 6px 0; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; }}
+            .equipment-name {{ color: #FFD54F; font-weight: bold; font-size: 12px; }}
+            .equipment-details {{ color: #ccc; font-size: 11px; }}
         </style>
     </head>
     <body>
         <div id="container">
             <div id="info">
-                <h3 style="margin-top: 0; color: #4FC3F7;">Conference Room Layout</h3>
+                <h3 style="margin-top: 0; color: #4FC3F7; font-size: 16px;">Conference Room Layout</h3>
                 <div class="metric">Room: <span class="metric-value">{room_length}' × {room_width}' × {room_height}'</span></div>
                 <div class="metric">Equipment: <span class="metric-value" id="equipmentCount">{len(js_equipment)}</span></div>
+                <div class="metric">Unique Items: <span class="metric-value">{len(equipment_data)}</span></div>
                 <div class="metric">Area: <span class="metric-value">{room_length * room_width} sq ft</span></div>
                 <div id="selectedItem">
                     <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
                         <strong>Click equipment to inspect details</strong>
                     </div>
                 </div>
-                <div id="equipmentList" style="margin-top: 15px; max-height: 200px; overflow-y: auto;">
-                    <div style="font-weight: bold; margin-bottom: 8px; color: #4FC3F7;">Equipment List:</div>
+                <div id="equipmentList" style="margin-top: 15px; max-height: 250px; overflow-y: auto;">
+                    <div style="font-weight: bold; margin-bottom: 8px; color: #4FC3F7; font-size: 13px;">Equipment List:</div>
                 </div>
             </div>
             <div id="controls">
-                <div style="font-weight: bold; margin-bottom: 5px;">Navigation Controls:</div>
-                <div>• Left Click + Drag: Orbit camera</div>
-                <div>• Mouse Wheel: Zoom in/out</div>
-                <div>• Right Click + Drag: Pan view</div>
-                <div>• Double Click: Reset camera</div>
+                <div style="font-weight: bold; margin-bottom: 5px;">Navigation:</div>
+                <div style="font-size: 12px;">• Left Click + Drag: Orbit</div>
+                <div style="font-size: 12px;">• Mouse Wheel: Zoom</div>
+                <div style="font-size: 12px;">• Right Click: Pan</div>
+                <div style="font-size: 12px;">• Double Click: Reset</div>
             </div>
             <div id="performance">
                 <div>FPS: <span id="fps">--</span></div>
@@ -1023,27 +1039,27 @@ def create_3d_visualization():
         </div>
         
         <script>
-            // Enhanced Three.js AV Room Visualization
+            // Enhanced Three.js AV Room Visualization with ALL equipment
             let scene, camera, renderer, raycaster, mouse;
-            let animationId, controls;
+            let animationId;
             let lastTime = performance.now();
             let frameCount = 0;
             let selectedObject = null;
             
-            // Realistic room dimensions and scale
+            // Room configuration
             const roomConfig = {{
                 length: {room_length},
                 width: {room_width}, 
                 height: {room_height},
-                scale: 0.4  // Scale for Three.js units
+                scale: 0.4
             }};
             
             const toUnits = (feet) => feet * roomConfig.scale;
             
-            // Professional AV equipment data from Python
+            // All equipment from BOQ
             let avEquipment = {js_equipment};
             
-            // Equipment specifications and realistic positioning
+            // Enhanced equipment specifications
             const equipmentSpecs = {{
                 'display': {{ defaultSize: [6, 3.5, 0.3], color: 0x1a1a1a, position: 'wall' }},
                 'audio_speaker': {{ defaultSize: [0.8, 1.2, 0.8], color: 0x2a2a2a, position: 'ceiling' }},
@@ -1052,16 +1068,14 @@ def create_3d_visualization():
                 'control': {{ defaultSize: [1.5, 0.8, 0.3], color: 0x1e3a8a, position: 'table' }},
                 'rack': {{ defaultSize: [2, 6, 2], color: 0x1a1a1a, position: 'floor' }},
                 'mount': {{ defaultSize: [0.5, 0.5, 1], color: 0x666666, position: 'wall' }},
-                'cable': {{ defaultSize: [0.1, 0.1, 3], color: 0x333333, position: 'floor' }}
+                'cable': {{ defaultSize: [0.1, 0.1, 0.3], color: 0x333333, position: 'floor' }}
             }};
             
             function init() {{
-                // Create scene with realistic lighting
                 scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x2c3e50);
                 scene.fog = new THREE.Fog(0x2c3e50, 50, 200);
                 
-                // Create camera with proper perspective
                 const aspect = document.getElementById('container').clientWidth / 600;
                 camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
                 camera.position.set(
@@ -1071,7 +1085,6 @@ def create_3d_visualization():
                 );
                 camera.lookAt(0, toUnits(roomConfig.height * 0.3), 0);
                 
-                // Create renderer with enhanced settings
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(document.getElementById('container').clientWidth, 600);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1082,44 +1095,26 @@ def create_3d_visualization():
                 renderer.toneMappingExposure = 1.2;
                 document.getElementById('container').appendChild(renderer.domElement);
                 
-                // Initialize raycaster and mouse for interaction
                 raycaster = new THREE.Raycaster();
                 mouse = new THREE.Vector2();
                 
-                // Build the scene
                 createRealisticRoom();
                 createProfessionalLighting();
-                createEquipmentObjects();
+                createAllEquipmentObjects();
                 createInteractiveControls();
                 
-                // Update UI
                 updateEquipmentList();
                 updateObjectCount();
-                
-                // Start render loop
                 animate();
             }}
             
             function createRealisticRoom() {{
                 const roomGroup = new THREE.Group();
                 
-                // Room materials with realistic textures
                 const materials = {{
-                    floor: new THREE.MeshLambertMaterial({{ 
-                        color: 0x8B4513,
-                        roughness: 0.8,
-                        metalness: 0.1
-                    }}),
-                    wall: new THREE.MeshLambertMaterial({{ 
-                        color: 0xe8e8e8,
-                        roughness: 0.9,
-                        metalness: 0.0
-                    }}),
-                    ceiling: new THREE.MeshLambertMaterial({{ 
-                        color: 0xffffff,
-                        roughness: 0.95,
-                        metalness: 0.0
-                    }})
+                    floor: new THREE.MeshLambertMaterial({{ color: 0x8B4513 }}),
+                    wall: new THREE.MeshLambertMaterial({{ color: 0xe8e8e8 }}),
+                    ceiling: new THREE.MeshLambertMaterial({{ color: 0xffffff }})
                 }};
                 
                 // Floor
@@ -1127,18 +1122,15 @@ def create_3d_visualization():
                 const floor = new THREE.Mesh(floorGeometry, materials.floor);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
-                floor.name = 'floor';
                 roomGroup.add(floor);
                 
-                // Walls
                 const wallHeight = toUnits(roomConfig.height);
                 
-                // Back wall (where displays typically go)
+                // Back wall
                 const backWallGeometry = new THREE.PlaneGeometry(toUnits(roomConfig.length), wallHeight);
                 const backWall = new THREE.Mesh(backWallGeometry, materials.wall);
                 backWall.position.set(0, wallHeight/2, -toUnits(roomConfig.width/2));
                 backWall.receiveShadow = true;
-                backWall.name = 'backWall';
                 roomGroup.add(backWall);
                 
                 // Side walls
@@ -1148,14 +1140,12 @@ def create_3d_visualization():
                 leftWall.position.set(-toUnits(roomConfig.length/2), wallHeight/2, 0);
                 leftWall.rotation.y = Math.PI/2;
                 leftWall.receiveShadow = true;
-                leftWall.name = 'leftWall';
                 roomGroup.add(leftWall);
                 
                 const rightWall = new THREE.Mesh(sideWallGeometry, materials.wall);
                 rightWall.position.set(toUnits(roomConfig.length/2), wallHeight/2, 0);
                 rightWall.rotation.y = -Math.PI/2;
                 rightWall.receiveShadow = true;
-                rightWall.name = 'rightWall';
                 roomGroup.add(rightWall);
                 
                 // Ceiling
@@ -1164,54 +1154,25 @@ def create_3d_visualization():
                 ceiling.position.y = wallHeight;
                 ceiling.rotation.x = Math.PI / 2;
                 ceiling.receiveShadow = true;
-                ceiling.name = 'ceiling';
                 roomGroup.add(ceiling);
                 
-                // Add conference table
-                createConferenceTable(roomGroup);
-                
-                scene.add(roomGroup);
-            }}
-            
-            function createConferenceTable(roomGroup) {{
+                // Conference table
                 const tableGeometry = new THREE.BoxGeometry(toUnits(12), toUnits(0.2), toUnits(4));
-                const tableMaterial = new THREE.MeshPhongMaterial({{ 
-                    color: 0x8B4513,
-                    shininess: 30
-                }});
+                const tableMaterial = new THREE.MeshPhongMaterial({{ color: 0x8B4513, shininess: 30 }});
                 const table = new THREE.Mesh(tableGeometry, tableMaterial);
                 table.position.set(0, toUnits(2.5), 0);
                 table.castShadow = true;
                 table.receiveShadow = true;
-                table.name = 'conferenceTable';
                 roomGroup.add(table);
                 
-                // Table legs
-                const legGeometry = new THREE.CylinderGeometry(toUnits(0.1), toUnits(0.1), toUnits(2.3));
-                const legMaterial = new THREE.MeshPhongMaterial({{ color: 0x654321 }});
-                
-                const legPositions = [
-                    [-toUnits(5), toUnits(1.25), -toUnits(1.5)],
-                    [toUnits(5), toUnits(1.25), -toUnits(1.5)],
-                    [-toUnits(5), toUnits(1.25), toUnits(1.5)],
-                    [toUnits(5), toUnits(1.25), toUnits(1.5)]
-                ];
-                
-                legPositions.forEach((pos, i) => {{
-                    const leg = new THREE.Mesh(legGeometry, legMaterial);
-                    leg.position.set(...pos);
-                    leg.castShadow = true;
-                    leg.name = `tableLeg${{i}}`;
-                    roomGroup.add(leg);
-                }});
+                scene.add(roomGroup);
             }}
             
             function createProfessionalLighting() {{
-                // Ambient light for general illumination
                 const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
                 scene.add(ambientLight);
                 
-                // Main ceiling lights (typical conference room setup)
+                // Multiple ceiling lights
                 const lightPositions = [
                     [toUnits(-6), toUnits(roomConfig.height - 0.5), toUnits(-3)],
                     [toUnits(6), toUnits(roomConfig.height - 0.5), toUnits(-3)],
@@ -1219,25 +1180,20 @@ def create_3d_visualization():
                     [toUnits(6), toUnits(roomConfig.height - 0.5), toUnits(3)]
                 ];
                 
-                lightPositions.forEach((pos, i) => {{
+                lightPositions.forEach((pos) => {{
                     const spotLight = new THREE.SpotLight(0xffffff, 0.8, 0, Math.PI/6, 0.5, 1);
                     spotLight.position.set(...pos);
                     spotLight.target.position.set(pos[0], 0, pos[2]);
                     spotLight.castShadow = true;
-                    spotLight.shadow.mapSize.width = 1024;
-                    spotLight.shadow.mapSize.height = 1024;
+                    spotLight.shadow.mapSize.width = 512;
+                    spotLight.shadow.mapSize.height = 512;
                     scene.add(spotLight);
                     scene.add(spotLight.target);
                 }});
-                
-                // Window light (side lighting)
-                const windowLight = new THREE.DirectionalLight(0x87CEEB, 0.4);
-                windowLight.position.set(toUnits(roomConfig.length), toUnits(roomConfig.height), 0);
-                windowLight.target.position.set(0, 0, 0);
-                scene.add(windowLight);
             }}
             
-            function createEquipmentObjects() {{
+            function createAllEquipmentObjects() {{
+                // Create visual representation for ALL equipment items
                 avEquipment.forEach((item, index) => {{
                     const equipmentGroup = createEquipmentMesh(item, index);
                     if (equipmentGroup) {{
@@ -1250,18 +1206,16 @@ def create_3d_visualization():
                 const spec = equipmentSpecs[item.type] || equipmentSpecs['control'];
                 const group = new THREE.Group();
                 
-                // Create main equipment geometry
                 let geometry, material;
                 const size = item.specs || spec.defaultSize;
                 
+                // Create different geometries based on equipment type
                 switch(item.type) {{
                     case 'display':
                         geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
-                        material = new THREE.MeshPhongMaterial({{ 
-                            color: 0x0a0a0a,
-                            shininess: 100
-                        }});
-                        // Add screen bezel
+                        material = new THREE.MeshPhongMaterial({{ color: 0x0a0a0a, shininess: 100 }});
+                        
+                        // Add screen
                         const screenGeometry = new THREE.PlaneGeometry(toUnits(size[0] - 0.5), toUnits(size[1] - 0.3));
                         const screenMaterial = new THREE.MeshBasicMaterial({{ color: 0x1a1a2e }});
                         const screen = new THREE.Mesh(screenGeometry, screenMaterial);
@@ -1277,12 +1231,24 @@ def create_3d_visualization():
                     case 'camera':
                         geometry = new THREE.CylinderGeometry(toUnits(size[0]/2), toUnits(size[1]/2), toUnits(size[2]));
                         material = new THREE.MeshPhongMaterial({{ color: 0x1a1a1a }});
+                        
                         // Add lens
-                        const lensGeometry = new THREE.CylinderGeometry(toUnits(0.2), toUnits(0.2), toUnits(0.1));
+                        const lensGeometry = new THREE.CylinderGeometry(toUnits(0.15), toUnits(0.15), toUnits(0.05));
                         const lensMaterial = new THREE.MeshPhongMaterial({{ color: 0x000000 }});
                         const lens = new THREE.Mesh(lensGeometry, lensMaterial);
-                        lens.position.y = toUnits(size[2]/2 + 0.05);
+                        lens.position.y = toUnits(size[2]/2 + 0.03);
                         group.add(lens);
+                        break;
+                        
+                    case 'rack':
+                        geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
+                        material = new THREE.MeshPhongMaterial({{ color: 0x1a1a1a }});
+                        break;
+                        
+                    case 'cable':
+                        // Make cables more visible as small boxes or cylinders
+                        geometry = new THREE.CylinderGeometry(toUnits(0.05), toUnits(0.05), toUnits(size[2]));
+                        material = new THREE.MeshPhongMaterial({{ color: 0x333333 }});
                         break;
                         
                     default:
@@ -1294,13 +1260,12 @@ def create_3d_visualization():
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 
-                // Position equipment realistically
-                const position = getRealisticPosition(item.type, index, size);
+                // Enhanced positioning to accommodate ALL items
+                const position = getSmartPosition(item.type, index, size, avEquipment.length);
                 group.position.set(position.x, position.y, position.z);
                 
-                // Add rotation for wall-mounted items
-                if (spec.position === 'wall') {{
-                    group.rotation.y = position.rotation || 0;
+                if (position.rotation !== undefined) {{
+                    group.rotation.y = position.rotation;
                 }}
                 
                 group.add(mesh);
@@ -1310,73 +1275,131 @@ def create_3d_visualization():
                 return group;
             }}
             
-            function getRealisticPosition(type, index, size) {{
-                const positions = {{
-                    'display': {{
-                        x: 0,
-                        y: toUnits(roomConfig.height * 0.6),
-                        z: -toUnits(roomConfig.width/2 - 0.5),
-                        rotation: 0
-                    }},
-                    'audio_speaker': {{
-                        x: toUnits((-1) ** index * (roomConfig.length/3 + index * 2)),
-                        y: toUnits(roomConfig.height - 1),
-                        z: toUnits((-1) ** index * roomConfig.width/4),
-                        rotation: 0
-                    }},
-                    'camera': {{
-                        x: 0,
-                        y: toUnits(roomConfig.height - 0.5),
-                        z: -toUnits(roomConfig.width/2 - 1),
-                        rotation: 0
-                    }},
-                    'control': {{
-                        x: toUnits(roomConfig.length/3),
-                        y: toUnits(2.7),
-                        z: 0,
-                        rotation: 0
-                    }}
-                }};
+            function getSmartPosition(type, index, size, totalCount) {{
+                const roomLength = roomConfig.length;
+                const roomWidth = roomConfig.width;
+                const roomHeight = roomConfig.height;
                 
-                return positions[type] || {{
-                    x: toUnits(-roomConfig.length/4 + (index * 2)),
-                    y: toUnits(1),
-                    z: toUnits(roomConfig.width/4),
-                    rotation: 0
-                }};
+                // Smart positioning based on equipment type and index
+                switch(type) {{
+                    case 'display':
+                        // Displays on the back wall, spread horizontally if multiple
+                        const displaySpacing = Math.min(toUnits(8), toUnits(roomLength / Math.max(1, Math.floor(totalCount/5))));
+                        return {{
+                            x: toUnits((-roomLength/4) + ((index % 3) * displaySpacing/2)),
+                            y: toUnits(roomHeight * 0.6),
+                            z: -toUnits(roomWidth/2 - 0.5),
+                            rotation: 0
+                        }};
+                        
+                    case 'audio_speaker':
+                        // Speakers distributed around the ceiling
+                        const speakerAngle = (index * 2 * Math.PI) / Math.max(1, Math.floor(totalCount/4));
+                        const speakerRadius = toUnits(Math.min(roomLength, roomWidth) * 0.3);
+                        return {{
+                            x: speakerRadius * Math.cos(speakerAngle),
+                            y: toUnits(roomHeight - 1),
+                            z: speakerRadius * Math.sin(speakerAngle),
+                            rotation: 0
+                        }};
+                        
+                    case 'camera':
+                        // Cameras distributed around the ceiling perimeter
+                        const cameraPositions = [
+                            {{ x: 0, z: -toUnits(roomWidth/2 - 1) }},
+                            {{ x: toUnits(roomLength/3), z: -toUnits(roomWidth/3) }},
+                            {{ x: -toUnits(roomLength/3), z: -toUnits(roomWidth/3) }},
+                            {{ x: 0, z: toUnits(roomWidth/2 - 1) }}
+                        ];
+                        const cameraPos = cameraPositions[index % cameraPositions.length];
+                        return {{
+                            x: cameraPos.x,
+                            y: toUnits(roomHeight - 0.5),
+                            z: cameraPos.z,
+                            rotation: 0
+                        }};
+                        
+                    case 'control':
+                        // Control equipment on the table
+                        const tableSpacing = toUnits(2);
+                        return {{
+                            x: toUnits(-4) + ((index % 4) * tableSpacing),
+                            y: toUnits(2.8),
+                            z: toUnits(-1.5 + ((index % 2) * 3)),
+                            rotation: 0
+                        }};
+                        
+                    case 'rack':
+                        // Racks along the walls
+                        const wallSide = index % 2 === 0 ? 1 : -1;
+                        return {{
+                            x: wallSide * toUnits(roomLength/2 - 1),
+                            y: toUnits(3),
+                            z: toUnits(-roomWidth/4 + (index * 2)),
+                            rotation: wallSide === 1 ? Math.PI/2 : -Math.PI/2
+                        }};
+                        
+                    case 'mount':
+                        // Mounts near displays
+                        return {{
+                            x: toUnits((-roomLength/4) + ((index % 2) * 4)),
+                            y: toUnits(roomHeight * 0.4),
+                            z: -toUnits(roomWidth/2 - 0.3),
+                            rotation: 0
+                        }};
+                        
+                    case 'cable':
+                        // Cables on the floor, distributed around the room
+                        const cableAngle = (index * 2 * Math.PI) / Math.max(1, Math.floor(totalCount/3));
+                        const cableRadius = toUnits(3 + (index % 3));
+                        return {{
+                            x: cableRadius * Math.cos(cableAngle),
+                            y: toUnits(0.1),
+                            z: cableRadius * Math.sin(cableAngle),
+                            rotation: cableAngle
+                        }};
+                        
+                    default:
+                        // Default grid positioning for unrecognized items
+                        const gridCols = Math.ceil(Math.sqrt(totalCount));
+                        const gridSpacing = toUnits(2);
+                        const col = index % gridCols;
+                        const row = Math.floor(index / gridCols);
+                        return {{
+                            x: toUnits(-roomLength/4) + (col * gridSpacing),
+                            y: toUnits(1),
+                            z: toUnits(-roomWidth/4) + (row * gridSpacing),
+                            rotation: 0
+                        }};
+                }}
             }}
             
             function createInteractiveControls() {{
-                // Mouse interaction for equipment selection
                 renderer.domElement.addEventListener('click', onMouseClick);
                 renderer.domElement.addEventListener('dblclick', resetCamera);
                 
-                // Camera controls
                 let isMouseDown = false;
                 let mouseX = 0, mouseY = 0;
                 let isPanning = false;
                 
-                // Camera spherical coordinates
                 let cameraTheta = Math.atan2(camera.position.z, camera.position.x);
                 let cameraPhi = Math.acos(camera.position.y / camera.position.length());
                 let cameraRadius = camera.position.length();
                 
                 renderer.domElement.addEventListener('mousedown', (e) => {{
                     isMouseDown = true;
-                    isPanning = e.button === 2; // Right mouse button
+                    isPanning = e.button === 2;
                     mouseX = e.clientX;
                     mouseY = e.clientY;
                     e.preventDefault();
                 }});
                 
-                renderer.domElement.addEventListener('mouseup', (e) => {{
+                renderer.domElement.addEventListener('mouseup', () => {{
                     isMouseDown = false;
                     isPanning = false;
                 }});
                 
-                renderer.domElement.addEventListener('contextmenu', (e) => {{
-                    e.preventDefault();
-                }});
+                renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
                 
                 renderer.domElement.addEventListener('mousemove', (e) => {{
                     if (!isMouseDown) return;
@@ -1385,12 +1408,10 @@ def create_3d_visualization():
                     const deltaY = e.clientY - mouseY;
                     
                     if (isPanning) {{
-                        // Pan camera
                         const factor = cameraRadius * 0.001;
                         camera.translateX(-deltaX * factor);
                         camera.translateY(deltaY * factor);
                     }} else {{
-                        // Orbit camera
                         cameraTheta -= deltaX * 0.005;
                         cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi + deltaY * 0.005));
                         
@@ -1425,7 +1446,6 @@ def create_3d_visualization():
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 
-                // Reset previous selection
                 if (selectedObject) {{
                     selectedObject.traverse((child) => {{
                         if (child.isMesh && child.material.emissive) {{
@@ -1434,7 +1454,6 @@ def create_3d_visualization():
                     }});
                 }}
                 
-                // Find equipment object
                 for (let intersect of intersects) {{
                     let obj = intersect.object;
                     while (obj.parent && !obj.userData.name) {{
@@ -1444,21 +1463,19 @@ def create_3d_visualization():
                     if (obj.userData && obj.userData.name) {{
                         selectedObject = obj;
                         
-                        // Highlight selected object
                         obj.traverse((child) => {{
                             if (child.isMesh && child.material.emissive) {{
                                 child.material.emissive.setHex(0x444444);
                             }}
                         }});
                         
-                        // Update info panel
                         const item = obj.userData;
+                        const instanceText = item.original_quantity > 1 ? ` (Instance ${{item.instance}}/${{item.original_quantity}})` : '';
                         document.getElementById('selectedItem').innerHTML = `
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
-                                <div class="equipment-name">${{item.name}}</div>
+                                <div class="equipment-name">${{item.name}}${{instanceText}}</div>
                                 <div><strong>Brand:</strong> ${{item.brand}}</div>
                                 <div><strong>Type:</strong> ${{item.type.replace('_', ' ')}}</div>
-                                <div><strong>Quantity:</strong> ${{item.quantity}}</div>
                                 <div><strong>Price:</strong> $$${{item.price.toLocaleString()}}</div>
                             </div>
                         `;
@@ -1478,13 +1495,32 @@ def create_3d_visualization():
             
             function updateEquipmentList() {{
                 const listContainer = document.getElementById('equipmentList');
-                let listHtml = '<div style="font-weight: bold; margin-bottom: 8px; color: #4FC3F7;">Equipment List:</div>';
+                let listHtml = '<div style="font-weight: bold; margin-bottom: 8px; color: #4FC3F7; font-size: 13px;">Equipment List:</div>';
                 
+                // Group by name to show quantities
+                const equipmentGroups = {{}};
                 avEquipment.forEach(item => {{
+                    const key = item.name + '|' + item.brand;
+                    if (!equipmentGroups[key]) {{
+                        equipmentGroups[key] = {{
+                            name: item.name,
+                            brand: item.brand,
+                            type: item.type,
+                            count: 0
+                        }};
+                    }}
+                    equipmentGroups[key].count++;
+                }});
+                
+                Object.values(equipmentGroups).forEach(group => {{
                     listHtml += `
                         <div class="equipment-item">
-                            <div class="equipment-name">${{item.name.substring(0, 30)}}${{item.name.length > 30 ? '...' : ''}}</div>
-                            <div style="font-size: 12px; color: #ccc;">${{item.brand}} • Qty: ${{item.quantity}}</div>
+                            <div class="equipment-name">${{group.name}}</div>
+                            <div class="equipment-details">
+                                <div>Brand: ${{group.brand}}</div>
+                                <div>Type: ${{group.type.replace('_', ' ')}}</div>
+                                <div>Quantity: ${{group.count}}</div>
+                            </div>
                         </div>
                     `;
                 }});
@@ -1492,88 +1528,57 @@ def create_3d_visualization():
                 listContainer.innerHTML = listHtml;
             }}
             
-            function updateObjectCount() {{
-                const objectCount = scene.children.reduce((count, obj) => {{
-                    return count + (obj.children ? obj.children.length : 1);
-                }}, 0);
-                document.getElementById('objectCount').textContent = objectCount;
-            }}
+            function updateObjectCount() {
+                document.getElementById('objectCount').textContent = scene.children.length;
+            }
             
-            function animate() {{
-                animationId = requestAnimationFrame(animate);
-                
-                // Calculate FPS
+            function updateFPS() {
                 frameCount++;
                 const currentTime = performance.now();
-                if (currentTime >= lastTime + 1000) {{
-                    const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
-                    document.getElementById('fps').textContent = fps;
+                if (currentTime >= lastTime + 1000) {
+                    document.getElementById('fps').textContent = Math.round((frameCount * 1000) / (currentTime - lastTime));
                     frameCount = 0;
                     lastTime = currentTime;
-                }}
-                
+                }
+            }
+            
+            function animate() {
+                animationId = requestAnimationFrame(animate);
                 renderer.render(scene, camera);
-            }}
+                updateFPS();
+            }
             
-            function handleResize() {{
-                const container = document.getElementById('container');
-                camera.aspect = container.clientWidth / 600;
-                camera.updateProjectionMatrix();
-                renderer.setSize(container.clientWidth, 600);
-            }}
-            
-            // Event listeners
-            window.addEventListener('resize', handleResize);
-            window.addEventListener('load', init);
-            
-            // Cleanup on page unload
-            window.addEventListener('beforeunload', () => {{
-                if (animationId) {{
+            function cleanup() {
+                if (animationId) {
                     cancelAnimationFrame(animationId);
-                }}
-            }});
+                }
+                if (renderer) {
+                    renderer.dispose();
+                }
+            }
+            
+            // Initialize on load
+            window.addEventListener('load', init);
+            window.addEventListener('beforeunload', cleanup);
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                const container = document.getElementById('container');
+                const width = container.clientWidth;
+                const height = 600;
+                
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            });
         </script>
     </body>
     </html>
     """
     
-    # Display the enhanced 3D visualization
+    # Display the HTML content in Streamlit
     components.html(html_content, height=650)
-    
-    # Add equipment summary and statistics
-    if equipment_data:
-        st.subheader("Equipment Summary")
-        
-        # Create metrics in columns
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            displays = [item for item in equipment_data if 'display' in item.get('category', '').lower()]
-            st.metric("Displays", len(displays))
-        
-        with col2:
-            audio_equipment = [item for item in equipment_data if 'audio' in item.get('category', '').lower()]
-            st.metric("Audio Systems", len(audio_equipment))
-        
-        with col3:
-            video_equipment = [item for item in equipment_data if any(term in item.get('category', '').lower() for term in ['video', 'camera'])]
-            st.metric("Video Systems", len(video_equipment))
-        
-        with col4:
-            control_equipment = [item for item in equipment_data if 'control' in item.get('category', '').lower()]
-            st.metric("Control Systems", len(control_equipment))
-        
-        # Display total cost
-        total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in equipment_data)
-        st.subheader(f"Total Equipment Cost: ${total_cost:,.2f}")
-        
-        # Equipment breakdown table
-        if st.expander("Detailed Equipment List", expanded=False):
-            df = pd.DataFrame(equipment_data)
-            if not df.empty:
-                df['Total Cost'] = df['price'] * df['quantity']
-                st.dataframe(df[['name', 'brand', 'category', 'quantity', 'price', 'Total Cost']], 
-                           use_container_width=True)
+
 
 # --- Main Application ---
 def main():
