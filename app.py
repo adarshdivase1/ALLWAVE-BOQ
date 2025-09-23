@@ -498,7 +498,7 @@ def update_boq_content_with_current_items():
     # Update session state
     st.session_state.boq_content = boq_content
 
-def display_boq_results(boq_content, validation_results, project_id, quote_valid_days):
+def display_boq_results(boq_content, validation_results, project_id, quote_valid_days, product_df):
     """Display BOQ results with interactive editing capabilities."""
     
     # Show current BOQ item count at the top
@@ -536,7 +536,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     
     # Add interactive BOQ editor
     st.markdown("---")
-    create_interactive_boq_editor()
+    create_interactive_boq_editor(product_df)
     
     # Add download functionality
     col1, col2 = st.columns(2)
@@ -579,7 +579,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         else:
             st.button("Download BOQ (CSV)", disabled=True, help="Add items to BOQ first")
 
-def create_interactive_boq_editor():
+def create_interactive_boq_editor(product_df):
     """Create interactive BOQ editing interface."""
     st.subheader("Interactive BOQ Editor")
     
@@ -609,7 +609,6 @@ def create_interactive_boq_editor():
             st.rerun()
     
     # Get product data for editing
-    product_df, _, _ = load_and_validate_data()
     if product_df is None:
         st.error("Cannot load product catalog for editing")
         return
@@ -901,7 +900,7 @@ def map_equipment_type(category, product_name=""):
         return 'rack'
     elif any(term in search_text for term in ['mount', 'bracket', 'stand', 'arm', 'vesa']):
         return 'mount'
-    elif any(term in search_text for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb']):
+    elif any(term in search_text for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb', 'ethernet', 'kit']):
         return 'cable'
     elif any(term in search_text for term in ['installation', 'commissioning', 'testing', 'labor', 'service']):
         return 'service'  # Won't be visualized but handled properly
@@ -1055,9 +1054,6 @@ def create_3d_visualization():
             let scene, camera, renderer, raycaster, mouse;
             let animationId, selectedObject = null;
             const toUnits = (feet) => feet * 0.4;
-            const roomLength = {room_length};
-            const roomWidth = {room_width};
-            const roomHeight = {room_height};
             let avEquipment = {js_equipment};
 
             function init() {{
@@ -1067,7 +1063,7 @@ def create_3d_visualization():
                 
                 const container = document.getElementById('container');
                 camera = new THREE.PerspectiveCamera(50, container.clientWidth / 600, 0.1, 1000);
-                camera.position.set(toUnits(-roomLength * 0.1), toUnits(roomHeight * 0.8), toUnits(roomWidth * 1.1));
+                camera.position.set(toUnits(-{room_length} * 0.1), toUnits({room_height} * 0.8), toUnits({room_width} * 1.1));
                 
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, 600);
@@ -1094,20 +1090,20 @@ def create_3d_visualization():
             function createRealisticRoom() {{
                 const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0xddeeff, roughness: 0.9 }});
                 const floorMaterial = new THREE.MeshStandardMaterial({{ color: 0x6e5a47, roughness: 0.7 }});
-                const wallHeight = toUnits(roomHeight);
+                const wallHeight = toUnits({room_height});
 
-                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomLength), toUnits(roomWidth)), floorMaterial);
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_length}), toUnits({room_width})), floorMaterial);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
                 scene.add(floor);
 
-                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomLength), wallHeight), wallMaterial);
-                backWall.position.set(0, wallHeight/2, -toUnits(roomWidth/2));
+                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_length}), wallHeight), wallMaterial);
+                backWall.position.set(0, wallHeight/2, -toUnits({room_width}/2));
                 backWall.receiveShadow = true;
                 scene.add(backWall);
 
-                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomWidth), wallHeight), wallMaterial);
-                leftWall.position.set(-toUnits(roomLength/2), wallHeight/2, 0);
+                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits({room_width}), wallHeight), wallMaterial);
+                leftWall.position.set(-toUnits({room_length}/2), wallHeight/2, 0);
                 leftWall.rotation.y = Math.PI/2;
                 leftWall.receiveShadow = true;
                 scene.add(leftWall);
@@ -1215,7 +1211,7 @@ def create_3d_visualization():
                         break;
                     case 'cable':
                         materialOptions.color = 0x222255;
-                        // Create a curved cable representation
+                        # Create a curved cable representation
                         const curve = new THREE.QuadraticBezierCurve3(
                             new THREE.Vector3(-toUnits(size[2]/2), 0, 0),
                             new THREE.Vector3(0, toUnits(size[1]), 0),
@@ -1230,7 +1226,7 @@ def create_3d_visualization():
                         break;
                 }}
 
-                // Create default geometry if no specific type was handled
+                # Create default geometry if no specific type was handled
                 if (group.children.length === 0) {{
                     const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
                     group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions)));
@@ -1246,26 +1242,26 @@ def create_3d_visualization():
                 return group;
             }}
 
-            // ENHANCED POSITIONING LOGIC WITH NEW EQUIPMENT TYPES
+            # ENHANCED POSITIONING LOGIC WITH NEW EQUIPMENT TYPES
             function getSmartPosition(type, instanceIndex, size, quantity) {{
                 let x_ft = 0, y_ft = 0, z_ft = 0, rotation = 0;
                 const spacing_ft = Math.max(size[0] + 0.5, 1.0);
 
                 if (type === 'display') {{
                     x_ft = -(quantity - 1) * spacing_ft / 2 + (instanceIndex * spacing_ft);
-                    y_ft = roomHeight * 0.6;
-                    z_ft = -roomWidth / 2 + 0.2;
+                    y_ft = {room_height} * 0.6;
+                    z_ft = -{room_width} / 2 + 0.2;
                 }} else if (type === 'camera') {{
                     x_ft = -(quantity - 1) * 4 / 2 + (instanceIndex * 4);
-                    y_ft = roomHeight - 0.5;
-                    z_ft = -roomWidth / 2 + 1;
+                    y_ft = {room_height} - 0.5;
+                    z_ft = -{room_width} / 2 + 1;
                 }} else if (type === 'audio_speaker') {{
                     // Ceiling mounted pendant speakers
                     const positions = [
-                        [-roomLength/4, roomHeight - 0.5, -roomWidth/4],
-                        [roomLength/4, roomHeight - 0.5, -roomWidth/4],
-                        [-roomLength/4, roomHeight - 0.5, roomWidth/4],
-                        [roomLength/4, roomHeight - 0.5, roomWidth/4]
+                        [-{room_length}/4, {room_height} - 0.5, -{room_width}/4],
+                        [{room_length}/4, {room_height} - 0.5, -{room_width}/4],
+                        [-{room_length}/4, {room_height} - 0.5, {room_width}/4],
+                        [{room_length}/4, {room_height} - 0.5, {room_width}/4]
                     ];
                     const pos_idx = instanceIndex % positions.length;
                     [x_ft, y_ft, z_ft] = positions[pos_idx];
@@ -1276,45 +1272,45 @@ def create_3d_visualization():
                     z_ft = 0;
                 }} else if (type === 'network_switch') {{
                     // Rack or wall mounted
-                    x_ft = -roomLength / 2 + 1;
+                    x_ft = -{room_length} / 2 + 1;
                     y_ft = 5 + (instanceIndex * (size[1] + 0.1));
-                    z_ft = roomWidth / 2 - 2;
+                    z_ft = {room_width} / 2 - 2;
                 }} else if (type === 'network_device' || type === 'charging_station') {{
                     // Wall or table mounted
-                    x_ft = -roomLength / 3 + (instanceIndex * 3);
+                    x_ft = -{room_length} / 3 + (instanceIndex * 3);
                     y_ft = 4;
-                    z_ft = roomWidth / 2 - 1;
+                    z_ft = {room_width} / 2 - 1;
                 }} else if (type === 'control_panel') {{
                     // Wall or table mounted control panels
                     x_ft = -2 + (instanceIndex * 4);
                     y_ft = 3;
-                    z_ft = -roomWidth / 2 + 0.5;
+                    z_ft = -{room_width} / 2 + 0.5;
                     rotation = 0;
                 }} else if (type === 'mount') {{
                     const wall_positions = [
-                        [-roomLength / 2 + 0.5, roomHeight / 2, 0],
-                        [0, roomHeight / 2, -roomWidth / 2 + 0.5],
+                        [-{room_length} / 2 + 0.5, {room_height} / 2, 0],
+                        [0, {room_height} / 2, -{room_width} / 2 + 0.5],
                     ];
                     const pos_idx = instanceIndex % wall_positions.length;
                     [x_ft, y_ft, z_ft] = wall_positions[pos_idx];
                     y_ft += Math.floor(instanceIndex / wall_positions.length) * (size[1] + 0.3);
                 }} else if (type === 'cable') {{
-                    x_ft = -roomLength / 2 + (instanceIndex * 2);
-                    y_ft = (instanceIndex % 2 === 0) ? 0.1 : roomHeight - 0.1;
-                    z_ft = -roomWidth / 4;
+                    x_ft = -{room_length} / 2 + (instanceIndex * 2);
+                    y_ft = (instanceIndex % 2 === 0) ? 0.1 : {room_height} - 0.1;
+                    z_ft = -{room_width} / 4;
                 }} else if (type === 'power') {{
                     // Power equipment near walls
-                    x_ft = -roomLength / 2 + 2;
+                    x_ft = -{room_length} / 2 + 2;
                     y_ft = size[1] / 2;
-                    z_ft = -roomWidth / 2 + (instanceIndex * 2);
+                    z_ft = -{room_width} / 2 + (instanceIndex * 2);
                 }} else {{
                     // Default positioning for other items
                     const items_per_row = 3;
                     const row = Math.floor(instanceIndex / items_per_row);
                     const col = instanceIndex % items_per_row;
-                    x_ft = -roomLength / 3 + (col * spacing_ft);
+                    x_ft = -{room_length} / 3 + (col * spacing_ft);
                     y_ft = size[1] / 2 + (row * (size[1] + 0.2));
-                    z_ft = roomWidth / 3;
+                    z_ft = {room_width} / 3;
                 }}
                 
                 return {{ x: toUnits(x_ft), y: toUnits(y_ft), z: toUnits(z_ft), rotation }};
@@ -1426,7 +1422,7 @@ def create_3d_visualization():
                     isDragging = false;
                 }});
 
-                renderer.dom element.addEventListener('wheel', (e) => {{
+                renderer.domElement.addEventListener('wheel', (e) => {{
                     e.preventDefault();
                     const zoomFactor = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
                     camera.position.multiplyScalar(zoomFactor);
@@ -1593,7 +1589,8 @@ def main():
                 st.session_state.boq_content,
                 st.session_state.validation_results,
                 project_id,
-                quote_valid_days
+                quote_valid_days,
+                product_df
             )
     
     with tab4:
