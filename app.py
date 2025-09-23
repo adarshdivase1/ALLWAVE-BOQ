@@ -8,7 +8,7 @@ import json
 import time
 from io import BytesIO
 import base64
-import streamlit.components.v1 as components 
+import streamlit.components.v1 as components
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -868,445 +868,116 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
 
-def create_3d_visualization():
-    """Create 3D room visualization using Three.js in Streamlit."""
-    st.subheader("3D Room Visualization")
-    
-    # Get current BOQ items for visualization
-    equipment_data = st.session_state.get('boq_items', [])
-    
-    # Convert BOQ items to JavaScript format
-    js_equipment = []
-    for item in equipment_data:
-        # Map equipment types and create 3D positions
-        equipment_type = map_equipment_type(item.get('category', ''))
-        if equipment_type:
-            js_equipment.append({
-                'id': len(js_equipment) + 1,
-                'type': equipment_type,
-                'name': item.get('name', 'Unknown'),
-                'brand': item.get('brand', 'Unknown'),
-                'quantity': item.get('quantity', 1),
-                'price': item.get('price', 0)
-            })
-    
-    # Create the HTML/JavaScript for 3D visualization
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-        <style>
-            body {{ margin: 0; font-family: Arial, sans-serif; }}
-            #container {{ width: 100%; height: 600px; position: relative; }}
-            #info {{ position: absolute; top: 10px; left: 10px; color: white; 
-                     background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }}
-            #controls {{ position: absolute; bottom: 10px; left: 10px; color: white;
-                        background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }}
-        </style>
-    </head>
-    <body>
-        <div id="container">
-            <div id="info">
-                <h3>AV Room Layout</h3>
-                <p>Equipment Count: {len(js_equipment)}</p>
-                <p id="selectedItem">Click equipment to see details</p>
-            </div>
-            <div id="controls">
-                Mouse: Drag to orbit • Scroll to zoom
-            </div>
-        </div>
-        
-        <script>
-            // Initialize Three.js scene
-            let scene, camera, renderer, controls;
-            let roomConfig = {{
-                length: 24,
-                width: 16,
-                height: 10
-            }};
+# --- BOQ Generation Logic ---
+def generate_boq(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """Generates the BOQ using the Gemini model and validates the result."""
+    with st.spinner("🤖 Generating professional BOQ... This may take a moment."):
+        try:
+            room_spec = ROOM_SPECS.get(room_type, {})
             
-            // Equipment data from Streamlit
-            let avEquipment = {js_equipment};
-            
-            function init() {{
-                // Create scene
-                scene = new THREE.Scene();
-                scene.background = new THREE.Color(0xf0f0f0);
-                
-                // Create camera
-                camera = new THREE.PerspectiveCamera(75, window.innerWidth / 600, 0.1, 1000);
-                camera.position.set(20, 15, 20);
-                camera.lookAt(0, 0, 0);
-                
-                // Create renderer
-                renderer = new THREE.WebGLRenderer({{ antialias: true }});
-                renderer.setSize(document.getElementById('container').clientWidth, 600);
-                renderer.shadowMap.enabled = true;
-                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                document.getElementById('container').appendChild(renderer.domElement);
-                
-                // Create room
-                createRoom();
-                createLighting();
-                createEquipment();
-                
-                // Add mouse controls
-                addMouseControls();
-                
-                // Start animation loop
-                animate();
-            }}
-            
-            function createRoom() {{
-                const materials = {{
-                    floor: new THREE.MeshLambertMaterial({{ color: 0x8B4513 }}),
-                    wall: new THREE.MeshLambertMaterial({{ color: 0xE5E5E5 }}),
-                    ceiling: new THREE.MeshLambertMaterial({{ color: 0xFFFFFF }})
-                }};
-                
-                // Floor
-                const floorGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.width);
-                const floor = new THREE.Mesh(floorGeometry, materials.floor);
-                floor.rotation.x = -Math.PI / 2;
-                floor.receiveShadow = true;
-                scene.add(floor);
-                
-                // Back wall
-                const backWallGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.height);
-                const backWall = new THREE.Mesh(backWallGeometry, materials.wall);
-                backWall.position.set(0, roomConfig.height/2, -roomConfig.width/2);
-                scene.add(backWall);
-                
-                // Side walls
-                const sideWallGeometry = new THREE.PlaneGeometry(roomConfig.width, roomConfig.height);
-                const leftWall = new THREE.Mesh(sideWallGeometry, materials.wall);
-                leftWall.position.set(-roomConfig.length/2, roomConfig.height/2, 0);
-                leftWall.rotation.y = Math.PI/2;
-                scene.add(leftWall);
-                
-                const rightWall = new THREE.Mesh(sideWallGeometry, materials.wall);
-                rightWall.position.set(roomConfig.length/2, roomConfig.height/2, 0);
-                rightWall.rotation.y = -Math.PI/2;
-                scene.add(rightWall);
-                
-                // Ceiling
-                const ceilingGeometry = new THREE.PlaneGeometry(roomConfig.length, roomConfig.width);
-                const ceiling = new THREE.Mesh(ceilingGeometry, materials.ceiling);
-                ceiling.position.y = roomConfig.height;
-                ceiling.rotation.x = Math.PI / 2;
-                scene.add(ceiling);
-            }}
-            
-            function createLighting() {{
-                const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
-                scene.add(ambientLight);
-                
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(10, 10, 5);
-                directionalLight.castShadow = true;
-                scene.add(directionalLight);
-            }}
-            
-            function createEquipment() {{
-                const materials = {{
-                    display: new THREE.MeshPhongMaterial({{ color: 0x000000 }}),
-                    audio: new THREE.MeshPhongMaterial({{ color: 0x333333 }}),
-                    control: new THREE.MeshPhongMaterial({{ color: 0x0066CC }}),
-                    camera: new THREE.MeshPhongMaterial({{ color: 0x666666 }}),
-                    general: new THREE.MeshPhongMaterial({{ color: 0x999999 }})
-                }};
-                
-                avEquipment.forEach((item, index) => {{
-                    let geometry, material;
-                    let position = getEquipmentPosition(item.type, index);
-                    
-                    switch(item.type) {{
-                        case 'display':
-                            geometry = new THREE.BoxGeometry(4, 2.5, 0.2);
-                            material = materials.display;
-                            position.y = 5;
-                            break;
-                        case 'audio':
-                            geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.3);
-                            material = materials.audio;
-                            position.y = 8;
-                            break;
-                        case 'camera':
-                            geometry = new THREE.CylinderGeometry(0.3, 0.4, 0.5);
-                            material = materials.camera;
-                            position.y = 8.5;
-                            break;
-                        case 'control':
-                            geometry = new THREE.BoxGeometry(0.5, 0.3, 0.1);
-                            material = materials.control;
-                            position.y = 1.5;
-                            break;
-                        default:
-                            geometry = new THREE.BoxGeometry(1, 1, 1);
-                            material = materials.general;
-                            position.y = 1;
-                    }}
-                    
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.position.set(position.x, position.y, position.z);
-                    mesh.castShadow = true;
-                    mesh.userData = item;
-                    scene.add(mesh);
-                }});
-            }}
-            
-            function getEquipmentPosition(type, index) {{
-                const positions = {{
-                    'display': {{ x: 0, y: 5, z: -7 }},
-                    'audio': {{ x: -5 + (index * 3), y: 8, z: 0 }},
-                    'camera': {{ x: 0, y: 8.5, z: -6 }},
-                    'control': {{ x: 5, y: 1.5, z: 2 }},
-                    'general': {{ x: -3 + (index * 2), y: 1, z: 3 }}
-                }};
-                
-                return positions[type] || positions['general'];
-            }}
-            
-            function addMouseControls() {{
-                let isMouseDown = false;
-                let mouseX = 0, mouseY = 0;
-                let cameraTheta = 0.7, cameraPhi = 1.2;
-                const cameraRadius = 30;
-                
-                renderer.domElement.addEventListener('mousedown', (e) => {{
-                    isMouseDown = true;
-                    mouseX = e.clientX;
-                    mouseY = e.clientY;
-                }});
-                
-                renderer.domElement.addEventListener('mouseup', () => {{
-                    isMouseDown = false;
-                }});
-                
-                renderer.domElement.addEventListener('mousemove', (e) => {{
-                    if (!isMouseDown) return;
-                    
-                    const deltaX = e.clientX - mouseX;
-                    const deltaY = e.clientY - mouseY;
-                    
-                    cameraTheta -= deltaX * 0.01;
-                    cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi + deltaY * 0.01));
-                    
-                    camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-                    camera.position.y = cameraRadius * Math.cos(cameraPhi);
-                    camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-                    camera.lookAt(0, 3, 0);
-                    
-                    mouseX = e.clientX;
-                    mouseY = e.clientY;
-                }});
-                
-                renderer.domElement.addEventListener('wheel', (e) => {{
-                    const factor = e.deltaY > 0 ? 1.1 : 0.9;
-                    camera.position.multiplyScalar(factor);
-                }});
-                
-                // Click to select equipment
-                renderer.domElement.addEventListener('click', (event) => {{
-                    const mouse = new THREE.Vector2();
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    
-                    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-                    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-                    
-                    const raycaster = new THREE.Raycaster();
-                    raycaster.setFromCamera(mouse, camera);
-                    
-                    const intersects = raycaster.intersectObjects(scene.children);
-                    
-                    if (intersects.length > 0 && intersects[0].object.userData.name) {{
-                        const item = intersects[0].object.userData;
-                        document.getElementById('selectedItem').innerHTML = 
-                            `Selected: ${{item.name}}<br>Brand: ${{item.brand}}<br>Quantity: ${{item.quantity}}<br>Price: $${{item.price.toLocaleString()}}`;
-                    }}
-                }});
-            }}
-            
-            function animate() {{
-                requestAnimationFrame(animate);
-                renderer.render(scene, camera);
-            }}
-            
-            // Handle window resize
-            window.addEventListener('resize', () => {{
-                camera.aspect = document.getElementById('container').clientWidth / 600;
-                camera.updateProjectionMatrix();
-                renderer.setSize(document.getElementById('container').clientWidth, 600);
-            }});
-            
-            // Initialize when page loads
-            window.addEventListener('load', init);
-        </script>
-    </body>
-    </html>
-    """
-    
-    # Display the 3D visualization
-    components.html(html_content, height=650)
-    
-    # Add equipment summary below visualization
-    if equipment_data:
-        st.subheader("Equipment in Visualization")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            displays = [item for item in equipment_data if 'display' in item.get('category', '').lower()]
-            st.metric("Displays", len(displays))
-        
-        with col2:
-            audio = [item for item in equipment_data if 'audio' in item.get('category', '').lower()]
-            st.metric("Audio Equipment", len(audio))
-        
-        with col3:
-            cameras = [item for item in equipment_data if 'camera' in item.get('category', '').lower() or 'video' in item.get('category', '').lower()]
-            st.metric("Cameras", len(cameras))
+            # Provide a sample of the catalog to avoid overly large prompts
+            product_catalog_sample_df = product_df.sample(n=min(100, len(product_df)), random_state=1)
+            product_catalog_string = product_catalog_sample_df[['category', 'brand', 'name', 'price', 'features']].to_string()
 
+            prompt = f"""
+You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
+
+**PROJECT SPECIFICATIONS:**
+- Room Type: {room_type}
+- Room Area: {room_area:.0f} sq ft
+- Budget Tier: {budget_tier}
+- Special Requirements: {features}
+- Infrastructure: {json.dumps(technical_reqs)}
+
+**TECHNICAL CONSTRAINTS & GUIDELINES:**
+- Adhere to the provided AVIXA standards for all design choices.
+- Display size range: {room_spec.get('recommended_display_size', ('N/A', 'N/A'))[0]}"-{room_spec.get('recommended_display_size', ('N/A', 'N/A'))[1]}"
+- Viewing distance: {room_spec.get('viewing_distance_ft', ('N/A', 'N/A'))[0]}-{room_spec.get('viewing_distance_ft', ('N/A', 'N/A'))[1]} ft
+- Audio coverage: {room_spec.get('audio_coverage', 'N/A')}
+- Budget target: ${room_spec.get('typical_budget_range', (0,0))[0]:,}-${room_spec.get('typical_budget_range', (0,0))[1]:,}
+
+**MANDATORY REQUIREMENTS:**
+1. ONLY use products from the provided product catalog sample. If a suitable product is not in the sample, note it.
+2. Verify all components are compatible (e.g., mounts fit displays).
+3. Include appropriate mounting hardware, cabling (HDMI, USB, Ethernet), and power distribution.
+4. Add a line item for 'Installation & Commissioning Labor' as 15% of the total hardware cost.
+5. Add a line item for 'System Warranty (3 Years)' as 5% of the total hardware cost.
+6. Add a line item for 'Project Contingency' as 10% of the total hardware cost.
+
+**OUTPUT FORMAT REQUIREMENT:**
+- Start with a brief 2-3 sentence 'System Design Summary'.
+- Then, provide the BOQ in a clear markdown table with the following columns:
+| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |
+
+**PRODUCT CATALOG SAMPLE:**
+{product_catalog_string}
+
+**AVIXA GUIDELINES:**
+{guidelines}
+
+Generate the BOQ now:
+"""
+            
+            response = generate_with_retry(model, prompt)
+            
+            if response and response.text:
+                boq_content = response.text
+                boq_items = extract_boq_items_from_response(boq_content, product_df)
+                
+                validator = BOQValidator(ROOM_SPECS, product_df)
+                tech_issues, tech_warnings = validator.validate_technical_requirements(boq_items, room_type, room_area)
+                avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
+                
+                st.session_state.boq_content = boq_content
+                st.session_state.boq_items = boq_items
+                st.session_state.validation_results = {
+                    'issues': tech_issues,
+                    'warnings': tech_warnings + avixa_warnings
+                }
+                st.success("✅ BOQ Generated and Validated Successfully!")
+            else:
+                st.error("Failed to generate BOQ content from the AI model.")
+                st.session_state.boq_content = None
+                st.session_state.boq_items = []
+                st.session_state.validation_results = None
+
+        except Exception as e:
+            st.error(f"An error occurred during BOQ generation: {e}")
+            st.session_state.boq_content = None
+            st.session_state.boq_items = []
+            st.session_state.validation_results = None
+
+# --- 3D Visualization ---
 def map_equipment_type(category):
-    """Map BOQ categories to 3D visualization types."""
-    category_lower = category.lower()
+    """Map BOQ categories to 3D visualization equipment types."""
+    category_mapping = {
+        'Display': 'display',
+        'Displays': 'display',
+        'Monitor': 'display',
+        'TV': 'display',
+        'Projector': 'display',
+        'Screen': 'display',
+        'Audio': 'audio',
+        'Speaker': 'audio',
+        'Microphone': 'audio',
+        'Sound': 'audio',
+        'Amplifier': 'audio',
+        'Camera': 'camera',
+        'PTZ Camera': 'camera',
+        'Video Conference': 'camera',
+        'Webcam': 'camera',
+        'Control': 'control',
+        'Controller': 'control',
+        'Touch Panel': 'control',
+        'Remote': 'control',
+        'Switch': 'control'
+    }
     
-    if 'display' in category_lower or 'monitor' in category_lower:
-        return 'display'
-    elif 'audio' in category_lower or 'speaker' in category_lower or 'microphone' in category_lower:
-        return 'audio'
-    elif 'camera' in category_lower or 'video' in category_lower:
-        return 'camera'
-    elif 'control' in category_lower:
-        return 'control'
-    else:
-        return 'general'
-
-# --- Main Application ---
-def main():
-    # SOLVED: Initialize session state for all generated content to prevent it from disappearing on rerun.
-    if 'boq_items' not in st.session_state:
-        st.session_state.boq_items = []
-    if 'boq_content' not in st.session_state:
-        st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state:
-        st.session_state.validation_results = None
+    for key, value in category_mapping.items():
+        if key.lower() in category.lower():
+            return value
     
-    # Load and validate data
-    product_df, guidelines, data_issues = load_and_validate_data()
-    
-    # Display data quality status
-    if data_issues:
-        with st.expander("⚠️ Data Quality Issues", expanded=len(data_issues) > 3):
-            for issue in data_issues:
-                st.warning(issue)
-    
-    if product_df is None:
-        st.error("Cannot load product catalog. Please check data files.")
-        return
-    
-    # Setup Gemini
-    model = setup_gemini()
-    if not model:
-        return
-    
-    # Create professional header
-    project_id, quote_valid_days = create_project_header()
-    
-    # Sidebar for project settings
-    with st.sidebar:
-        st.header("Project Configuration")
-        
-        client_name = st.text_input("Client Name", value="")
-        project_name = st.text_input("Project Name", value="")
-        
-        # Currency selection
-        currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0)
-        st.session_state['currency'] = currency  # Store in session state
-        
-        st.markdown("---")
-        
-        room_type = st.selectbox(
-            "Primary Space Type:",
-            list(ROOM_SPECS.keys())
-        )
-        
-        budget_tier = st.select_slider(
-            "Budget Tier:",
-            options=["Economy", "Standard", "Premium", "Enterprise"],
-            value="Standard"
-        )
-        
-        # Display room specifications
-        room_spec = ROOM_SPECS[room_type]
-        st.markdown("### Room Guidelines")
-        st.caption(f"Typical area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
-        st.caption(f"Display size: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
-        st.caption(f"Budget range: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
-    
-    # Main content areas
-    tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
-    
-    with tab1:
-        room_area, ceiling_height = create_room_calculator()
-    
-    with tab2:
-        features = st.text_area(
-            "Specific Requirements & Features:",
-            placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified, recording capability'",
-            height=100
-        )
-        
-        technical_reqs = create_advanced_requirements()
-    
-    with tab3:
-        st.subheader("BOQ Generation")
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
-                # This function now saves results to session_state instead of directly displaying them.
-                generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
-                             technical_reqs, room_area)
-        
-        with col2:
-            st.markdown("**Product Stats:**")
-            st.metric("Total Products", len(product_df))
-            st.metric("Brands", product_df['brand'].nunique())
-            if 'price' in product_df.columns:
-                try:
-                    # Convert price column to numeric, handling errors
-                    numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
-                    valid_prices = numeric_prices[numeric_prices > 0]
-                    avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
-                    
-                    if avg_price_usd and not pd.isna(avg_price_usd):
-                        # Get currency preference from session state
-                        display_currency = st.session_state.get('currency', 'USD')
-                        
-                        if display_currency == "INR":
-                            avg_price_inr = convert_currency(avg_price_usd, "INR")
-                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
-                        else:
-                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
-                    else:
-                        st.metric("Avg Price", "N/A")
-                except Exception:
-                    st.metric("Avg Price", "N/A")
-        
-        # SOLVED: Display results from session_state. This ensures they persist on reruns.
-        if st.session_state.boq_content or st.session_state.boq_items:
-            st.markdown("---")
-            display_boq_results(
-                st.session_state.boq_content,
-                st.session_state.validation_results,
-                project_id,
-                quote_valid_days
-            )
-        
-with tab4:
-        create_3d_visualization()
+    return 'general'
 
 def create_3d_visualization():
     """Create production-ready 3D room visualization with realistic AV equipment."""
@@ -1992,52 +1663,52 @@ def create_3d_visualization():
                 }});
             }}
             
-function showEquipmentDetails(item) {{
-    const detailsPanel = document.getElementById("equipment-details");
-    
-    document.getElementById("equipmentName").textContent = item.name;
-    document.getElementById("equipmentType").textContent = item.category;
-    document.getElementById("equipmentBrand").textContent = item.brand;
-    document.getElementById("equipmentQuantity").textContent = item.quantity;
-    document.getElementById("equipmentPrice").textContent = "$" + item.price.toLocaleString();
-    document.getElementById("equipmentTotal").textContent = "$" + (item.quantity * item.price).toLocaleString();
-    
-    detailsPanel.style.display = "block";
-}}
+            function showEquipmentDetails(item) {{
+                const detailsPanel = document.getElementById("equipment-details");
+                
+                document.getElementById("equipmentName").textContent = item.name;
+                document.getElementById("equipmentType").textContent = item.category;
+                document.getElementById("equipmentBrand").textContent = item.brand;
+                document.getElementById("equipmentQuantity").textContent = item.quantity;
+                document.getElementById("equipmentPrice").textContent = "$" + item.price.toLocaleString();
+                document.getElementById("equipmentTotal").textContent = "$" + (item.quantity * item.price).toLocaleString();
+                
+                detailsPanel.style.display = "block";
+            }}
 
-function hideEquipmentDetails() {{
-    document.getElementById("equipment-details").style.display = "none";
-}}
+            function hideEquipmentDetails() {{
+                document.getElementById("equipment-details").style.display = "none";
+            }}
             
-            function updateTotalCost() {
+            function updateTotalCost() {{
                 let total = 0;
-                avEquipment.forEach(item => {
+                avEquipment.forEach(item => {{
                     total += item.quantity * item.price;
-                });
+                }});
                 document.getElementById('totalCost').textContent = '$' + total.toLocaleString();
-            }
+            }}
             
-            function animate() {
+            function animate() {{
                 requestAnimationFrame(animate);
                 
                 // Add subtle animations to equipment
-                equipmentMeshes.forEach((mesh, index) => {
-                    if (mesh.userData && mesh.userData.type === 'display') {
+                equipmentMeshes.forEach((mesh, index) => {{
+                    if (mesh.userData && mesh.userData.type === 'display') {{
                         // Subtle screen flicker effect
                         const time = Date.now() * 0.001;
-                        if (Math.random() > 0.98) {
+                        if (Math.random() > 0.98) {{
                             mesh.material.emissive.setHex(0x001122);
-                            setTimeout(() => {
-                                if (mesh !== selectedObject) {
+                            setTimeout(() => {{
+                                if (mesh !== selectedObject) {{
                                     mesh.material.emissive.setHex(0x000000);
-                                }
-                            }, 100);
-                        }
-                    }
-                });
+                                }}
+                            }}, 100);
+                        }}
+                    }}
+                }});
                 
                 renderer.render(scene, camera);
-            }
+            }}
             
             // Initialize the scene
             init();
@@ -2083,81 +1754,132 @@ function hideEquipmentDetails() {{
                 for item in category_items:
                     st.write(f"• {item.get('name', 'Unknown')} - {item.get('brand', 'Unknown')} (Qty: {item.get('quantity', 1)})")
 
-
-def map_equipment_type(category):
-    """Map BOQ categories to 3D visualization equipment types."""
-    category_mapping = {
-        'Display': 'display',
-        'Displays': 'display',
-        'Monitor': 'display',
-        'TV': 'display',
-        'Projector': 'display',
-        'Screen': 'display',
-        'Audio': 'audio',
-        'Speaker': 'audio',
-        'Microphone': 'audio',
-        'Sound': 'audio',
-        'Amplifier': 'audio',
-        'Camera': 'camera',
-        'PTZ Camera': 'camera',
-        'Video Conference': 'camera',
-        'Webcam': 'camera',
-        'Control': 'control',
-        'Controller': 'control',
-        'Touch Panel': 'control',
-        'Remote': 'control',
-        'Switch': 'control'
-    }
+# --- Main Application ---
+def main():
+    # SOLVED: Initialize session state for all generated content to prevent it from disappearing on rerun.
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = None
     
-    for key, value in category_mapping.items():
-        if key.lower() in category.lower():
-            return value
+    # Load and validate data
+    product_df, guidelines, data_issues = load_and_validate_data()
     
-    return 'general'
-    # Provide a sample of the catalog instead of the full CSV to avoid overly large prompts
-    def intelligent_product_selection(requirements, product_df, limit=50):
+    # Display data quality status
+    if data_issues:
+        with st.expander("⚠️ Data Quality Issues", expanded=len(data_issues) > 3):
+            for issue in data_issues:
+                st.warning(issue)
+    
+    if product_df is None:
+        st.error("Cannot load product catalog. Please check data files.")
+        return
+    
+    # Setup Gemini
+    model = setup_gemini()
+    if not model:
+        return
+    
+    # Create professional header
+    project_id, quote_valid_days = create_project_header()
+    
+    # Sidebar for project settings
+    with st.sidebar:
+        st.header("Project Configuration")
         
+        client_name = st.text_input("Client Name", value="")
+        project_name = st.text_input("Project Name", value="")
+        
+        # Currency selection
+        currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0)
+        st.session_state['currency'] = currency  # Store in session state
+        
+        st.markdown("---")
+        
+        room_type = st.selectbox(
+            "Primary Space Type:",
+            list(ROOM_SPECS.keys())
+        )
+        
+        budget_tier = st.select_slider(
+            "Budget Tier:",
+            options=["Economy", "Standard", "Premium", "Enterprise"],
+            value="Standard"
+        )
+        
+        # Display room specifications
+        room_spec = ROOM_SPECS[room_type]
+        st.markdown("### Room Guidelines")
+        st.caption(f"Typical area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
+        st.caption(f"Display size: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
+        st.caption(f"Budget range: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}")
     
-    prompt = f"""
-You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
-
-**PROJECT SPECIFICATIONS:**
-- Room Type: {room_type}
-- Room Area: {room_area:.0f} sq ft
-- Budget Tier: {budget_tier}
-- Special Requirements: {features}
-- Infrastructure: {technical_reqs}
-
-**TECHNICAL CONSTRAINTS & GUIDELINES:**
-- Adhere to the provided AVIXA standards for all design choices.
-- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
-- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
-- Audio coverage: {room_spec['audio_coverage']}
-- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
-
-**MANDATORY REQUIREMENTS:**
-1. ONLY use products from the provided product catalog sample. If a suitable product is not in the sample, note it.
-2. Verify all components are compatible (e.g., mounts fit displays).
-3. Include appropriate mounting hardware, cabling (HDMI, USB, Ethernet), and power distribution.
-4. Add a line item for 'Installation & Commissioning Labor' as 15% of the total hardware cost.
-5. Add a line item for 'System Warranty (3 Years)' as 5% of the total hardware cost.
-6. Add a line item for 'Project Contingency' as 10% of the total hardware cost.
-
-**OUTPUT FORMAT REQUIREMENT:**
-- Start with a brief 2-3 sentence 'System Design Summary'.
-- Then, provide the BOQ in a clear markdown table with the following columns:
-| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) |
-
-**PRODUCT CATALOG SAMPLE:**
-{product_catalog_string}
-
-**AVIXA GUIDELINES:**
-{guidelines}
-
-Generate the BOQ now:
-"""
+    # Main content areas
+    tab1, tab2, tab3, tab4 = st.tabs(["Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
     
-    return prompt
+    with tab1:
+        room_area, ceiling_height = create_room_calculator()
+    
+    with tab2:
+        features = st.text_area(
+            "Specific Requirements & Features:",
+            placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified, recording capability'",
+            height=100
+        )
+        
+        technical_reqs = create_advanced_requirements()
+    
+    with tab3:
+        st.subheader("BOQ Generation")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            if st.button("Generate Professional BOQ", type="primary", use_container_width=True):
+                # This function now saves results to session_state instead of directly displaying them.
+                generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
+                             technical_reqs, room_area)
+        
+        with col2:
+            st.markdown("**Product Stats:**")
+            st.metric("Total Products", len(product_df))
+            st.metric("Brands", product_df['brand'].nunique())
+            if 'price' in product_df.columns:
+                try:
+                    # Convert price column to numeric, handling errors
+                    numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
+                    valid_prices = numeric_prices[numeric_prices > 0]
+                    avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
+                    
+                    if avg_price_usd and not pd.isna(avg_price_usd):
+                        # Get currency preference from session state
+                        display_currency = st.session_state.get('currency', 'USD')
+                        
+                        if display_currency == "INR":
+                            avg_price_inr = convert_currency(avg_price_usd, "INR")
+                            st.metric("Avg Price", format_currency(avg_price_inr, "INR"))
+                        else:
+                            st.metric("Avg Price", format_currency(avg_price_usd, "USD"))
+                    else:
+                        st.metric("Avg Price", "N/A")
+                except Exception:
+                    st.metric("Avg Price", "N/A")
+        
+        # SOLVED: Display results from session_state. This ensures they persist on reruns.
+        if st.session_state.boq_content or st.session_state.boq_items:
+            st.markdown("---")
+            display_boq_results(
+                st.session_state.boq_content,
+                st.session_state.validation_results,
+                project_id,
+                quote_valid_days
+            )
+            
+    with tab4:
+        create_3d_visualization()
+
 
 # Run the application
 if __name__ == "__main__":
