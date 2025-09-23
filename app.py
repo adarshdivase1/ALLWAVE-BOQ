@@ -1360,8 +1360,7 @@ def create_enhanced_prompt(product_df, guidelines, room_type, budget_tier, featu
     
     room_spec = ROOM_SPECS[room_type]
     # Provide a sample of the catalog instead of the full CSV to avoid overly large prompts
-    def intelligent_product_selection(requirements, product_df, limit=50):
-        
+    product_catalog_string = product_df.head(100).to_csv(index=False) 
     
     prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years experience. Create a production-ready BOQ.
