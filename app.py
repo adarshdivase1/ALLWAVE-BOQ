@@ -259,11 +259,9 @@ def create_project_header():
         st.caption("Production-ready Bill of Quantities with technical validation")
     
     with col2:
-        # FIXED: Added a unique key to prevent duplicate element ID error
         project_id = st.text_input("Project ID", value=f"AVP-{datetime.now().strftime('%Y%m%d')}", key="project_id_input")
     
     with col3:
-        # FIXED: Added a unique key to prevent duplicate element ID error
         quote_valid_days = st.number_input("Quote Valid (Days)", min_value=15, max_value=90, value=30, key="quote_days_input")
     
     return project_id, quote_valid_days
@@ -275,7 +273,6 @@ def create_room_calculator():
     col1, col2 = st.columns(2)
     
     with col1:
-        # FIXED: Added a unique key to all number inputs
         room_length = st.number_input("Room Length (ft)", min_value=8.0, max_value=50.0, value=16.0, key="room_length_input")
         room_width = st.number_input("Room Width (ft)", min_value=6.0, max_value=30.0, value=12.0, key="room_width_input")
         ceiling_height = st.number_input("Ceiling Height (ft)", min_value=8.0, max_value=20.0, value=9.0, key="ceiling_height_input")
@@ -306,20 +303,18 @@ def create_advanced_requirements():
     
     with col1:
         st.write("**Infrastructure**")
-        # FIXED: Added a unique key to all widgets
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available", key="dedicated_circuit_checkbox")
         network_capability = st.selectbox("Network Infrastructure", 
-                                         ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
+                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                         ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
-        # FIXED: Added a unique key to all widgets
         ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
         security_clearance = st.selectbox("Security Level", 
-                                         ["Standard", "Restricted", "Classified"], key="security_clearance_select")
+                                          ["Standard", "Restricted", "Classified"], key="security_clearance_select")
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -476,7 +471,7 @@ def normalize_category(category_text, product_name):
 
 def update_boq_content_with_current_items():
     """Update the BOQ content in session state to reflect current items."""
-    if not st.session_state.boq_items:
+    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
         return
     
     # Generate updated BOQ content from current items
@@ -507,7 +502,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     """Display BOQ results with interactive editing capabilities."""
     
     # Show current BOQ item count at the top
-    item_count = len(st.session_state.boq_items) if st.session_state.boq_items else 0
+    item_count = len(st.session_state.boq_items) if 'boq_items' in st.session_state else 0
     st.subheader(f"Generated Bill of Quantities ({item_count} items)")
     
     # Show validation results first
@@ -528,7 +523,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         st.info("No BOQ content generated yet. Use the interactive editor below to add items manually.")
     
     # Show current total if items exist
-    if st.session_state.boq_items:
+    if 'boq_items' in st.session_state and st.session_state.boq_items:
         # Get currency preference
         currency = st.session_state.get('currency', 'USD')
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
@@ -547,7 +542,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     col1, col2 = st.columns(2)
     
     with col1:
-        if boq_content and st.session_state.boq_items:
+        if boq_content and 'boq_items' in st.session_state and st.session_state.boq_items:
             # Generate Markdown/PDF-ready content
             doc_content = generate_professional_boq_document(
                 {'design_summary': boq_content.split('---')[0] if '---' in boq_content else boq_content[:200]}, 
@@ -566,7 +561,7 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
             st.button("Download BOQ (Markdown)", disabled=True, help="Generate a BOQ first")
     
     with col2:
-        if st.session_state.boq_items:
+        if 'boq_items' in st.session_state and st.session_state.boq_items:
             # Generate CSV for further processing
             df_to_download = pd.DataFrame(st.session_state.boq_items)
             # Ensure price and quantity are numeric for calculation
@@ -589,14 +584,14 @@ def create_interactive_boq_editor(product_df):
     st.subheader("Interactive BOQ Editor")
     
     # Real-time status indicator
-    item_count = len(st.session_state.boq_items) if st.session_state.boq_items else 0
+    item_count = len(st.session_state.boq_items) if 'boq_items' in st.session_state else 0
     col_status1, col_status2, col_status3 = st.columns(3)
     
     with col_status1:
         st.metric("Items in BOQ", item_count)
     
     with col_status2:
-        if st.session_state.boq_items:
+        if 'boq_items' in st.session_state and st.session_state.boq_items:
             total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
             currency = st.session_state.get('currency', 'USD')
             if currency == 'INR':
@@ -641,7 +636,6 @@ def add_products_interface(product_df, currency):
     with col1:
         # Category filter
         categories = ['All'] + sorted(list(product_df['category'].unique())) if 'category' in product_df.columns else ['All']
-        # FIXED: Added key
         selected_category = st.selectbox("Filter by Category", categories, key="add_category_filter")
         
         # Filter products
@@ -653,7 +647,6 @@ def add_products_interface(product_df, currency):
         # Product selection
         product_options = [f"{row['brand']} - {row['name']}" for _, row in filtered_df.iterrows()]
         if product_options:
-            # FIXED: Added key
             selected_product_str = st.selectbox("Select Product", product_options, key="add_product_select")
             
             # Find selected product
@@ -668,7 +661,6 @@ def add_products_interface(product_df, currency):
     
     with col2:
         if 'selected_product' in locals() and selected_product is not None:
-            # FIXED: Added key
             quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
             
             # Display price in selected currency
@@ -708,7 +700,6 @@ def product_search_interface(product_df, currency):
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # FIXED: Added key
         search_term = st.text_input("Search products...", placeholder="Enter product name, brand, or features", key="search_term_input")
         
         if search_term:
@@ -764,11 +755,11 @@ def product_search_interface(product_df, currency):
                             st.success(f"Added {add_qty}x {product['name']} to BOQ!")
                             st.rerun()
 
-# --- ORIGINAL FUNCTIONS (UNCHANGED) ---
+# --- CORRECTED/ORIGINAL FUNCTIONS ---
 
 def edit_current_boq(currency):
     """Interface for editing current BOQ items."""
-    if not st.session_state.boq_items:
+    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
         st.info("No BOQ items loaded. Generate a BOQ first or add products manually.")
         return
     
@@ -777,11 +768,15 @@ def edit_current_boq(currency):
     # Create editable table
     items_to_remove = []
     for i, item in enumerate(st.session_state.boq_items):
-        with st.expander(f"{item.get('category', 'General')} - {item.get('name', 'Unknown')[:50]}...", key=f"expander_{i}"):
+        # SOLVED: Explicitly cast item name and category to string to prevent TypeError on slice
+        category_str = str(item.get('category', 'General'))
+        name_str = str(item.get('name', 'Unknown'))
+        
+        with st.expander(f"{category_str} - {name_str[:50]}...", key=f"expander_{i}"):
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
             
             with col1:
-                # FIXED: Ensure keys are unique using the index 'i'
+                # Ensure keys are unique using the index 'i'
                 new_name = st.text_input(f"Product Name", value=item.get('name', ''), key=f"name_{i}")
                 new_brand = st.text_input(f"Brand", value=item.get('brand', ''), key=f"brand_{i}")
             
@@ -836,7 +831,7 @@ def edit_current_boq(currency):
                 
                 # Convert back to USD if needed for storage
                 if currency == 'INR':
-                    stored_price = new_price / get_usd_to_inr_rate()
+                    stored_price = new_price / get_usd_to_inr_rate() if get_usd_to_inr_rate() != 0 else 0
                 else:
                     stored_price = new_price
             
@@ -867,14 +862,14 @@ def edit_current_boq(currency):
         st.rerun()
 
     # Summary
-    if st.session_state.boq_items:
+    if 'boq_items' in st.session_state and st.session_state.boq_items:
         st.markdown("---")
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
         if currency == 'INR':
             display_total = convert_currency(total_cost, 'INR')
-            st.markdown(f"### **Total Project Cost: {format_currency(display_total, 'INR')}**")
+            st.markdown(f"### **Total Project Cost: {format_currency(display_total * 1.30, 'INR')}**")
         else:
-            st.markdown(f"### **Total Project Cost: {format_currency(total_cost, 'USD')}**")
+            st.markdown(f"### **Total Project Cost: {format_currency(total_cost * 1.30, 'USD')}**")
 
 # --- FIXED UTILITY FUNCTIONS FOR VISUALIZATION ---
 
@@ -962,9 +957,9 @@ def get_equipment_specs(equipment_type, product_name=""):
     
     return base_spec
 
-# --- UPDATED 3D VISUALIZATION FUNCTION ---
+# --- CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
-    """Create an interactive, realistic 3D room visualization - ENHANCED VERSION."""
+    """Create an interactive, realistic 3D room visualization - CORRECTED VERSION."""
     st.subheader("3D Room Visualization")
     
     equipment_data = st.session_state.get('boq_items', [])
@@ -1012,7 +1007,7 @@ def create_3d_visualization():
     # Display summary
     st.info(f"Visualizing {len(js_equipment)} equipment instances from BOQ")
     
-    # FIXED: Escaped all single curly braces within the f-string's embedded JavaScript
+    # SOLVED: Correctly escaped all literal curly braces in the f-string.
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1221,7 +1216,6 @@ def create_3d_visualization():
                         break;
                     case 'cable':
                         materialOptions.color = 0x222255;
-                        # Create a curved cable representation
                         const curve = new THREE.QuadraticBezierCurve3(
                             new THREE.Vector3(-toUnits(size[2]/2), 0, 0),
                             new THREE.Vector3(0, toUnits(size[1]), 0),
@@ -1236,7 +1230,6 @@ def create_3d_visualization():
                         break;
                 }}
 
-                # Create default geometry if no specific type was handled
                 if (group.children.length === 0) {{
                     const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
                     group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions)));
@@ -1252,7 +1245,6 @@ def create_3d_visualization():
                 return group;
             }}
 
-            # ENHANCED POSITIONING LOGIC WITH NEW EQUIPMENT TYPES
             function getSmartPosition(type, instanceIndex, size, quantity) {{
                 let x_ft = 0, y_ft = 0, z_ft = 0, rotation = 0;
                 const spacing_ft = Math.max(size[0] + 0.5, 1.0);
@@ -1266,7 +1258,6 @@ def create_3d_visualization():
                     y_ft = {room_height} - 0.5;
                     z_ft = -{room_width} / 2 + 1;
                 }} else if (type === 'audio_speaker') {{
-                    // Ceiling mounted pendant speakers
                     const positions = [
                         [-{room_length}/4, {room_height} - 0.5, -{room_width}/4],
                         [{room_length}/4, {room_height} - 0.5, -{room_width}/4],
@@ -1276,22 +1267,18 @@ def create_3d_visualization():
                     const pos_idx = instanceIndex % positions.length;
                     [x_ft, y_ft, z_ft] = positions[pos_idx];
                 }} else if (type === 'audio_microphone') {{
-                    // Table-mounted microphones
                     x_ft = -3 + (instanceIndex * 6);
                     y_ft = 2.6;
                     z_ft = 0;
                 }} else if (type === 'network_switch') {{
-                    // Rack or wall mounted
                     x_ft = -{room_length} / 2 + 1;
                     y_ft = 5 + (instanceIndex * (size[1] + 0.1));
                     z_ft = {room_width} / 2 - 2;
                 }} else if (type === 'network_device' || type === 'charging_station') {{
-                    // Wall or table mounted
                     x_ft = -{room_length} / 3 + (instanceIndex * 3);
                     y_ft = 4;
                     z_ft = {room_width} / 2 - 1;
                 }} else if (type === 'control_panel') {{
-                    // Wall or table mounted control panels
                     x_ft = -2 + (instanceIndex * 4);
                     y_ft = 3;
                     z_ft = -{room_width} / 2 + 0.5;
@@ -1309,12 +1296,10 @@ def create_3d_visualization():
                     y_ft = (instanceIndex % 2 === 0) ? 0.1 : {room_height} - 0.1;
                     z_ft = -{room_width} / 4;
                 }} else if (type === 'power') {{
-                    // Power equipment near walls
                     x_ft = -{room_length} / 2 + 2;
                     y_ft = size[1] / 2;
                     z_ft = -{room_width} / 2 + (instanceIndex * 2);
                 }} else {{
-                    // Default positioning for other items
                     const items_per_row = 3;
                     const row = Math.floor(instanceIndex / items_per_row);
                     const col = instanceIndex % items_per_row;
@@ -1365,9 +1350,9 @@ def create_3d_visualization():
                     const instanceText = item.original_quantity > 1 ? ` (${{item.instance}}/${{item.original_quantity}})` : '';
                     const typeDisplay = item.type.replace('_', ' ').replace(/\\b\\w/g, l => l.toUpperCase());
                     listHtml += `<div class="equipment-item" id="list-item-${{item.id}}" onclick="highlightObjectById(${{item.id}})">
-                                             <div class="equipment-name">${{item.name}}${{instanceText}}</div>
-                                             <div class="equipment-details">${{item.brand}} - ${{typeDisplay}}</div>
-                                           </div>`;
+                                        <div class="equipment-name">${{item.name}}${{instanceText}}</div>
+                                        <div class="equipment-details">${{item.brand}} - ${{typeDisplay}}</div>
+                                   </div>`;
                 }});
                 listContainer.innerHTML = listHtml;
             }}
@@ -1415,7 +1400,6 @@ def create_3d_visualization():
                             y: e.clientY - previousMousePosition.y
                         }};
 
-                        // Rotate camera around the center of the room
                         const spherical = new THREE.Spherical();
                         spherical.setFromVector3(camera.position);
                         spherical.theta -= deltaMove.x * rotationSpeed;
@@ -1437,7 +1421,6 @@ def create_3d_visualization():
                     const zoomFactor = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
                     camera.position.multiplyScalar(zoomFactor);
                     
-                    // Constrain zoom limits
                     const distance = camera.position.length();
                     if (distance < toUnits(5)) {{
                         camera.position.normalize().multiplyScalar(toUnits(5));
@@ -1462,8 +1445,6 @@ def create_3d_visualization():
             }}
 
             window.addEventListener('resize', handleResize);
-
-            // Initialize the 3D visualization
             init();
         </script>
     </body>
@@ -1476,7 +1457,7 @@ def create_3d_visualization():
 
 # --- Main Application ---
 def main():
-    # SOLVED: Initialize session state for all generated content to prevent it from disappearing on rerun.
+    # Initialize session state for all generated content
     if 'boq_items' not in st.session_state:
         st.session_state.boq_items = []
     if 'boq_content' not in st.session_state:
@@ -1509,12 +1490,11 @@ def main():
     with st.sidebar:
         st.header("Project Configuration")
         
-        # FIXED: Added keys to all sidebar widgets
         client_name = st.text_input("Client Name", value="", key="client_name_input")
         project_name = st.text_input("Project Name", value="", key="project_name_input")
         
         # Currency selection
-        currency = st.selectbox("Currency", ["USD", "INR"], index=1 if "India" in st.session_state.get('user_location', 'India') else 0, key="currency_select")
+        currency = st.selectbox("Currency", ["USD", "INR"], index=1, key="currency_select")
         st.session_state['currency'] = currency  # Store in session state
         
         st.markdown("---")
@@ -1543,13 +1523,12 @@ def main():
     with tab1:
         room_area, ceiling_height = create_room_calculator()
         # Store room dimensions in session state for the visualizer
-        st.session_state.room_length = st.session_state.room_length_input
-        st.session_state.room_width = st.session_state.room_width_input
-        st.session_state.room_height = st.session_state.ceiling_height_input
+        st.session_state.room_length = st.session_state.get('room_length_input', 16.0)
+        st.session_state.room_width = st.session_state.get('room_width_input', 12.0)
+        st.session_state.room_height = st.session_state.get('ceiling_height_input', 9.0)
 
 
     with tab2:
-        # FIXED: Added key
         features = st.text_area(
             "Specific Requirements & Features:",
             placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified, recording capability'",
@@ -1565,7 +1544,6 @@ def main():
         
         with col1:
             if st.button("Generate Professional BOQ", type="primary", use_container_width=True, key="generate_boq_button"):
-                # This function now saves results to session_state instead of directly displaying them.
                 generate_boq(model, product_df, guidelines, room_type, budget_tier, features, 
                              technical_reqs, room_area)
         
@@ -1575,13 +1553,11 @@ def main():
             st.metric("Brands", product_df['brand'].nunique())
             if 'price' in product_df.columns:
                 try:
-                    # Convert price column to numeric, handling errors
                     numeric_prices = pd.to_numeric(product_df['price'], errors='coerce')
                     valid_prices = numeric_prices[numeric_prices > 0]
                     avg_price_usd = valid_prices.mean() if len(valid_prices) > 0 else None
                     
                     if avg_price_usd and not pd.isna(avg_price_usd):
-                        # Get currency preference from session state
                         display_currency = st.session_state.get('currency', 'USD')
                         
                         if display_currency == "INR":
@@ -1594,7 +1570,7 @@ def main():
                 except Exception:
                     st.metric("Avg Price", "N/A")
         
-        # SOLVED: Display results from session_state. This ensures they persist on reruns.
+        # Display results from session_state.
         if st.session_state.boq_content or st.session_state.boq_items:
             st.markdown("---")
             display_boq_results(
@@ -1634,13 +1610,13 @@ def generate_boq(model, product_df, guidelines, room_type, budget_tier, features
                     boq_items, room_type, room_area
                 )
                 
-                # NEW: Add AI-powered AVIXA compliance validation
+                # Add AI-powered AVIXA compliance validation
                 avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
                 warnings.extend(avixa_warnings)
                 
                 validation_results = {"issues": issues, "warnings": warnings}
                 
-                # SOLVED: Store all generated content in session_state to persist across reruns.
+                # Store all generated content in session_state to persist across reruns.
                 st.session_state.boq_content = boq_content
                 st.session_state.boq_items = boq_items
                 st.session_state.validation_results = validation_results
