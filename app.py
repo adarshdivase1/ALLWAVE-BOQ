@@ -1059,7 +1059,7 @@ def get_equipment_specs(equipment_type, product_name=""):
 
 # --- FINAL CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
-    """Create an interactive, realistic 3D room visualization with auto-zoom functionality and improved furniture alignment."""
+    """Create an interactive, realistic 3D room visualization with auto-zoom functionality."""
     st.subheader("3D Room Visualization")
 
     equipment_data = st.session_state.get('boq_items', [])
@@ -1075,14 +1075,14 @@ def create_3d_visualization():
 
         if equipment_type == 'service':
             continue
-
+            
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
-
+        
         try:
             quantity = int(item.get('quantity', 1))
         except (ValueError, TypeError):
             quantity = 1
-
+            
         for i in range(quantity):
             js_equipment.append({
                 'id': len(js_equipment) + 1,
@@ -1103,8 +1103,9 @@ def create_3d_visualization():
     room_width = st.session_state.get('room_width_input', 16.0)
     room_height = st.session_state.get('ceiling_height_input', 9.0)
     room_type_str = st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)')
-
+    
     # IMPORTANT: All curly braces { and } in the CSS and JS below have been doubled to {{ and }}
+    # This is necessary to escape them inside a Python f-string.
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1236,19 +1237,6 @@ def create_3d_visualization():
                 leftWall.rotation.y = Math.PI/2;
                 leftWall.receiveShadow = true;
                 scene.add(leftWall);
-
-                // Add more walls if needed for realism
-                const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.width), wallHeight), wallMaterial);
-                rightWall.position.set(toUnits(roomDims.length/2), wallHeight/2, 0);
-                rightWall.rotation.y = -Math.PI/2;
-                rightWall.receiveShadow = true;
-                scene.add(rightWall);
-
-                const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.length), wallHeight), wallMaterial);
-                frontWall.position.set(0, wallHeight/2, toUnits(roomDims.width/2));
-                frontWall.rotation.y = Math.PI;
-                frontWall.receiveShadow = true;
-                scene.add(frontWall);
             }}
 
             function createLighting() {{
@@ -1264,71 +1252,67 @@ def create_3d_visualization():
             function createRoomFurniture() {{
                 const furnitureGroup = new THREE.Group();
                 const spec = getRoomSpecFromType(roomType);
-
+                
                 const tableMaterial = new THREE.MeshStandardMaterial({{ color: 0x4d3a2a, roughness: 0.6 }});
                 const chairMaterial = new THREE.MeshStandardMaterial({{ color: 0x222222, roughness: 0.5 }});
                 const whiteboardMaterial = new THREE.MeshStandardMaterial({{ color: 0xffffff, roughness: 0.1 }});
-
-                // Map room type to layout logic
-                if (roomType.includes("Huddle")) {{
-                    const size = roomType.includes("Small") ? "small" : "medium";
-                    createHuddleLayout(furnitureGroup, tableMaterial, chairMaterial, spec, size);
-                }} else if (
-                    roomType.includes("Conference") 
-                    || roomType.includes("Boardroom") 
-                    || roomType.includes("Telepresence")) {{
-                    const isExecutive = roomType.includes("Executive");
-                    createConferenceLayout(furnitureGroup, tableMaterial, chairMaterial, spec, isExecutive, roomType);
-                }} else if (roomType.includes("Training")) {{
-                    createTrainingLayout(furnitureGroup, tableMaterial, chairMaterial, whiteboardMaterial, spec, roomType);
-                }} else if (roomType.includes("Multipurpose")) {{
-                    createEventLayout(furnitureGroup, chairMaterial, spec);
-                }} else if (roomType.includes("Production Studio")) {{
-                    createStudioLayout(furnitureGroup, tableMaterial, chairMaterial, spec);
-                }} else {{
-                    // Default to conference layout
-                    createConferenceLayout(furnitureGroup, tableMaterial, chairMaterial, spec, false, roomType);
+                
+                const safeFurnitureSpec = {{
+                    ...spec,
+                    table_size: [
+                        Math.min(spec.table_size[0], roomDims.length - 6),
+                        Math.min(spec.table_size[1], roomDims.width - 6)
+                    ]
+                }};
+                
+                switch(spec.furniture_config) {{
+                    case 'small_huddle': createHuddleLayout(furnitureGroup, tableMaterial, chairMaterial, safeFurnitureSpec, 'small'); break;
+                    case 'medium_huddle': createHuddleLayout(furnitureGroup, tableMaterial, chairMaterial, safeFurnitureSpec, 'medium'); break;
+                    case 'standard_conference':
+                    case 'large_conference':
+                    case 'telepresence': createConferenceLayout(furnitureGroup, tableMaterial, chairMaterial, safeFurnitureSpec, false); break;
+                    case 'executive_boardroom': createConferenceLayout(furnitureGroup, tableMaterial, chairMaterial, safeFurnitureSpec, true); break;
+                    case 'training_room':
+                    case 'large_training': createTrainingLayout(furnitureGroup, tableMaterial, chairMaterial, whiteboardMaterial, safeFurnitureSpec); break;
+                    default: createConferenceLayout(furnitureGroup, tableMaterial, chairMaterial, safeFurnitureSpec, false);
                 }}
-
                 scene.add(furnitureGroup);
             }}
 
             function getRoomSpecFromType(rt) {{
                 const specs = {json.dumps(ROOM_SPECS)};
-                // Add default values if needed
                 return specs[rt] || specs['Standard Conference Room (6-8 People)'];
             }}
 
-            // Huddle Layout
             function createHuddleLayout(group, tableMaterial, chairMaterial, spec, size) {{
                 const tableRadiusFt = (size === 'small') ? 2.0 : 2.5;
                 const tableRadius = Math.min(toUnits(tableRadiusFt), toUnits(Math.min(roomDims.length, roomDims.width) / 4));
-                const table = createTable(tableRadius, tableRadius, toUnits(0.2), 12, tableMaterial);
+                
+                const table = createTable(tableRadius, tableRadius, toUnits(0.2), 8, tableMaterial);
                 table.position.y = toUnits(2.5);
                 group.add(table);
 
-                const chairOrbitRadius = tableRadius + toUnits(1.3);
-                const chairCount = spec.chair_count || 4;
+                const chairOrbitRadius = tableRadius + toUnits(1.5);
+                const chairCount = spec.chair_count;
                 for (let i = 0; i < chairCount; i++) {{
                     const chair = createChair(chairMaterial);
                     const angle = (i / chairCount) * Math.PI * 2;
                     chair.position.x = Math.cos(angle) * chairOrbitRadius;
                     chair.position.z = Math.sin(angle) * chairOrbitRadius;
-                    chair.rotation.y = angle + Math.PI;
+                    chair.rotation.y = angle + Math.PI; // Face the center
                     group.add(chair);
                 }}
             }}
 
-            // Conference Layout (Standard, Large, Executive, Telepresence)
-            function createConferenceLayout(group, tableMaterial, chairMaterial, spec, isExecutive, roomType) {{
-                // Table dimensions and center
+            function createConferenceLayout(group, tableMaterial, chairMaterial, spec, isExecutive) {{
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
+
                 const tableTop = new THREE.Mesh(new THREE.BoxGeometry(tableLength, toUnits(0.2), tableWidth), tableMaterial);
                 tableTop.position.y = toUnits(2.5);
+                tableTop.castShadow = true; tableTop.receiveShadow = true;
                 group.add(tableTop);
 
-                // Table legs (corners)
                 const legHeight = toUnits(2.4);
                 const legSize = toUnits(0.2);
                 const legPositions = [
@@ -1340,20 +1324,20 @@ def create_3d_visualization():
                 legPositions.forEach(pos => {{
                     const leg = new THREE.Mesh(new THREE.BoxGeometry(legSize, legHeight, legSize), tableMaterial);
                     leg.position.set(pos.x, legHeight/2, pos.z);
+                    leg.castShadow = true;
                     group.add(leg);
                 }});
 
-                // Place chairs evenly along sides and ends
-                const chairSpacing = toUnits(2.6);
+                const chairSpacing = toUnits(2.8);
                 const chairsPerSide = Math.floor((tableLength - toUnits(2)) / chairSpacing);
                 let chairsPlaced = 0;
-                const totalChairs = spec.chair_count || 8;
 
-                for (let side = 0; side < 2; side++) {{
-                    const zPos = (side === 0) ? tableWidth / 2 + toUnits(1.6) : -tableWidth / 2 - toUnits(1.6);
+                for(let side = 0; side < 2; side++) {{
+                    const zPos = (side === 0) ? tableWidth / 2 + toUnits(1.5) : -tableWidth / 2 - toUnits(1.5);
                     const rotation = (side === 0) ? Math.PI : 0;
-                    for (let i = 0; i < chairsPerSide && chairsPlaced < totalChairs; i++) {{
-                        const xPos = -tableLength / 2 + toUnits(1.2) + i * chairSpacing;
+                    for(let i = 0; i < chairsPerSide; i++) {{
+                        if (chairsPlaced >= spec.chair_count) break;
+                        const xPos = -tableLength/2 + toUnits(1.5) + i * chairSpacing;
                         const chair = isExecutive ? createExecutiveChair(chairMaterial) : createChair(chairMaterial);
                         chair.position.set(xPos, 0, zPos);
                         chair.rotation.y = rotation;
@@ -1361,114 +1345,65 @@ def create_3d_visualization():
                         chairsPlaced++;
                     }}
                 }}
-                // Head/foot of table for remaining chairs
-                if (chairsPlaced < totalChairs) {{
+                
+                if (chairsPlaced < spec.chair_count) {{
                     const chair = isExecutive ? createExecutiveChair(chairMaterial) : createChair(chairMaterial);
                     chair.position.set(tableLength / 2 + toUnits(2.0), 0, 0);
                     chair.rotation.y = -Math.PI / 2;
                     group.add(chair);
                     chairsPlaced++;
                 }}
-                if (chairsPlaced < totalChairs) {{
+                 if (chairsPlaced < spec.chair_count) {{
                     const chair = isExecutive ? createExecutiveChair(chairMaterial) : createChair(chairMaterial);
                     chair.position.set(-tableLength / 2 - toUnits(2.0), 0, 0);
                     chair.rotation.y = Math.PI / 2;
                     group.add(chair);
                     chairsPlaced++;
                 }}
-
-                // Telepresence: Semi-circular arrangement facing the front wall
-                if (roomType.includes("Telepresence")) {{
-                    // Optionally adjust table/chair positions for telepresence
-                    // (e.g., move table/chairs toward front wall, semi-circular)
-                }}
             }}
 
-            // Training Layout
-            function createTrainingLayout(group, tableMaterial, chairMaterial, whiteboardMaterial, spec, roomType) {{
-                // Whiteboard at front
+            function createTrainingLayout(group, tableMaterial, chairMaterial, whiteboardMaterial, spec) {{
                 const whiteboard = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(10), toUnits(4)), whiteboardMaterial);
                 whiteboard.position.set(0, toUnits(5), -toUnits(roomDims.width / 2) + toUnits(0.1));
                 group.add(whiteboard);
-
-                // Desks and chairs in rows
-                const chairCount = spec.chair_count || 20;
-                const seatsPerRow = spec.seats_per_row || 6;
-                const rowSpacing = toUnits(4.2);
-                const seatSpacing = toUnits(3.5);
-                const startZ = -toUnits(roomDims.width / 2) + toUnits(8);
-                const numRows = Math.ceil(chairCount / seatsPerRow);
-
-                let chairsPlaced = 0;
-                for (let r = 0; r < numRows; r++) {{
-                    const seatsThisRow = Math.min(seatsPerRow, chairCount - chairsPlaced);
-                    const rowWidth = (seatsThisRow - 1) * seatSpacing;
-                    const rowZ = startZ + r * rowSpacing;
-                    for (let s = 0; s < seatsThisRow; s++) {{
-                        const chair = createChair(chairMaterial);
-                        const xPos = -rowWidth / 2 + s * seatSpacing;
-                        chair.position.set(xPos, 0, rowZ);
-                        chair.rotation.y = Math.PI;
-                        group.add(chair);
-                        chairsPlaced++;
-                    }}
-                }}
-
-                // Instructor table
+                
                 const presTable = createTable(toUnits(5), toUnits(2.5), toUnits(0.2), 4, tableMaterial);
                 presTable.position.set(0, toUnits(2.5), -toUnits(roomDims.width/2) + toUnits(4));
                 group.add(presTable);
-            }}
 
-            // Multipurpose/Event Layout
-            function createEventLayout(group, chairMaterial, spec) {{
-                // Open rows of chairs, flexible setup
-                const chairCount = spec.chair_count || 40;
-                const seatsPerRow = spec.seats_per_row || 10;
-                const rowSpacing = toUnits(3.8);
-                const seatSpacing = toUnits(3.2);
-                const startZ = -toUnits(roomDims.width / 2) + toUnits(8);
-                const numRows = Math.ceil(chairCount / seatsPerRow);
+                const chairCount = spec.chair_count;
+                const rowSpacing = toUnits(4);
+                const seatSpacing = toUnits(3.5);
+                const startZ = -toUnits(roomDims.width/2) + toUnits(8);
+                const maxSeatsPerRow = Math.floor((roomDims.length - toUnits(4)) / seatSpacing);
+                const numRows = Math.ceil(chairCount / maxSeatsPerRow);
+
                 let chairsPlaced = 0;
-                for (let r = 0; r < numRows; r++) {{
-                    const seatsThisRow = Math.min(seatsPerRow, chairCount - chairsPlaced);
-                    const rowWidth = (seatsThisRow - 1) * seatSpacing;
-                    for (let s = 0; s < seatsThisRow; s++) {{
+                for(let r = 0; r < numRows; r++) {{
+                    const seatsInThisRow = Math.min(maxSeatsPerRow, chairCount - chairsPlaced);
+                    const rowWidth = (seatsInThisRow - 1) * seatSpacing;
+                    for(let s = 0; s < seatsInThisRow; s++) {{
                         const chair = createChair(chairMaterial);
-                        const xPos = -rowWidth / 2 + s * seatSpacing;
-                        const rowZ = startZ + r * rowSpacing;
-                        chair.position.set(xPos, 0, rowZ);
+                        const xPos = -rowWidth/2 + s * seatSpacing;
+                        const zPos = startZ + r * rowSpacing;
+                        chair.position.set(toUnits(xPos), 0, zPos);
                         chair.rotation.y = Math.PI;
                         group.add(chair);
                         chairsPlaced++;
                     }}
                 }}
             }}
-
-            // Video Production Studio Layout
-            function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
-                // Minimal furniture; add a table and a few chairs
-                const table = createTable(toUnits(5), toUnits(2.5), toUnits(0.2), 4, tableMaterial);
-                table.position.set(0, toUnits(2.5), 0);
-                group.add(table);
-
-                for (let i = 0; i < 3; i++) {{
-                    const chair = createChair(chairMaterial);
-                    chair.position.set(-toUnits(3) + i * toUnits(3), 0, toUnits(4));
-                    chair.rotation.y = Math.PI / 2;
-                    group.add(chair);
-                }}
-            }}
-
-            // Chair, Table, Executive Chair Functions
+            
             function createChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(0.2), toUnits(1.5)), material);
                 seat.position.y = toUnits(1.5);
+                seat.castShadow = true;
                 chair.add(seat);
-
+                
                 const back = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(2), toUnits(0.2)), material);
                 back.position.set(0, toUnits(2.5), toUnits(-0.65));
+                back.castShadow = true;
                 chair.add(back);
                 return chair;
             }}
@@ -1477,41 +1412,435 @@ def create_3d_visualization():
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.8), toUnits(0.3), toUnits(1.8)), material);
                 seat.position.y = toUnits(1.6);
+                seat.castShadow = true;
                 chair.add(seat);
-
+                
                 const back = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.8), toUnits(2.5), toUnits(0.3)), material);
                 back.position.set(0, toUnits(2.8), toUnits(-0.75));
+                back.castShadow = true;
                 chair.add(back);
                 return chair;
             }}
 
             function createTable(width, depth, height, segments, material) {{
-                // Round or oval table
                 const tableGroup = new THREE.Group();
                 const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(width, depth, height, segments), material);
+                tableTop.castShadow = true; tableTop.receiveShadow = true;
                 tableGroup.add(tableTop);
 
                 const legHeight = toUnits(2.4);
                 const leg = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.4, depth * 0.4, legHeight, segments), material);
                 leg.position.y = -legHeight/2;
+                leg.castShadow = true;
                 tableGroup.add(leg);
                 return tableGroup;
             }}
 
-            // The rest of your equipment object logic...
-            // ... [REMAINS UNCHANGED FROM YOUR ORIGINAL CODE] ...
-            // (createAllEquipmentObjects, createEquipmentObject, getSmartPosition, setupCameraControls, etc.)
+            function createAllEquipmentObjects() {{
+                avEquipment.forEach((equipment, index) => {{
+                    const equipmentObj = createEquipmentObject(equipment);
+                    if (equipmentObj) {{
+                        equipmentObj.userData = {{ equipment, index }};
+                        equipmentObj.name = `equipment_${{index}}`;
+                        scene.add(equipmentObj);
+                    }}
+                }});
+            }}
 
-            // [Include all your equipment visualizations and camera controls as in your original version]
-            
+            function createEquipmentObject(equipment) {{
+                const size = equipment.specs;
+                const materialOptions = {{ color: 0x333333, roughness: 0.5, metalness: 0.1 }};
+                const group = new THREE.Group();
+
+                switch(equipment.type) {{
+                    case 'display':
+                        materialOptions.color = 0x050505;
+                        materialOptions.roughness = 0.1;
+                        materialOptions.metalness = 0.5;
+                        const bezel = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), new THREE.MeshStandardMaterial(materialOptions));
+                        const screen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.9), toUnits(size[1]*0.9)), new THREE.MeshBasicMaterial({{color: 0x1a1a2e}}));
+                        screen.position.z = toUnits(size[2]/2 + 0.01);
+                        bezel.add(screen);
+                        group.add(bezel);
+                        break;
+                    case 'camera':
+                        materialOptions.color = 0x222222;
+                        const cameraBody = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(size[0]/3), toUnits(size[0]/2), toUnits(size[1]), 8), new THREE.MeshStandardMaterial(materialOptions));
+                        cameraBody.rotation.x = Math.PI/2;
+                        group.add(cameraBody);
+                        break;
+                    case 'network_switch':
+                        materialOptions.color = 0x444444;
+                        const switchBox = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), new THREE.MeshStandardMaterial(materialOptions));
+                        for(let i = 0; i < 8; i++) {{
+                            const led = new THREE.Mesh(new THREE.SphereGeometry(toUnits(0.02)), new THREE.MeshBasicMaterial({{color: 0x00ff00}}));
+                            led.position.set(toUnits(-size[0]/3 + i*0.1), toUnits(size[1]/2 + 0.01), toUnits(size[2]/4));
+                            switchBox.add(led);
+                        }}
+                        group.add(switchBox);
+                        break;
+                    case 'control_panel':
+                        const panel = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), new THREE.MeshStandardMaterial(materialOptions));
+                        const touchscreen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.8), toUnits(size[1]*0.8)), new THREE.MeshBasicMaterial({{color: 0x001122}}));
+                        touchscreen.position.z = toUnits(size[2]/2 + 0.01);
+                        panel.add(touchscreen);
+                        group.add(panel);
+                        break;
+                    case 'audio_microphone':
+                        const micBody = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(size[0]/2), toUnits(size[0]/2), toUnits(size[1]), 8), new THREE.MeshStandardMaterial(materialOptions));
+                        group.add(micBody);
+                        break;
+                    case 'cable':
+                         materialOptions.color = 0x222255;
+                         const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-toUnits(size[2]/2), 0, 0), new THREE.Vector3(0, toUnits(size[1]), 0), new THREE.Vector3(toUnits(size[2]/2), 0, 0));
+                         const tubeGeometry = new THREE.TubeGeometry(curve, 20, toUnits(size[0]/2), 8, false);
+                         group.add(new THREE.Mesh(tubeGeometry, new THREE.MeshStandardMaterial(materialOptions)));
+                         break;
+                    default:
+                        const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
+                        group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(materialOptions)));
+                }}
+
+                group.traverse(obj => {{ if(obj.isMesh) obj.castShadow = true; }});
+                const pos = getSmartPosition(equipment.type, equipment.instance - 1, size, equipment.original_quantity);
+                group.position.set(pos.x, pos.y, pos.z);
+                if (pos.rotation) group.rotation.y = pos.rotation;
+                
+                return group;
+            }}
+
+            function getSmartPosition(type, instanceIndex, size, quantity) {{
+                let x_ft = 0, y_ft = 0, z_ft = 0, rotation = 0;
+                const spacing_ft = Math.max(size[0] + 0.5, 1.0);
+
+                if (type === 'display') {{
+                    x_ft = -(quantity - 1) * spacing_ft / 2 + (instanceIndex * spacing_ft);
+                    y_ft = roomDims.height * 0.6;
+                    z_ft = -roomDims.width / 2 + 0.2;
+                }} else if (type === 'camera') {{
+                    x_ft = -(quantity - 1) * 4 / 2 + (instanceIndex * 4);
+                    y_ft = roomDims.height - 0.5;
+                    z_ft = -roomDims.width / 2 + 1;
+                }} else if (type === 'audio_speaker') {{
+                    const positions = [
+                        [-roomDims.length/4, roomDims.height - 0.5, -roomDims.width/4],
+                        [roomDims.length/4, roomDims.height - 0.5, -roomDims.width/4],
+                        [-roomDims.length/4, roomDims.height - 0.5, roomDims.width/4],
+                        [roomDims.length/4, roomDims.height - 0.5, roomDims.width/4]
+                    ];
+                    [x_ft, y_ft, z_ft] = positions[instanceIndex % positions.length];
+                }} else if (type === 'audio_microphone') {{
+                    x_ft = -3 + (instanceIndex * 6);
+                    y_ft = 2.6;
+                    z_ft = 0;
+                }} else if (type === 'network_switch') {{
+                    x_ft = -roomDims.length / 2 + 1;
+                    y_ft = 5 + (instanceIndex * (size[1] + 0.1));
+                    z_ft = roomDims.width / 2 - 2;
+                }} else if (type === 'control_panel') {{
+                    x_ft = -2 + (instanceIndex * 4);
+                    y_ft = 3;
+                    z_ft = -roomDims.width / 2 + 0.5;
+                }} else {{
+                    const row = Math.floor(instanceIndex / 3);
+                    const col = instanceIndex % 3;
+                    x_ft = -roomDims.length / 3 + (col * spacing_ft);
+                    y_ft = size[1] / 2 + (row * (size[1] + 0.2));
+                    z_ft = roomDims.width / 3;
+                }}
+                return {{ x: toUnits(x_ft), y: toUnits(y_ft), z: toUnits(z_ft), rotation }};
+            }}
+
+            function setupCameraControls() {{
+                let isDragging = false;
+                let previousMousePosition = {{ x: 0, y: 0 }};
+                const container = document.getElementById('container');
+                
+                container.addEventListener('mousedown', (event) => {{
+                    isDragging = false;
+                    previousMousePosition = {{ x: event.clientX, y: event.clientY }};
+                }});
+                
+                container.addEventListener('mousemove', (event) => {{
+                    if (event.buttons === 0) return;
+                    isDragging = true;
+                    const deltaMove = {{
+                        x: event.clientX - previousMousePosition.x,
+                        y: event.clientY - previousMousePosition.y
+                    }};
+                    
+                    const spherical = new THREE.Spherical();
+                    spherical.setFromVector3(camera.position);
+
+                    spherical.theta -= deltaMove.x * 0.005;
+                    spherical.phi -= deltaMove.y * 0.005;
+
+                    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+                    camera.position.setFromSpherical(spherical);
+                    camera.lookAt(0, toUnits(roomDims.height / 4), 0);
+                    
+                    previousMousePosition = {{ x: event.clientX, y: event.clientY }};
+                }});
+                
+                container.addEventListener('click', (event) => {{
+                    if (isDragging) return;
+
+                    const rect = container.getBoundingClientRect();
+                    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                    
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(scene.children, true);
+                    
+                    if (intersects.length > 0) {{
+                        let equipmentObj = intersects[0].object;
+                        
+                        while (equipmentObj && !equipmentObj.userData?.equipment) {{
+                            equipmentObj = equipmentObj.parent;
+                        }}
+                        
+                        if (equipmentObj && equipmentObj.userData?.equipment) {{
+                            selectEquipment(equipmentObj);
+                        }}
+                    }} else {{
+                        deselectEquipment();
+                    }}
+                }});
+                
+                container.addEventListener('wheel', (event) => {{
+                    event.preventDefault();
+                    const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
+                    const newDistance = camera.position.length() * zoomFactor;
+                    
+                    const minDistance = toUnits(8);
+                    const maxDistance = toUnits(80);
+                    const clampedDistance = Math.max(minDistance, Math.min(maxDistance, newDistance));
+                    
+                    const direction = camera.position.clone().normalize();
+                    camera.position.copy(direction.multiplyScalar(clampedDistance));
+                }});
+            }}
+
+            function selectEquipment(equipmentObj) {{
+                if (selectedObject) {{
+                    resetObjectMaterial(selectedObject);
+                }}
+                
+                selectedObject = equipmentObj;
+                const equipment = equipmentObj.userData.equipment;
+                
+                highlightObject(equipmentObj);
+                
+                updateSelectedItemInfo(equipment);
+                updateEquipmentListSelection(equipment.id);
+                
+                zoomToObject(equipmentObj);
+            }}
+
+            function deselectEquipment() {{
+                if (selectedObject) {{
+                    resetObjectMaterial(selectedObject);
+                    selectedObject = null;
+                }}
+                
+                document.getElementById('selectedItemInfo').innerHTML = '<strong>Click an object or list item for details</strong>';
+                updateEquipmentListSelection(null);
+            }}
+
+            function highlightObject(obj) {{
+                obj.traverse((child) => {{
+                    if (child.isMesh) {{
+                        if (!child.userData.originalMaterial) {{
+                            child.userData.originalMaterial = child.material.clone();
+                        }}
+                        child.material = new THREE.MeshStandardMaterial({{
+                            color: 0x4FC3F7,
+                            roughness: 0.3,
+                            metalness: 0.1,
+                            emissive: 0x002244
+                        }});
+                    }}
+                }});
+            }}
+
+            function resetObjectMaterial(obj) {{
+                obj.traverse((child) => {{
+                    if (child.isMesh && child.userData.originalMaterial) {{
+                        child.material = child.userData.originalMaterial;
+                    }}
+                }});
+            }}
+
+            function updateSelectedItemInfo(equipment) {{
+                const info = document.getElementById('selectedItemInfo');
+                const specs = equipment.specs;
+                const priceFormatted = new Intl.NumberFormat('en-US', {{
+                    style: 'currency',
+                    currency: 'USD'
+                }}).format(equipment.price);
+
+                info.innerHTML = `
+                    <div style="color: #4FC3F7; font-weight: bold; font-size: 14px; margin-bottom: 5px;">
+                        ${{equipment.name}}
+                    </div>
+                    <div style="color: #ccc; font-size: 12px; margin-bottom: 8px;">
+                        Brand: ${{equipment.brand}} | ${{priceFormatted}}
+                    </div>
+                    <div style="color: #aaa; font-size: 11px;">
+                        ${{specs[0].toFixed(1)}}'W × ${{specs[1].toFixed(1)}}'H × ${{specs[2].toFixed(1)}}'D
+                        ${{equipment.original_quantity > 1 ? `<br>Instance ${{equipment.instance}} of ${{equipment.original_quantity}}` : ''}}
+                    </div>
+                `;
+            }}
+
+            function updateEquipmentListSelection(selectedId) {{
+                const items = document.querySelectorAll('.equipment-item');
+                items.forEach(item => {{
+                    item.classList.remove('selected-item');
+                    if (selectedId && item.dataset.equipmentId == selectedId) {{
+                        item.classList.add('selected-item');
+                        item.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                    }}
+                }});
+            }}
+
+            function updateEquipmentList() {{
+                const listContainer = document.getElementById('equipmentList');
+                listContainer.innerHTML = '';
+
+                avEquipment.forEach((equipment, index) => {{
+                    const item = document.createElement('div');
+                    item.className = 'equipment-item';
+                    item.dataset.equipmentId = equipment.id;
+                    
+                    const priceFormatted = new Intl.NumberFormat('en-US', {{
+                        style: 'currency',
+                        currency: 'USD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    }}).format(equipment.price);
+
+                    item.innerHTML = `
+                        <div class="equipment-name">${{equipment.name}}</div>
+                        <div class="equipment-details">
+                            ${{equipment.brand}} | ${{priceFormatted}}
+                            ${{equipment.original_quantity > 1 ? ` | #${{equipment.instance}}` : ''}}
+                        </div>
+                    `;
+                    
+                    item.addEventListener('click', () => {{
+                        const equipmentObj = scene.getObjectByName(`equipment_${{index}}`);
+                        if (equipmentObj) {{
+                            selectEquipment(equipmentObj);
+                        }}
+                    }});
+                    
+                    listContainer.appendChild(item);
+                }});
+            }}
+
+            function zoomToObject(obj) {{
+                const box = new THREE.Box3().setFromObject(obj);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 3.5;
+                
+                const direction = new THREE.Vector3(0, 0, 1);
+                direction.applyQuaternion(camera.quaternion);
+
+                const targetPosition = center.clone().add(direction.multiplyScalar(-cameraZ));
+                
+                animateCamera(targetPosition, center);
+            }}
+
+            function animateCamera(targetPosition, lookAtTarget) {{
+                const startPosition = camera.position.clone();
+                const startTime = Date.now();
+                const duration = 750;
+
+                function animate() {{
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    
+                    camera.position.lerpVectors(startPosition, targetPosition, eased);
+                    camera.lookAt(lookAtTarget || new THREE.Vector3(0, toUnits(roomDims.height/4), 0));
+                    
+                    if (progress < 1) {{
+                        requestAnimationFrame(animate);
+                    }}
+                }}
+                animate();
+            }}
+
+            function setView(viewType, animate = true, element) {{
+                const controls = document.querySelectorAll('.control-btn');
+                controls.forEach(btn => btn.classList.remove('active'));
+                element?.classList.add('active');
+                
+                let targetPosition, lookAt;
+                const roomCenter = new THREE.Vector3(0, toUnits(roomDims.height/4), 0);
+                
+                switch(viewType) {{
+                    case 'overview':
+                        targetPosition = new THREE.Vector3(toUnits(roomDims.length * 0.6), toUnits(roomDims.height * 0.8), toUnits(roomDims.width * 0.8));
+                        lookAt = roomCenter;
+                        break;
+                    case 'front':
+                        targetPosition = new THREE.Vector3(0, toUnits(roomDims.height/2), toUnits(roomDims.width/2 + 10));
+                        lookAt = roomCenter;
+                        break;
+                    case 'side':
+                        targetPosition = new THREE.Vector3(toUnits(roomDims.length/2 + 10), toUnits(roomDims.height/2), 0);
+                        lookAt = roomCenter;
+                        break;
+                    case 'top':
+                        targetPosition = new THREE.Vector3(0.01, toUnits(roomDims.height + 15), 0);
+                        lookAt = new THREE.Vector3(0, 0, 0);
+                        break;
+                    default:
+                        return;
+                }}
+                
+                if (animate) {{
+                    animateCamera(targetPosition, lookAt);
+                }} else {{
+                    camera.position.copy(targetPosition);
+                    camera.lookAt(lookAt);
+                }}
+            }}
+
+            function zoomToSelected() {{
+                if (selectedObject) {{
+                    zoomToObject(selectedObject);
+                }}
+            }}
+
+            function animate() {{
+                animationId = requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }}
+
+            function handleResize() {{
+                const container = document.getElementById('container');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }}
+
             window.addEventListener('resize', handleResize);
-
+            
             init();
         </script>
     </body>
     </html>
     """
-
+    
     st.components.v1.html(html_content, height=670)
 
 
