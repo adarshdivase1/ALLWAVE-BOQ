@@ -1062,9 +1062,6 @@ def get_equipment_specs(equipment_type, product_name=""):
     
     return specs
 
-
-# --- CORRECTED 3D VISUALIZATION FUNCTION (UPDATED) ---
-# --- CORRECTED 3D VISUALIZATION FUNCTION (UPDATED) ---
 def create_3d_visualization():
     """Create an enhanced, realistic 3D room visualization with proper positioning."""
     st.subheader("3D Room Visualization")
@@ -1954,7 +1951,7 @@ def create_3d_visualization():
                     if (!equipmentByType[equipment.type]) {{
                         equipmentByType[equipment.type] = [];
                     }}
-                    equipmentByType[equipment.type].push({{{...equipment, index}}}); 
+                    equipmentByType[equipment.type].push({{{...equipment, index}}});
                 }});
 
                 // Position equipment systematically
