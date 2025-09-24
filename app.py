@@ -408,7 +408,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                           ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -461,54 +461,72 @@ def generate_professional_boq_document(boq_data, project_info, validation_result
     
     return doc_content
 
-# --- Enhanced BOQ Item Extraction ---
+# --- Enhanced BOQ Item Extraction (UPDATED) ---
 def extract_boq_items_from_response(boq_content, product_df):
     """Extract and match BOQ items from AI response with product database."""
     items = []
     
-    # Look for markdown table sections
+    if not boq_content:
+        return items
+    
     lines = boq_content.split('\n')
     in_table = False
     
     for line in lines:
         line = line.strip()
         
-        # Detect table start (header row with |)
-        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'brand', 'item', 'description']):
+        # More flexible table detection
+        if '|' in line and any(keyword in line.lower() for keyword in 
+                               ['category', 'product', 'brand', 'item', 'description', 'name', 'qty', 'quantity', 'price']):
             in_table = True
             continue
             
-        # Skip separator lines (|---|---|)
-        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
+        # Skip separator lines and empty lines
+        if in_table and (not line or line.startswith('|') and all(c in '|-: ' for c in line)):
             continue
             
-        # Process table rows
-        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
+        # Process data rows - be more flexible with table structure
+        if in_table and line.startswith('|') and not any(term in line.upper() for term in ['TOTAL', 'SUBTOTAL']):
             parts = [part.strip() for part in line.split('|') if part.strip()]
-            if len(parts) >= 3:
-                # Extract information from table row
-                category = parts[0].lower() if len(parts) > 0 else 'general'
+            
+            if len(parts) >= 3:  # Minimum: category, brand, product name
+                category = parts[0] if parts[0] else 'General'
                 brand = parts[1] if len(parts) > 1 else 'Unknown'
-                product_name = parts[2] if len(parts) > 2 else parts[1] if len(parts) > 1 else 'Unknown'
+                product_name = parts[2] if len(parts) > 2 else 'Unknown'
                 
-                # Try to extract quantity and price if present
+                # Extract quantity - look for numbers in reasonable range
                 quantity = 1
+                for part in parts[3:]:  # Look in remaining columns
+                    try:
+                        num = int(float(part.replace(',', '').replace('$', '').strip()))
+                        if 1 <= num <= 100:  # Reasonable quantity range
+                            quantity = num
+                            break
+                    except (ValueError, TypeError):
+                        continue
+                
+                # Extract price - look for dollar amounts
                 price = 0
-                
-                # Look for quantity in the row (usually a number)
                 for part in parts:
-                    if part.isdigit():
-                        quantity = int(part)
-                        break
+                    if '$' in part:
+                        try:
+                            price_str = part.replace('$', '').replace(',', '').strip()
+                            price = float(price_str)
+                            if price > 10000:  # If this looks like a total, divide by quantity
+                                price = price / quantity
+                            break
+                        except (ValueError, TypeError):
+                            continue
                 
-                # Try to match with actual product in database
+                # Try to match with database
                 matched_product = match_product_in_database(product_name, brand, product_df)
                 if matched_product is not None:
-                    price = float(matched_product.get('price', 0))
+                    actual_price = float(matched_product.get('price', price)) if matched_product.get('price', 0) > 0 else price
                     actual_brand = matched_product.get('brand', brand)
                     actual_category = matched_product.get('category', category)
                     actual_name = matched_product.get('name', product_name)
                 else:
+                    actual_price = price
                     actual_brand = brand
                     actual_category = normalize_category(category, product_name)
                     actual_name = product_name
@@ -518,11 +536,11 @@ def extract_boq_items_from_response(boq_content, product_df):
                     'name': actual_name,
                     'brand': actual_brand,
                     'quantity': quantity,
-                    'price': price,
+                    'price': actual_price,
                     'matched': matched_product is not None
                 })
                 
-        # End table when we hit a line that doesn't start with |
+        # End table detection
         elif in_table and not line.startswith('|'):
             in_table = False
     
@@ -972,71 +990,80 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost * 1.30, 'USD')}**")
 
-# --- VISUALIZATION HELPER FUNCTIONS (MODIFIED FOR COMPATIBILITY) ---
+# --- VISUALIZATION HELPER FUNCTIONS (UPDATED) ---
 
 def map_equipment_type(category, product_name="", brand=""):
     """Maps equipment to types compatible with the new 3D visualization."""
     if not category and not product_name:
-        return 'generic' # Default for unknown items
+        return 'generic'
     
-    search_text = f"{category} {product_name}".lower()
+    # Convert to lowercase for case-insensitive matching
+    search_text = f"{str(category).lower()} {str(product_name).lower()} {str(brand).lower()}"
     
-    if any(term in search_text for term in ['display', 'monitor', 'panel', 'signage', 'tv']):
+    # More comprehensive mapping with brand-specific logic
+    if any(term in search_text for term in ['display', 'monitor', 'panel', 'signage', 'tv', 'screen']):
         return 'display'
-    if 'projector' in search_text:
+    if any(term in search_text for term in ['projector', 'projection']):
         return 'projector'
-    if any(term in search_text for term in ['speaker', 'soundbar', 'amp', 'amplifier']):
+    if any(term in search_text for term in ['speaker', 'soundbar', 'sound bar']):
         return 'speaker'
+    if any(term in search_text for term in ['amplifier', 'amp ']):
+        return 'amplifier'
     if any(term in search_text for term in ['mic', 'microphone']):
         return 'microphone'
-    if any(term in search_text for term in ['camera', 'conferencing', 'codec', 'video bar']):
+    if any(term in search_text for term in ['camera', 'conferencing', 'codec', 'video bar', 'webcam']):
         return 'camera'
-    if any(term in search_text for term in ['control', 'processor', 'touch panel', 'scheduler', 'interface']):
+    if any(term in search_text for term in ['control', 'processor', 'touch panel', 'scheduler', 'interface', 'switcher']):
         return 'control_system'
-    if any(term in search_text for term in ['mixer']):
+    if any(term in search_text for term in ['mixer', 'mixing']):
         return 'mixer'
-    if any(term in search_text for term in ['cable', 'connector', 'wire', 'kit']):
+    if any(term in search_text for term in ['cable', 'connector', 'wire', 'kit', 'hdmi', 'usb']):
         return 'cable'
-    if any(term in search_text for term in ['mount', 'bracket', 'stand']):
+    if any(term in search_text for term in ['mount', 'bracket', 'stand', 'arm']):
         return 'mount'
-    if any(term in search_text for term in ['lighting', 'led']):
+    if any(term in search_text for term in ['lighting', 'led', 'light']):
         return 'lighting'
-    if any(term in search_text for term in ['furniture', 'rack', 'cabinet', 'table', 'chair']):
+    if any(term in search_text for term in ['furniture', 'rack', 'cabinet', 'table', 'chair', 'desk']):
         return 'furniture'
-    if any(term in search_text for term in ['installation', 'service', 'labor']):
+    if any(term in search_text for term in ['installation', 'service', 'labor', 'warranty', 'contingency']):
         return 'service'
     
-    return 'generic' # Fallback for other items
+    return 'generic'
 
 def get_equipment_specs(equipment_type, product_name=""):
     """Generates equipment specifications as a dictionary for the 3D visualization."""
     specs = {}
+    product_name = str(product_name).lower()
     
-    # Extract screen size for displays
     if equipment_type == 'display':
-        size_match = re.search(r'(\d+)"|\d+-inch', product_name, re.IGNORECASE)
-        specs['screen_size'] = int(size_match.group(1)) if size_match else 65
-        specs['depth'] = 3 # in inches
+        # Extract screen size more reliably
+        import re
+        size_patterns = [r'(\d+)"', r'(\d+)-inch', r'(\d+)inch', r'(\d+) inch']
+        screen_size = 65  # default
+        
+        for pattern in size_patterns:
+            size_match = re.search(pattern, product_name, re.IGNORECASE)
+            if size_match:
+                screen_size = int(size_match.group(1))
+                break
+        
+        specs['screen_size'] = screen_size
+        specs['depth'] = 4  # in inches
         specs['mounting'] = 'wall'
     
-    # Define mounting type for projectors and speakers
     elif equipment_type in ['projector', 'speaker']:
-        specs['mounting'] = 'ceiling' if 'ceiling' in product_name.lower() else 'wall'
+        specs['mounting'] = 'ceiling' if 'ceiling' in product_name else 'wall'
     
-    # Define type for cameras and microphones
     elif equipment_type == 'camera':
-        specs['type'] = 'ptz' if 'ptz' in product_name.lower() else 'fixed'
+        specs['type'] = 'ptz' if any(term in product_name for term in ['ptz', 'pan', 'tilt', 'zoom']) else 'fixed'
+    
     elif equipment_type == 'microphone':
-        specs['type'] = 'ceiling' if 'ceiling' in product_name.lower() else 'table'
-        
-    # For other types, we can return an empty dict as the JS has defaults
-    else:
-        specs = {}
-        
+        specs['type'] = 'ceiling' if 'ceiling' in product_name else 'table'
+    
     return specs
 
 
-# --- CORRECTED 3D VISUALIZATION FUNCTION ---
+# --- CORRECTED 3D VISUALIZATION FUNCTION (UPDATED) ---
 def create_3d_visualization():
     """Create an enhanced, realistic 3D room visualization with proper positioning."""
     st.subheader("3D Room Visualization")
@@ -1047,31 +1074,34 @@ def create_3d_visualization():
         st.info("No BOQ items to visualize. Generate a BOQ first or add items manually.")
         return
 
-    # Enhanced equipment processing
+    # UPDATED: Enhanced equipment processing
     js_equipment = []
     for item in equipment_data:
-        equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''))
-
-        if equipment_type == 'service':
+        equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''), item.get('brand', ''))
+        
+        # Skip service items that shouldn't be visualized
+        if equipment_type in ['service']:
             continue
             
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
         
         try:
-            quantity = int(item.get('quantity', 1))
+            quantity = max(1, int(float(item.get('quantity', 1))))
         except (ValueError, TypeError):
             quantity = 1
             
-        for i in range(quantity):
+        # Create individual instances for proper positioning
+        for i in range(min(quantity, 20)):  # Limit to 20 instances max for performance
             js_equipment.append({
                 'id': len(js_equipment) + 1,
                 'type': equipment_type,
-                'name': item.get('name', 'Unknown'),
-                'brand': item.get('brand', 'Unknown'),
+                'name': str(item.get('name', 'Unknown')),
+                'brand': str(item.get('brand', 'Unknown')),
                 'price': float(item.get('price', 0)),
                 'instance': i + 1,
                 'original_quantity': quantity,
-                'specs': specs
+                'specs': specs,
+                'category': str(item.get('category', 'General'))
             })
 
     if not js_equipment:
@@ -1915,15 +1945,177 @@ def create_3d_visualization():
                 return chair;
             }}
 
-            // Equipment creation and management functions
+            // UPDATED: Equipment creation and management functions
             function createAllEquipmentObjects() {{
+                // Group equipment by type for better positioning
+                const equipmentByType = {{}};
                 avEquipment.forEach((equipment, index) => {{
-                    const obj = createEquipmentObject(equipment, index);
-                    if (obj) {{
-                        obj.userData = {{ equipment, index }};
-                        scene.add(obj);
+                    if (!equipmentByType[equipment.type]) {{
+                        equipmentByType[equipment.type] = [];
                     }}
+                    equipmentByType[equipment.type].push({{{...equipment, index}}});
                 }});
+
+                // Position equipment systematically
+                Object.keys(equipmentByType).forEach(type => {{
+                    const items = equipmentByType[type];
+                    items.forEach((equipment, typeIndex) => {{
+                        const obj = createEquipmentObject(equipment, equipment.index);
+                        if (obj) {{
+                            // Apply systematic positioning based on type
+                            positionEquipmentByType(obj, equipment.type, typeIndex, items.length);
+                            obj.userData = {{ equipment, index: equipment.index }};
+                            scene.add(obj);
+                        }}
+                    }});
+                }});
+            }}
+            
+            // ADDED: New equipment positioning function
+            function positionEquipmentByType(obj, type, index, totalOfType) {{
+                const roomL = toUnits(roomDims.length);
+                const roomW = toUnits(roomDims.width);
+                const roomH = toUnits(roomDims.height);
+                
+                switch(type) {{
+                    case 'display':
+                        // Position displays along the front wall
+                        const displaySpacing = roomL / (totalOfType + 1);
+                        obj.position.set(
+                            -roomL/2 + displaySpacing * (index + 1),
+                            toUnits(5),
+                            -roomW/2 + toUnits(0.2)
+                        );
+                        break;
+                        
+                    case 'projector':
+                        // Position projectors on ceiling
+                        obj.position.set(
+                            (index - totalOfType/2) * toUnits(4),
+                            roomH - toUnits(1.5),
+                            toUnits(roomDims.width/4)
+                        );
+                        break;
+                        
+                    case 'camera':
+                        // Position cameras strategically around the room
+                        if (totalOfType === 1) {{
+                            obj.position.set(0, toUnits(7), -roomW/2 + toUnits(1));
+                        }} else {{
+                            const angle = (index / totalOfType) * Math.PI * 2;
+                            const radius = Math.min(roomL, roomW) / 3;
+                            obj.position.set(
+                                Math.cos(angle) * radius,
+                                toUnits(6.5),
+                                Math.sin(angle) * radius
+                            );
+                        }}
+                        break;
+                        
+                    case 'microphone':
+                        if (obj.userData?.equipment?.specs?.type === 'ceiling') {{
+                            // Distribute ceiling mics evenly
+                            const spacing = roomL / (totalOfType + 1);
+                            obj.position.set(
+                                -roomL/2 + spacing * (index + 1),
+                                roomH - toUnits(0.3),
+                                0
+                            );
+                        }} else {{
+                            // Table microphones - position on table surface
+                            obj.position.set(
+                                (index - totalOfType/2) * toUnits(2),
+                                toUnits(2.7),
+                                0
+                            );
+                        }}
+                        break;
+                        
+                    case 'speaker':
+                        // Position speakers around the room perimeter
+                        const corners = [
+                            [-roomL/2 + toUnits(1), roomW/2 - toUnits(1)],
+                            [roomL/2 - toUnits(1), roomW/2 - toUnits(1)],
+                            [roomL/2 - toUnits(1), -roomW/2 + toUnits(1)],
+                            [-roomL/2 + toUnits(1), -roomW/2 + toUnits(1)]
+                        ];
+                        
+                        if (index < corners.length) {{
+                            obj.position.set(
+                                corners[index][0],
+                                toUnits(7),
+                                corners[index][1]
+                            );
+                        }} else {{
+                            // Additional speakers along walls
+                            obj.position.set(
+                                (Math.random() - 0.5) * roomL * 0.8,
+                                toUnits(6 + Math.random() * 2),
+                                (Math.random() > 0.5 ? 1 : -1) * (roomW/2 - toUnits(0.5))
+                            );
+                        }}
+                        break;
+                        
+                    case 'control_system':
+                    case 'amplifier':
+                    case 'mixer':
+                        // Position control equipment in a rack area
+                        obj.position.set(
+                            -roomL/2 + toUnits(2),
+                            toUnits(1.5 + index * 0.5),
+                            roomW/2 - toUnits(2)
+                        );
+                        break;
+                        
+                    case 'mount':
+                        // Position mounts near displays
+                        obj.position.set(
+                            (index - totalOfType/2) * toUnits(3),
+                            toUnits(4.8),
+                            -roomW/2 + toUnits(0.1)
+                        );
+                        break;
+                        
+                    case 'cable':
+                        // Position cable management along ceiling
+                        obj.position.set(
+                            (index - totalOfType/2) * toUnits(6),
+                            roomH - toUnits(0.5),
+                            0
+                        );
+                        break;
+                        
+                    case 'lighting':
+                        // Distribute lighting evenly across ceiling
+                        const lightCols = Math.ceil(Math.sqrt(totalOfType));
+                        const lightRows = Math.ceil(totalOfType / lightCols);
+                        const col = index % lightCols;
+                        const row = Math.floor(index / lightCols);
+                        
+                        obj.position.set(
+                            (-lightCols/2 + col + 0.5) * (roomL / lightCols),
+                            roomH - toUnits(0.2),
+                            (-lightRows/2 + row + 0.5) * (roomW / lightRows)
+                        );
+                        break;
+                        
+                    case 'furniture':
+                        // Position furniture around room perimeter
+                        obj.position.set(
+                            roomL/2 - toUnits(2),
+                            toUnits(1.5),
+                            (index - totalOfType/2) * toUnits(4)
+                        );
+                        break;
+                        
+                    default:
+                        // Generic positioning for unknown types
+                        obj.position.set(
+                            (Math.random() - 0.5) * roomL * 0.6,
+                            toUnits(0.5 + Math.random() * 2),
+                            (Math.random() - 0.5) * roomW * 0.6
+                        );
+                }}
             }}
 
             function createEquipmentObject(equipment, index) {{
@@ -1996,13 +2188,7 @@ def create_3d_visualization():
                 frame.add(screen);
                 group.add(frame);
                 
-                // Position based on mounting type
-                if (specs.mounting === 'wall') {{
-                    group.position.set(0, toUnits(5), toUnits(-roomDims.width/2 + 0.1));
-                }} else {{
-                    group.position.set(0, toUnits(4), toUnits(-roomDims.width/2 + 0.2));
-                }}
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 group.receiveShadow = true;
                 return group;
@@ -2028,13 +2214,7 @@ def create_3d_visualization():
                 
                 group.add(body);
                 
-                // Position based on mounting
-                if (specs.mounting === 'ceiling') {{
-                    group.position.set(0, toUnits(roomDims.height - 1), 0);
-                }} else {{
-                    group.position.set(0, toUnits(6), toUnits(roomDims.width/2 - 3));
-                }}
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2059,13 +2239,7 @@ def create_3d_visualization():
                 
                 group.add(body);
                 
-                // Position based on type
-                if (specs.type === 'ptz') {{
-                    group.position.set(0, toUnits(7), toUnits(-roomDims.width/2 + 1.5));
-                }} else {{
-                    group.position.set(toUnits(-roomDims.length/2 + 2), toUnits(6), 0);
-                }}
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2080,7 +2254,6 @@ def create_3d_visualization():
                         new THREE.MeshStandardMaterial({{ color: 0xffffff, metalness: 0.1, roughness: 0.3 }})
                     );
                     group.add(micArray);
-                    group.position.set(0, toUnits(roomDims.height - 0.2), 0);
                 }} else {{
                     // Table microphone
                     const stand = new THREE.Mesh(
@@ -2096,9 +2269,9 @@ def create_3d_visualization():
                     stand.add(capsule);
                     
                     group.add(stand);
-                    group.position.set(0, toUnits(2.5), 0);
                 }}
                 
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2122,17 +2295,7 @@ def create_3d_visualization():
                 
                 group.add(speakerBody);
                 
-                // Position based on mounting
-                if (specs.mounting === 'ceiling') {{
-                    group.position.set(toUnits(roomDims.length/4), toUnits(roomDims.height - 1), 0);
-                    group.rotation.y = Math.PI;
-                }} else if (specs.mounting === 'wall') {{
-                    group.position.set(toUnits(roomDims.length/2 - 0.5), toUnits(6), toUnits(-roomDims.width/4));
-                    group.rotation.y = -Math.PI/2;
-                }} else {{
-                    group.position.set(toUnits(roomDims.length/4), toUnits(0.5), toUnits(-roomDims.width/2 + 2));
-                }}
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2153,8 +2316,7 @@ def create_3d_visualization():
                 rack.add(frontPanel);
                 
                 group.add(rack);
-                group.position.set(toUnits(-roomDims.length/2 + 2), toUnits(4), toUnits(roomDims.width/2 - 2));
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2176,8 +2338,7 @@ def create_3d_visualization():
                 }}
                 
                 group.add(amp);
-                group.position.set(toUnits(-roomDims.length/2 + 2), toUnits(2), toUnits(roomDims.width/2 - 2));
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2206,8 +2367,7 @@ def create_3d_visualization():
                 }}
                 
                 group.add(mixer);
-                group.position.set(0, toUnits(2.6), toUnits(-roomDims.width/2 + 3));
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2220,8 +2380,7 @@ def create_3d_visualization():
                 );
                 
                 group.add(conduit);
-                group.position.set(0, toUnits(roomDims.height - 0.5), 0);
-                
+                // Position is now handled by positionEquipmentByType
                 return group;
             }}
 
@@ -2233,8 +2392,7 @@ def create_3d_visualization():
                 );
                 
                 group.add(mount);
-                group.position.set(0, toUnits(5), toUnits(-roomDims.width/2 + 0.04));
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2247,8 +2405,7 @@ def create_3d_visualization():
                 );
                 
                 group.add(fixture);
-                group.position.set(0, toUnits(roomDims.height - 0.1), 0);
-                
+                // Position is now handled by positionEquipmentByType
                 return group;
             }}
 
@@ -2260,8 +2417,7 @@ def create_3d_visualization():
                 );
                 
                 group.add(furniture);
-                group.position.set(toUnits(roomDims.length/2 - 3), toUnits(1.5), toUnits(roomDims.width/2 - 2));
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
@@ -2274,12 +2430,7 @@ def create_3d_visualization():
                 );
                 
                 group.add(obj);
-                group.position.set(
-                    toUnits((Math.random() - 0.5) * roomDims.length),
-                    toUnits(1),
-                    toUnits((Math.random() - 0.5) * roomDims.width)
-                );
-                
+                // Position is now handled by positionEquipmentByType
                 group.castShadow = true;
                 return group;
             }}
