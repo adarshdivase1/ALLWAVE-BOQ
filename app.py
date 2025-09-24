@@ -1674,7 +1674,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 return chair;
             }}
 
-            function createExecutiveChair(material) {
+            function createExecutiveChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.8), toUnits(0.3), toUnits(1.8)), material);
                 seat.position.y = toUnits(1.6);
@@ -1687,9 +1687,9 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 chair.add(back);
                 
                 return chair;
-            }
+            }}
 
-            function createTheaterChair(material) {
+            function createTheaterChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.2), toUnits(0.2), toUnits(1.2)), material);
                 seat.position.y = toUnits(1.4);
@@ -1702,9 +1702,9 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 chair.add(back);
                 
                 return chair;
-            }
+            }}
 
-            function createSwiveChair(material) {
+            function createSwiveChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(0.8), toUnits(0.8), toUnits(0.2), 8), material);
                 seat.position.y = toUnits(1.5);
@@ -1717,7 +1717,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 chair.add(back);
                 
                 return chair;
-            }
+            }}
 
             // Equipment creation and positioning functions
             function createAllEquipmentObjects() {
