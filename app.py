@@ -1659,7 +1659,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
             }}
 
             // Chair creation helper functions
-            function createChair(material) {
+            function createChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(0.2), toUnits(1.5)), material);
                 seat.position.y = toUnits(1.5);
@@ -1672,7 +1672,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 chair.add(back);
                 
                 return chair;
-            }
+            }}
 
             function createExecutiveChair(material) {
                 const chair = new THREE.Group();
