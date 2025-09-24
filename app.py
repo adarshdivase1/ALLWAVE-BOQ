@@ -1058,9 +1058,9 @@ def get_equipment_specs(equipment_type, product_name=""):
     
     return base_spec
 
-# --- FINAL UPDATED 3D VISUALIZATION FUNCTION ---
+# --- FINAL CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
-    """Create an interactive, realistic 3D room visualization - UPDATED VERSION."""
+    """Create an interactive, realistic 3D room visualization - CORRECTED VERSION."""
     st.subheader("3D Room Visualization")
 
     equipment_data = st.session_state.get('boq_items', [])
@@ -1074,7 +1074,6 @@ def create_3d_visualization():
     for item in equipment_data:
         equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''))
 
-        # Skip service items (they can't be visualized)
         if equipment_type == 'service':
             continue
             
@@ -1101,14 +1100,10 @@ def create_3d_visualization():
         st.warning("No visualizable equipment found in BOQ. All items may be services or accessories.")
         return
 
-    # Get room dimensions from the UI controls
     room_length = st.session_state.get('room_length_input', 24.0)
     room_width = st.session_state.get('room_width_input', 16.0)
     room_height = st.session_state.get('ceiling_height_input', 9.0)
-    
-    # Get room type for furniture layout
     room_type_str = st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)')
-    room_specs = ROOM_SPECS.get(room_type_str, {})
     
     html_content = f"""
     <!DOCTYPE html>
@@ -1196,7 +1191,7 @@ def create_3d_visualization():
                 
                 const container = document.getElementById('container');
                 camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-                setView('overview');
+                setView('overview', false); // Initial set without animation
                 
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -1733,17 +1728,24 @@ def create_3d_visualization():
                 renderer.domElement.addEventListener('click', onMouseClick);
             }}
 
-            window.setView = function(viewType) {{
+            window.setView = function(viewType, animate=true) {{
                 document.querySelectorAll('.control-btn').forEach(btn => btn.classList.remove('active'));
-                event.target.classList.add('active');
+                document.querySelector(`.control-btn[onclick="setView('${{viewType}}')"]`).classList.add('active');
+                
                 let newPos;
                 switch(viewType) {{
                     case 'front': newPos = new THREE.Vector3(0, toUnits(roomDims.height/2), toUnits(roomDims.width/2 + 15)); break;
                     case 'side': newPos = new THREE.Vector3(toUnits(roomDims.length/2 + 15), toUnits(roomDims.height/2), 0); break;
-                    case 'top': newPos = new THREE.Vector3(0, toUnits(roomDims.height + 20), 0.1); break;
+                    case 'top': newPos = new THREE.Vector3(0.1, toUnits(roomDims.height + 20), 0.1); break;
                     default: newPos = new THREE.Vector3(toUnits(roomDims.length * 0.4), toUnits(roomDims.height * 0.8), toUnits(roomDims.width * 0.8));
                 }}
                 
+                if (!animate) {{
+                    camera.position.copy(newPos);
+                    camera.lookAt(0, toUnits(roomDims.height/4), 0);
+                    return;
+                }}
+
                 const startPos = camera.position.clone();
                 const duration = 500;
                 const startTime = Date.now();
@@ -1839,9 +1841,9 @@ def main():
     with tab1:
         room_area, ceiling_height = create_room_calculator()
         # Store room dimensions in session state for the visualizer
-        st.session_state.room_length = st.session_state.get('room_length_input', 16.0)
-        st.session_state.room_width = st.session_state.get('room_width_input', 12.0)
-        st.session_state.room_height = st.session_state.get('ceiling_height_input', 9.0)
+        st.session_state.room_length_input = st.session_state.get('room_length_input', 16.0)
+        st.session_state.room_width_input = st.session_state.get('room_width_input', 12.0)
+        st.session_state.ceiling_height_input = st.session_state.get('ceiling_height_input', 9.0)
 
 
     with tab2:
