@@ -408,7 +408,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                           ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -1192,6 +1192,7 @@ def create_3d_visualization():
     room_height = st.session_state.get('ceiling_height_input', 9.0)
     room_type_str = st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)')
     
+    # This HTML content is heavily updated with new JavaScript for realism
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1301,74 +1302,135 @@ def create_3d_visualization():
                 animate();
             }}
 
+            // --- NEW: REALISTIC ROOM & LIGHTING ---
             function createRoom() {{
-                const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0x9fa8da, roughness: 0.9, metalness: 0.1 }});
-                const floorMaterial = new THREE.MeshStandardMaterial({{ color: 0x455a64, roughness: 0.7 }});
-                const wallHeight = toUnits(roomDims.height);
+                const textureLoader = new THREE.TextureLoader();
 
-                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.length), toUnits(roomDims.width)), floorMaterial);
+                // Simple textures for realism (replace URLs with actual texture files if hosting)
+                const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0xcfd8dc, roughness: 0.8 }});
+                const floorMaterial = new THREE.MeshStandardMaterial({{ color: 0x546e7a, roughness: 0.7 }});
+
+                const wallHeight = toUnits(roomDims.height);
+                const roomLength = toUnits(roomDims.length);
+                const roomWidth = toUnits(roomDims.width);
+
+                // Floor
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, roomWidth), floorMaterial);
                 floor.rotation.x = -Math.PI / 2;
                 floor.receiveShadow = true;
                 scene.add(floor);
 
-                const backWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.length), wallHeight), wallMaterial);
-                backWall.position.set(0, wallHeight/2, -toUnits(roomDims.width/2));
-                backWall.receiveShadow = true;
-                scene.add(backWall);
-                
-                const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.width), wallHeight), wallMaterial);
-                leftWall.position.set(-toUnits(roomDims.length/2), wallHeight/2, 0);
-                leftWall.rotation.y = Math.PI/2;
-                leftWall.receiveShadow = true;
-                scene.add(leftWall);
+                // Walls
+                const wall1 = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, wallHeight), wallMaterial);
+                wall1.position.set(0, wallHeight/2, -roomWidth/2);
+                wall1.receiveShadow = true;
+                scene.add(wall1);
 
-                // Add a door for context
-                const doorMaterial = new THREE.MeshStandardMaterial({{ color: 0x5d4037 }});
-                const door = new THREE.Mesh(new THREE.BoxGeometry(toUnits(3), toUnits(6.8), toUnits(0.2)), doorMaterial);
-                door.position.set(toUnits(roomDims.length/2 - 3), toUnits(3.4), toUnits(roomDims.width/2));
-                scene.add(door);
+                const wall2 = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, wallHeight), wallMaterial);
+                wall2.position.set(-roomLength/2, wallHeight/2, 0);
+                wall2.rotation.y = Math.PI/2;
+                wall2.receiveShadow = true;
+                scene.add(wall2);
+                
+                const wall3 = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, wallHeight), wallMaterial);
+                wall3.position.set(0, wallHeight/2, roomWidth/2);
+                wall3.rotation.y = Math.PI;
+                wall3.receiveShadow = true;
+                scene.add(wall3);
+
+                const wall4 = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, wallHeight), wallMaterial);
+                wall4.position.set(roomLength/2, wallHeight/2, 0);
+                wall4.rotation.y = -Math.PI/2;
+                wall4.receiveShadow = true;
+                scene.add(wall4);
+                
+                // Ceiling
+                const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, roomWidth), wallMaterial);
+                ceiling.position.y = wallHeight;
+                ceiling.rotation.x = Math.PI / 2;
+                scene.add(ceiling);
             }}
 
             function createLighting() {{
-                scene.add(new THREE.AmbientLight(0x404060, 0.8));
-                const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
-                dirLight.position.set(toUnits(-5), toUnits(10), toUnits(8));
-                dirLight.castShadow = true;
-                dirLight.shadow.mapSize.width = 2048;
-                dirLight.shadow.mapSize.height = 2048;
-                dirLight.shadow.camera.far = toUnits(50);
-                scene.add(dirLight);
+                scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+                const keyLight = new THREE.DirectionalLight(0xffeedd, 0.7);
+                keyLight.position.set(toUnits(-10), toUnits(15), toUnits(10));
+                keyLight.castShadow = true;
+                keyLight.shadow.mapSize.width = 2048;
+                keyLight.shadow.mapSize.height = 2048;
+                keyLight.shadow.camera.far = toUnits(50);
+                scene.add(keyLight);
+                
+                // Add soft ceiling lights
+                const light1 = new THREE.PointLight(0xffffff, 0.3, toUnits(20), 2);
+                light1.position.set(toUnits(-roomDims.length/4), toUnits(roomDims.height-1), 0);
+                scene.add(light1);
+                
+                const light2 = new THREE.PointLight(0xffffff, 0.3, toUnits(20), 2);
+                light2.position.set(toUnits(roomDims.length/4), toUnits(roomDims.height-1), 0);
+                scene.add(light2);
             }}
 
+            // --- NEW: REALISTIC FURNITURE ---
             function createRoomFurniture() {{
                 const furnitureGroup = new THREE.Group();
                 const spec = getRoomSpecFromType(roomType);
                 
-                const tableMaterial = new THREE.MeshStandardMaterial({{ color: 0x6d4c41, roughness: 0.6, metalness: 0.2 }});
-                const chairMaterial = new THREE.MeshStandardMaterial({{ color: 0x37474f, roughness: 0.5 }});
+                const tableMaterial = new THREE.MeshStandardMaterial({{ color: 0x8d6e63, roughness: 0.6, metalness: 0.1 }});
+                const chairMaterial = new THREE.MeshStandardMaterial({{ color: 0x455a64, roughness: 0.5 }});
+                const legMaterial = new THREE.MeshStandardMaterial({{ color: 0x37474f, roughness: 0.3 }});
                 
+                // Table
                 const tableTop = new THREE.Mesh(new THREE.BoxGeometry(toUnits(spec.table_size[0]), toUnits(0.2), toUnits(spec.table_size[1])), tableMaterial);
                 tableTop.position.y = toUnits(2.5);
                 tableTop.castShadow = true;
                 tableTop.receiveShadow = true;
                 furnitureGroup.add(tableTop);
+                
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(toUnits(0.2), toUnits(2.4), toUnits(0.2)), legMaterial);
+                const leg1 = leg.clone(); leg1.position.set(toUnits(spec.table_size[0]/2-0.5), toUnits(1.2), toUnits(spec.table_size[1]/2-0.5));
+                const leg2 = leg.clone(); leg2.position.set(toUnits(-spec.table_size[0]/2+0.5), toUnits(1.2), toUnits(spec.table_size[1]/2-0.5));
+                const leg3 = leg.clone(); leg3.position.set(toUnits(spec.table_size[0]/2-0.5), toUnits(1.2), toUnits(-spec.table_size[1]/2+0.5));
+                const leg4 = leg.clone(); leg4.position.set(toUnits(-spec.table_size[0]/2+0.5), toUnits(1.2), toUnits(-spec.table_size[1]/2+0.5));
+                furnitureGroup.add(leg1, leg2, leg3, leg4);
 
+                // Chairs
                 const chairsPerSide = Math.ceil(spec.chair_count / 2);
                 const spacing = spec.table_size[0] / (chairsPerSide);
 
                 for (let i = 0; i < chairsPerSide; i++) {{
-                    const leftChair = createChair(chairMaterial);
-                    leftChair.position.set(toUnits(-spec.table_size[0]/2 + spacing * (i + 0.5)), 0, toUnits(-spec.table_size[1]/2 - 1.8));
-                    furnitureGroup.add(leftChair);
+                    const xPos = toUnits(-spec.table_size[0]/2 + spacing * (i + 0.5));
                     
+                    if (i < spec.chair_count) {{
+                        const chair1 = createChair(chairMaterial, legMaterial);
+                        chair1.position.set(xPos, 0, toUnits(spec.table_size[1]/2 + 1.5));
+                        chair1.rotation.y = Math.PI;
+                        furnitureGroup.add(chair1);
+                    }}
                     if ((i + chairsPerSide) < spec.chair_count) {{
-                        const rightChair = createChair(chairMaterial);
-                        rightChair.position.set(toUnits(-spec.table_size[0]/2 + spacing * (i + 0.5)), 0, toUnits(spec.table_size[1]/2 + 1.8));
-                        rightChair.rotation.y = Math.PI;
-                        furnitureGroup.add(rightChair);
+                        const chair2 = createChair(chairMaterial, legMaterial);
+                        chair2.position.set(xPos, 0, toUnits(-spec.table_size[1]/2 - 1.5));
+                        furnitureGroup.add(chair2);
                     }}
                 }}
                 scene.add(furnitureGroup);
+            }}
+            
+            function createChair(seatMat, legMat) {{
+                const chair = new THREE.Group();
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(0.2), toUnits(1.5)), seatMat);
+                seat.position.y = toUnits(1.6);
+                const back = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(2.2), toUnits(0.2)), seatMat);
+                back.position.y = toUnits(2.7); back.position.z = toUnits(-0.65);
+                chair.add(seat, back);
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(toUnits(0.1), toUnits(1.5), toUnits(0.1)), legMat);
+                const leg1 = leg.clone(); leg1.position.set(toUnits(0.6), toUnits(0.75), toUnits(0.6));
+                const leg2 = leg.clone(); leg2.position.set(toUnits(-0.6), toUnits(0.75), toUnits(0.6));
+                const leg3 = leg.clone(); leg3.position.set(toUnits(0.6), toUnits(0.75), toUnits(-0.6));
+                const leg4 = leg.clone(); leg4.position.set(toUnits(-0.6), toUnits(0.75), toUnits(-0.6));
+                chair.add(leg1, leg2, leg3, leg4);
+                chair.traverse(obj => {{ if(obj.isMesh) obj.castShadow = true; }});
+                return chair;
             }}
 
             function getRoomSpecFromType(rt) {{
@@ -1376,23 +1438,11 @@ def create_3d_visualization():
                 return specs[rt] || specs['Standard Conference Room (6-8 People)'];
             }}
 
-            function createChair(material) {{
-                const chair = new THREE.Group();
-                const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(0.15), toUnits(1.5)), material);
-                seat.position.y = toUnits(1.5);
-                seat.castShadow = true;
-                const back = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(2), toUnits(0.15)), material);
-                back.position.y = toUnits(2.5);
-                back.position.z = toUnits(-0.7);
-                back.castShadow = true;
-                chair.add(seat, back);
-                return chair;
-            }}
-
             function createAllEquipmentObjects() {{
                 avEquipment.forEach(item => scene.add(createEquipmentMesh(item)));
             }}
 
+            // --- NEW: DETAILED EQUIPMENT MODELS ---
             function createEquipmentMesh(item) {{
                 const group = new THREE.Group();
                 const size = item.specs;
@@ -1403,7 +1453,7 @@ def create_3d_visualization():
                     case 'interactive_display':
                         const bezelMat = new THREE.MeshStandardMaterial({{ color: 0x111111, roughness: 0.3, metalness: 0.5 }});
                         const bezel = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), bezelMat);
-                        const screen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.95), toUnits(size[1]*0.95)), new THREE.MeshBasicMaterial({{color: 0x1a1a2e}}));
+                        const screen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.95), toUnits(size[1]*0.95)), new THREE.MeshBasicMaterial({{color: 0x050515}}));
                         screen.position.z = toUnits(size[2]/2 + 0.01);
                         bezel.add(screen);
                         group.add(bezel);
@@ -1411,37 +1461,44 @@ def create_3d_visualization():
                     case 'ptz_camera':
                     case 'video_conferencing':
                         const camMat = new THREE.MeshStandardMaterial({{ color: 0x222222, roughness: 0.2 }});
-                        const camBody = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), camMat);
-                        const lens = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(0.1), toUnits(0.1), toUnits(0.1), 16), new THREE.MeshBasicMaterial({{color: 0x0000ff}}));
+                        const camBase = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(size[0]*0.4), toUnits(size[0]*0.4), toUnits(size[1]*0.3), 32), camMat);
+                        const camHead = new THREE.Mesh(new THREE.SphereGeometry(toUnits(size[0]*0.3), 32, 32), camMat);
+                        camHead.position.y = toUnits(size[1]*0.4);
+                        const lens = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(0.1), toUnits(0.1), toUnits(0.2), 16), new THREE.MeshBasicMaterial({{color: 0x0000ff}}));
                         lens.rotation.x = Math.PI / 2;
-                        lens.position.z = toUnits(size[2]/2 + 0.01);
-                        camBody.add(lens);
-                        group.add(camBody);
+                        lens.position.z = toUnits(size[0]*0.25);
+                        camHead.add(lens);
+                        group.add(camBase, camHead);
                         break;
                     case 'av_network_switch':
                     case 'control_system':
-                        const switchMat = new THREE.MeshStandardMaterial({{ color: 0x444444, metalness: 0.8, roughness: 0.3 }});
-                        const switchBox = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), switchMat);
-                        for(let i = 0; i < 8; i++) {{
+                    case 'rack_equipment':
+                        const rackMat = new THREE.MeshStandardMaterial({{ color: 0x1a1a1a, metalness: 0.8, roughness: 0.3 }});
+                        const rackBox = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.58), toUnits(0.14), toUnits(size[2]*0.8)), rackMat); // 1U Rack Unit
+                        for(let i = 0; i < 4; i++) {{
                             const led = new THREE.Mesh(new THREE.SphereGeometry(toUnits(0.02)), new THREE.MeshBasicMaterial({{color: Math.random() > 0.5 ? 0x00ff00 : 0xffa500 }}));
-                            led.position.set(toUnits(-size[0]/2 + 0.2 + i*0.1), 0, toUnits(size[2]/2 + 0.01));
-                            switchBox.add(led);
+                            led.position.set(toUnits(-0.7 + i*0.1), 0, toUnits(size[2]*0.4 + 0.01));
+                            rackBox.add(led);
                         }}
-                        group.add(switchBox);
+                        group.add(rackBox);
                         break;
                     case 'touch_panel':
                         const panelMat = new THREE.MeshStandardMaterial({{ color: 0x333333 }});
                         const panel = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), panelMat);
+                        panel.rotation.x = -0.2; // Angle it slightly
                         const touchscreen = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.9), toUnits(size[1]*0.9)), new THREE.MeshBasicMaterial({{color: 0x003366}}));
                         touchscreen.position.z = toUnits(size[2]/2 + 0.01);
                         panel.add(touchscreen);
                         group.add(panel);
                         break;
-                    case 'audio_microphone':
-                         const micMat = new THREE.MeshStandardMaterial({{ color: 0x555555, roughness: 0.4 }});
-                         const micBase = new THREE.Mesh(new THREE.CylinderGeometry(toUnits(size[0]/2), toUnits(size[0]/2), toUnits(size[1]), 16), micMat);
-                         group.add(micBase);
-                         break;
+                    case 'audio_speaker':
+                        const speakerMat = new THREE.MeshStandardMaterial({{ color: 0xeeeeee, roughness: 0.6 }});
+                        const speakerBox = new THREE.Mesh(new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2])), speakerMat);
+                        const grill = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(size[0]*0.8), toUnits(size[1]*0.8)), new THREE.MeshStandardMaterial({{color: 0x333333, roughness: 0.9}}));
+                        grill.position.z = toUnits(size[2]/2 + 0.01);
+                        speakerBox.add(grill);
+                        group.add(speakerBox);
+                        break;
                     default:
                         const defaultMat = new THREE.MeshStandardMaterial({{ color: 0x607d8b, ...materialOptions }});
                         const geometry = new THREE.BoxGeometry(toUnits(size[0]), toUnits(size[1]), toUnits(size[2]));
@@ -1459,17 +1516,16 @@ def create_3d_visualization():
                 return group;
             }}
 
-            // --- SMART POSITIONING LOGIC ---
+            // --- NEW: ENHANCED POSITIONING LOGIC ---
             function getSmartPosition(type, index, total, size) {{
                 const strategies = {{
-                    'display': () => wallMountedPosition(index, total, size),
-                    'interactive_display': () => wallMountedPosition(index, total, size),
+                    'display': () => wallMountedPosition(index, total, size, roomDims.height * 0.55),
+                    'interactive_display': () => wallMountedPosition(index, total, size, roomDims.height * 0.5),
                     'video_conferencing': () => aboveDisplayPosition(index, total, size),
                     'ptz_camera': () => aboveDisplayPosition(index, total, size),
                     'audio_speaker': () => ceilingDistributedPosition(index, total, size),
-                    'network_device': () => ceilingDistributedPosition(index, total, size),
                     'audio_microphone': () => tableSurfacePosition(index, total, size),
-                    'touch_panel': () => tableSurfacePosition(index, total, size),
+                    'touch_panel': () => tableSurfacePosition(index, total, size, 1),
                     'rack_equipment': () => cornerRackPosition(index, total, size),
                     'av_network_switch': () => cornerRackPosition(index, total, size),
                     'control_system': () => cornerRackPosition(index, total, size),
@@ -1480,10 +1536,10 @@ def create_3d_visualization():
                 return (strategies[type] || defaultStrategy)();
             }}
 
-            function wallMountedPosition(index, total, size) {{
+            function wallMountedPosition(index, total, size, height) {{
                 return {{
                     x: toUnits(-(total - 1) * (size[0] + 0.5) / 2 + index * (size[0] + 0.5)),
-                    y: toUnits(roomDims.height * 0.55),
+                    y: toUnits(height),
                     z: toUnits(-roomDims.width / 2 + 0.2),
                     rotation: 0
                 }};
@@ -1497,30 +1553,32 @@ def create_3d_visualization():
                 }};
             }}
             function ceilingDistributedPosition(index, total, size) {{
-                 const positions = [
-                    {{ x: -roomDims.length/4, z: -roomDims.width/4 }},
-                    {{ x: roomDims.length/4, z: -roomDims.width/4 }},
-                    {{ x: -roomDims.length/4, z: roomDims.width/4 }},
-                    {{ x: roomDims.length/4, z: roomDims.width/4 }}
-                ];
-                const pos = positions[index % positions.length];
-                return {{ x: toUnits(pos.x), y: toUnits(roomDims.height - 0.5), z: toUnits(pos.z), rotation: 0 }};
+                const numRows = Math.ceil(Math.sqrt(total));
+                const numCols = Math.ceil(total / numRows);
+                const col = index % numCols;
+                const row = Math.floor(index / numCols);
+                return {{
+                    x: toUnits(-roomDims.length/2 + (roomDims.length / (numCols+1)) * (col+1)),
+                    y: toUnits(roomDims.height - 0.5),
+                    z: toUnits(-roomDims.width/2 + (roomDims.width / (numRows+1)) * (row+1)),
+                    rotation: 0
+                }};
             }}
-            function tableSurfacePosition(index, total, size) {{
-                const spec = getRoomSpecFromType(roomType);
+            function tableSurfacePosition(index, total, size, offset = 0) {{
                 return {{
                     x: toUnits(-(total - 1) * (size[0] + 1) / 2 + index * (size[0] + 1)),
                     y: toUnits(2.5 + size[1]/2 + 0.1),
-                    z: 0,
+                    z: toUnits(offset),
                     rotation: 0
                 }};
             }}
             function cornerRackPosition(index, total, size) {{
+                const RACK_UNIT_HEIGHT = 0.145; // Height of 1U in feet
                 return {{
-                    x: toUnits(-roomDims.length / 2 + 1.5),
-                    y: toUnits(size[1]/2 + index * (size[1] + 0.05)), // Stack vertically
-                    z: toUnits(roomDims.width / 2 - 1.5),
-                    rotation: Math.PI / 4
+                    x: toUnits(roomDims.length / 2 - 1.5),
+                    y: toUnits(0.1 + index * RACK_UNIT_HEIGHT), // Stack vertically
+                    z: toUnits(-roomDims.width / 2 + 1.5),
+                    rotation: -Math.PI * 0.75
                 }};
             }}
             
@@ -1579,22 +1637,26 @@ def create_3d_visualization():
                 mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
+                let found = false;
                 for (let i = 0; i < intersects.length; i++) {{
                     let obj = intersects[i].object;
                     while (obj.parent && !obj.userData.id) {{ obj = obj.parent; }}
                     if (obj.userData && obj.userData.id) {{
                         selectObject(obj);
+                        found = true;
                         break;
                     }}
                 }}
+                if (!found) selectObject(null); // Deselect if background is clicked
             }}
 
             function setupCameraControls() {{
                 let isDragging = false, prevMouse = {{ x: 0, y: 0 }};
+                const target = new THREE.Vector3(0, toUnits(2.5), 0);
                 renderer.domElement.addEventListener('mousedown', e => {{ if (e.button === 0) {{ isDragging = true; prevMouse = {{ x: e.clientX, y: e.clientY }}; }} }});
-                renderer.domElement.addEventListener('mousemove', e => {{ if (isDragging) {{ const delta = {{ x: e.clientX - prevMouse.x, y: e.clientY - prevMouse.y }}; const spherical = new THREE.Spherical(); spherical.setFromVector3(camera.position); spherical.theta -= delta.x*0.005; spherical.phi += delta.y*0.005; spherical.phi = Math.max(0.1, Math.min(Math.PI-0.1, spherical.phi)); camera.position.setFromSpherical(spherical); camera.lookAt(0, toUnits(4), 0); prevMouse = {{ x: e.clientX, y: e.clientY }}; }} }});
+                renderer.domElement.addEventListener('mousemove', e => {{ if (isDragging) {{ const delta = {{ x: e.clientX - prevMouse.x, y: e.clientY - prevMouse.y }}; const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target)); spherical.theta -= delta.x*0.005; spherical.phi -= delta.y*0.005; spherical.phi = Math.max(0.1, Math.min(Math.PI-0.1, spherical.phi)); camera.position.setFromSpherical(spherical).add(target); camera.lookAt(target); prevMouse = {{ x: e.clientX, y: e.clientY }}; }} }});
                 renderer.domElement.addEventListener('mouseup', () => {{ isDragging = false; }});
-                renderer.domElement.addEventListener('wheel', e => {{ e.preventDefault(); const zoom = e.deltaY > 0 ? 1.1 : 0.9; camera.position.multiplyScalar(zoom); const d = camera.position.length(); if(d < toUnits(5)) camera.position.normalize().multiplyScalar(toUnits(5)); else if(d > toUnits(80)) camera.position.normalize().multiplyScalar(toUnits(80)); }});
+                renderer.domElement.addEventListener('wheel', e => {{ e.preventDefault(); const zoom = e.deltaY > 0 ? 1.1 : 0.9; const dir = target.clone().sub(camera.position); if (dir.length() < toUnits(5) && zoom > 1) return; if (dir.length() > toUnits(80) && zoom < 1) return; camera.position.addScaledVector(dir, 1 - zoom); }});
                 renderer.domElement.addEventListener('click', onMouseClick);
             }}
 
@@ -1603,6 +1665,7 @@ def create_3d_visualization():
                 document.querySelector(`.control-btn[onclick="setView('${{viewType}}')"]`).classList.add('active');
                 
                 let newPos;
+                const target = new THREE.Vector3(0, toUnits(2.5), 0);
                 switch(viewType) {{
                     case 'front': newPos = new THREE.Vector3(0, toUnits(roomDims.height/2), toUnits(roomDims.width/2 + 15)); break;
                     case 'side': newPos = new THREE.Vector3(toUnits(roomDims.length/2 + 15), toUnits(roomDims.height/2), 0); break;
@@ -1612,7 +1675,7 @@ def create_3d_visualization():
                 
                 if (!animate) {{
                     camera.position.copy(newPos);
-                    camera.lookAt(0, toUnits(roomDims.height/4), 0);
+                    camera.lookAt(target);
                     return;
                 }}
 
@@ -1625,7 +1688,7 @@ def create_3d_visualization():
                     const progress = Math.min(elapsed / duration, 1);
                     const ease = 1 - Math.pow(1 - progress, 3);
                     camera.position.lerpVectors(startPos, newPos, ease);
-                    camera.lookAt(0, toUnits(roomDims.height/4), 0);
+                    camera.lookAt(target);
                     if (progress < 1) requestAnimationFrame(transition);
                 }}
                 transition();
