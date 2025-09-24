@@ -1064,6 +1064,7 @@ def get_equipment_specs(equipment_type, product_name=""):
 
 
 # --- CORRECTED 3D VISUALIZATION FUNCTION (UPDATED) ---
+# --- CORRECTED 3D VISUALIZATION FUNCTION (UPDATED) ---
 def create_3d_visualization():
     """Create an enhanced, realistic 3D room visualization with proper positioning."""
     st.subheader("3D Room Visualization")
@@ -2672,7 +2673,6 @@ def create_3d_visualization():
     
     # Display the HTML content
     st.components.v1.html(html_content, height=720)
-
 # --- Main Application ---
 def main():
     # Initialize session state for all generated content
