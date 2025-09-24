@@ -1627,7 +1627,8 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                     }}
                 }}
             }}
-            function createStandardLayout(group, tableMaterial, chairMaterial, spec) {
+
+            function createStandardLayout(group, tableMaterial, chairMaterial, spec) {{
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
                 
@@ -1640,7 +1641,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 const chairsPerSide = Math.floor(tableLength / chairSpacing);
                 const maxChairs = Math.min(spec.chair_count, chairsPerSide * 2);
                 
-                for (let i = 0; i < maxChairs; i++) {
+                for (let i = 0; i < maxChairs; i++) {{
                     const chair = createChair(chairMaterial);
                     const side = i < Math.ceil(maxChairs/2) ? -1 : 1;
                     const sideIndex = i % Math.ceil(maxChairs/2);
@@ -1649,13 +1650,13 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                     const chairZ = side * (tableWidth/2 + toUnits(1.5));
                     
                     if (Math.abs(chairX) < toUnits(roomDims.length/2 - 1) && 
-                        Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {
+                        Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {{
                         chair.position.set(chairX, 0, chairZ);
                         chair.rotation.y = side > 0 ? Math.PI : 0;
                         group.add(chair);
-                    }
-                }
-            }
+                    }}
+                }}
+            }}
 
             // Chair creation helper functions
             function createChair(material) {
