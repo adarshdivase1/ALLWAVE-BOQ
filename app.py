@@ -1382,21 +1382,15 @@ def create_3d_visualization():
                 else if (spec.chair_arrangement === 'theater') createTheaterSeating(group, chairMaterial, spec.chair_count);
             }}
 
-            // --- THIS IS THE UPDATED FUNCTION ---
             function createClassroomSeating(group, chairMaterial, chairCount) {{
-                const rows = Math.min(5, Math.floor(chairCount / 3));
+                const rows = 5;
                 const seatsPerRow = Math.ceil(chairCount / rows);
-                const maxRowWidth = roomDims.length - 4; // Leave 2ft on each side
-                const maxRowDepth = roomDims.width - 8; // Leave space for instructor area and back wall
-                const rowSpacing = Math.min(toUnits(4), toUnits(maxRowDepth / (rows + 1)));
-                const seatSpacing = Math.min(toUnits(3), toUnits(maxRowWidth / (seatsPerRow + 1)));
-                
+                const rowSpacing = toUnits(4);
+                const seatSpacing = toUnits(3);
                 for (let row = 0; row < rows; row++) {{
                     for (let seat = 0; seat < seatsPerRow && (row * seatsPerRow + seat) < chairCount; seat++) {{
                         const chair = createChair(chairMaterial);
-                        const x = toUnits(-(seatsPerRow - 1) * (maxRowWidth / seatsPerRow) / 2) + seat * seatSpacing;
-                        const z = toUnits(2) + row * rowSpacing;
-                        chair.position.set(x, 0, z);
+                        chair.position.set(toUnits(-(seatsPerRow - 1) * 1.5) + seat * seatSpacing, 0, toUnits(2) + row * rowSpacing);
                         group.add(chair);
                     }}
                 }}
