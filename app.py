@@ -1558,7 +1558,7 @@ def create_3d_visualization():
                 }}
             }}
 
-            function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
+function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                 const consoleWidth = toUnits(Math.min(spec.table_size[0], roomDims.length - 4));
                 const consoleDepth = toUnits(Math.min(spec.table_size[1], roomDims.width/3));
                 
@@ -1575,15 +1575,15 @@ def create_3d_visualization():
                     const chairX = -consoleWidth/2 + chairSpacing/2 + i * chairSpacing;
                     const chairZ = consoleDepth/2 + toUnits(1.5);
                     
-                    if (Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {
+                    if (Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {{
                         chair.position.set(chairX, 0, chairZ);
                         chair.rotation.y = Math.PI;
                         group.add(chair);
-                    }
-                }
-            }
+                    }}
+                }}
+            }}
 
-            function createTelepresenceLayout(group, tableMaterial, chairMaterial, spec) {
+            function createTelepresenceLayout(group, tableMaterial, chairMaterial, spec) {{
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
                 
@@ -1597,37 +1597,36 @@ def create_3d_visualization():
                 const chairsPerSide = Math.min(Math.floor(tableLength / chairSpacing), Math.floor(spec.chair_count / 3));
                 
                 // Front row facing screen
-                for (let i = 0; i < Math.min(chairsPerSide, spec.chair_count); i++) {
+                for (let i = 0; i < Math.min(chairsPerSide, spec.chair_count); i++) {{
                     const chair = createChair(chairMaterial);
                     const chairX = -tableLength/2 + chairSpacing/2 + i * chairSpacing;
                     const chairZ = -tableWidth/2 - toUnits(1.5);
                     
                     if (Math.abs(chairX) < toUnits(roomDims.length/2 - 1) && 
-                        Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {
+                        Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {{
                         chair.position.set(chairX, 0, chairZ);
                         group.add(chair);
-                    }
-                }
+                    }}
+                }}
                 
                 // Side chairs if more capacity needed
                 const remainingChairs = spec.chair_count - chairsPerSide;
-                if (remainingChairs > 0) {
-                    for (let i = 0; i < Math.min(remainingChairs, 4); i++) {
+                if (remainingChairs > 0) {{
+                    for (let i = 0; i < Math.min(remainingChairs, 4); i++) {{
                         const chair = createChair(chairMaterial);
                         const isLeft = i % 2 === 0;
                         const chairX = isLeft ? -tableLength/2 - toUnits(1.5) : tableLength/2 + toUnits(1.5);
                         const chairZ = (Math.floor(i/2) - 0.5) * chairSpacing;
                         
                         if (Math.abs(chairX) < toUnits(roomDims.length/2 - 1) && 
-                            Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {
+                            Math.abs(chairZ) < toUnits(roomDims.width/2 - 1)) {{
                             chair.position.set(chairX, 0, chairZ);
                             chair.rotation.y = isLeft ? Math.PI/2 : -Math.PI/2;
                             group.add(chair);
-                        }
-                    }
-                }
-            }
-
+                        }}
+                    }}
+                }}
+            }}
             function createStandardLayout(group, tableMaterial, chairMaterial, spec) {
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
