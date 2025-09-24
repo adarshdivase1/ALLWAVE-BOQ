@@ -1840,12 +1840,10 @@ def main():
     
     with tab1:
         room_area, ceiling_height = create_room_calculator()
-        # Store room dimensions in session state for the visualizer
-        st.session_state.room_length_input = st.session_state.get('room_length_input', 16.0)
-        st.session_state.room_width_input = st.session_state.get('room_width_input', 12.0)
-        st.session_state.ceiling_height_input = st.session_state.get('ceiling_height_input', 9.0)
-
-
+        # The values from the widgets above are automatically stored in session_state
+        # because they have a 'key'. The following lines are redundant and cause an error.
+        # I have removed them as the fix.
+        
     with tab2:
         features = st.text_area(
             "Specific Requirements & Features:",
