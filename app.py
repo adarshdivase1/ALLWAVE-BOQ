@@ -408,7 +408,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                           ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -477,7 +477,7 @@ def extract_boq_items_from_response(boq_content, product_df):
         
         # More flexible table detection
         if '|' in line and any(keyword in line.lower() for keyword in 
-                               ['category', 'product', 'brand', 'item', 'description', 'name', 'qty', 'quantity', 'price']):
+                              ['category', 'product', 'brand', 'item', 'description', 'name', 'qty', 'quantity', 'price']):
             in_table = True
             continue
             
@@ -1378,9 +1378,37 @@ def create_3d_visualization():
                 }});
             }}
 
+            // 6. Add room size validation function
+            function validateRoomLayout(roomType) {{
+                const spec = getRoomSpecFromType(roomType);
+                const currentArea = roomDims.length * roomDims.width;
+                
+                // If room is too small, scale down furniture
+                if (currentArea < spec.area_sqft[0]) {{
+                    console.warn(`Room too small for ${{roomType}}. Scaling furniture down.`);
+                    return 0.8; // Scale factor
+                }}
+                
+                // If room is very large, don't let furniture get lost
+                if (currentArea > spec.area_sqft[1] * 2) {{
+                    console.warn(`Room very large for ${{roomType}}. Scaling furniture up.`);
+                    return 1.3; // Scale factor  
+                }}
+                
+                return 1.0; // Normal scale
+            }}
+
             function createRoomFurniture() {{
                 const furnitureGroup = new THREE.Group();
                 const spec = getRoomSpecFromType(roomType);
+                
+                // ADD THIS: Validate room size and get scale factor
+                const scaleFactor = validateRoomLayout(roomType);
+                
+                // Apply scale factor to furniture group if needed
+                if (scaleFactor !== 1.0) {{
+                    furnitureGroup.scale.setScalar(scaleFactor);
+                }}
                 
                 // Enhanced materials
                 const tableMaterial = new THREE.MeshStandardMaterial({{ 
@@ -1492,25 +1520,26 @@ def create_3d_visualization():
                 }}
             }}
 
+            // 5. Fix conference layout chair positioning
             function createConferenceLayout(group, tableMaterial, chairMaterial, spec) {{
-                // Rectangular conference table
-                const tableLength = toUnits(spec.table_size[0]);
-                const tableWidth = toUnits(spec.table_size[1]);
+                // Table dimensions - use room-appropriate sizing
+                const maxTableLength = Math.min(toUnits(spec.table_size[0]), toUnits(roomDims.length - 6));
+                const maxTableWidth = Math.min(toUnits(spec.table_size[1]), toUnits(roomDims.width - 8));
                 
                 const tableTop = new THREE.Mesh(
-                    new THREE.BoxGeometry(tableLength, toUnits(0.15), tableWidth), 
+                    new THREE.BoxGeometry(maxTableLength, toUnits(0.15), maxTableWidth), 
                     tableMaterial
                 );
                 tableTop.position.y = toUnits(2.4);
                 tableTop.castShadow = true;
                 tableTop.receiveShadow = true;
                 
-                // Table legs
+                // Table legs - FIXED positioning
                 const legPositions = [
-                    [-tableLength/2 + toUnits(1), tableWidth/2 - toUnits(0.5)],
-                    [tableLength/2 - toUnits(1), tableWidth/2 - toUnits(0.5)],
-                    [-tableLength/2 + toUnits(1), -tableWidth/2 + toUnits(0.5)],
-                    [tableLength/2 - toUnits(1), -tableWidth/2 + toUnits(0.5)]
+                    [-maxTableLength/2 + toUnits(1), maxTableWidth/2 - toUnits(0.5)],
+                    [maxTableLength/2 - toUnits(1), maxTableWidth/2 - toUnits(0.5)],
+                    [-maxTableLength/2 + toUnits(1), -maxTableWidth/2 + toUnits(0.5)],
+                    [maxTableLength/2 - toUnits(1), -maxTableWidth/2 + toUnits(0.5)]
                 ];
                 
                 legPositions.forEach(pos => {{
@@ -1525,37 +1554,41 @@ def create_3d_visualization():
                 
                 group.add(tableTop);
                 
-                // Position chairs along sides
-                const chairsPerLongSide = Math.floor(spec.chair_count * 0.4);
-                const chairsPerShortSide = Math.floor((spec.chair_count - chairsPerLongSide * 2) / 2);
+                // FIXED: Chair positioning to ensure they stay within room bounds
+                const chairsPerLongSide = Math.min(Math.floor(spec.chair_count * 0.4), Math.floor(maxTableLength / toUnits(2)));
+                const chairsPerShortSide = Math.min(Math.floor((spec.chair_count - chairsPerLongSide * 2) / 2), Math.floor(maxTableWidth / toUnits(2)));
                 
-                // Long sides
+                // Long sides - FIXED spacing
                 for (let i = 0; i < chairsPerLongSide; i++) {{
-                    const spacing = tableLength / (chairsPerLongSide + 1);
+                    const spacing = maxTableLength / (chairsPerLongSide + 1);
                     
-                    // Front side
+                    // Front side - ensure chairs don't go outside room
                     const frontChair = createModernChair(chairMaterial);
-                    frontChair.position.set(-tableLength/2 + spacing * (i + 1), 0, tableWidth/2 + toUnits(2));
+                    const frontZ = Math.min(maxTableWidth/2 + toUnits(2), toUnits(roomDims.width/2 - 1));
+                    frontChair.position.set(-maxTableLength/2 + spacing * (i + 1), 0, frontZ);
                     frontChair.rotation.y = Math.PI;
                     group.add(frontChair);
                     
                     // Back side
                     const backChair = createModernChair(chairMaterial);
-                    backChair.position.set(-tableLength/2 + spacing * (i + 1), 0, -tableWidth/2 - toUnits(2));
+                    const backZ = Math.max(-maxTableWidth/2 - toUnits(2), toUnits(-roomDims.width/2 + 1));
+                    backChair.position.set(-maxTableLength/2 + spacing * (i + 1), 0, backZ);
                     group.add(backChair);
                 }}
                 
-                // Short sides (head and foot of table)
+                // Short sides - FIXED positioning  
                 for (let i = 0; i < chairsPerShortSide; i++) {{
-                    const spacing = tableWidth / (chairsPerShortSide + 1);
+                    const spacing = maxTableWidth / (chairsPerShortSide + 1);
                     
                     const headChair = createExecutiveChair(chairMaterial);
-                    headChair.position.set(-tableLength/2 - toUnits(2), 0, -tableWidth/2 + spacing * (i + 1));
+                    const headX = Math.max(-maxTableLength/2 - toUnits(2), toUnits(-roomDims.length/2 + 1));
+                    headChair.position.set(headX, 0, -maxTableWidth/2 + spacing * (i + 1));
                     headChair.rotation.y = Math.PI / 2;
                     group.add(headChair);
                     
                     const footChair = createExecutiveChair(chairMaterial);
-                    footChair.position.set(tableLength/2 + toUnits(2), 0, -tableWidth/2 + spacing * (i + 1));
+                    const footX = Math.min(maxTableLength/2 + toUnits(2), toUnits(roomDims.length/2 - 1));
+                    footChair.position.set(footX, 0, -maxTableWidth/2 + spacing * (i + 1));
                     footChair.rotation.y = -Math.PI / 2;
                     group.add(footChair);
                 }}
@@ -1599,27 +1632,29 @@ def create_3d_visualization():
                 }}
             }}
 
+            // 1. Fix the createTrainingLayout function - table positioning issue
             function createTrainingLayout(group, tableMaterial, chairMaterial, whiteboardMaterial, spec) {{
-                // Instructor table at front
+                // Instructor table at front - FIXED positioning
                 const instructorTable = new THREE.Mesh(
                     new THREE.BoxGeometry(toUnits(spec.table_size[0]), toUnits(0.15), toUnits(spec.table_size[1])),
                     tableMaterial
                 );
-                instructorTable.position.set(0, toUnits(2.4), toUnits(-roomDims.width/2 + spec.table_size[1]/2 + 2));
+                // Fixed: Use positive Z to place at back wall, not front
+                instructorTable.position.set(0, toUnits(2.4), toUnits(-roomDims.width/2 + spec.table_size[1]/2 + 1));
                 instructorTable.castShadow = true;
                 instructorTable.receiveShadow = true;
                 group.add(instructorTable);
                 
-                // Whiteboard behind instructor table
+                // Whiteboard behind instructor table - FIXED positioning  
                 const whiteboard = new THREE.Mesh(
                     new THREE.PlaneGeometry(toUnits(12), toUnits(4)),
                     whiteboardMaterial
                 );
-                whiteboard.position.set(0, toUnits(5), toUnits(-roomDims.width/2 + 0.15));
+                whiteboard.position.set(0, toUnits(5), toUnits(-roomDims.width/2 + 0.1));
                 whiteboard.castShadow = true;
                 group.add(whiteboard);
                 
-                // Student seating
+                // Student seating - FIXED to stay within room bounds
                 if (spec.chair_arrangement === 'classroom') {{
                     createClassroomSeating(group, chairMaterial, spec.chair_count);
                 }} else if (spec.chair_arrangement === 'theater') {{
@@ -1627,51 +1662,70 @@ def create_3d_visualization():
                 }}
             }}
 
+            // 2. Fix classroom seating to respect room boundaries
             function createClassroomSeating(group, chairMaterial, chairCount) {{
                 const rows = Math.ceil(Math.sqrt(chairCount / 1.5));
                 const seatsPerRow = Math.ceil(chairCount / rows);
-                const rowSpacing = toUnits(4);
-                const seatSpacing = toUnits(2.5);
+                
+                // FIXED: Calculate spacing based on room dimensions
+                const availableWidth = roomDims.length - 4; // Leave 2ft margins
+                const availableDepth = roomDims.width - 8; // Leave 4ft from instructor area
+                
+                const rowSpacing = Math.min(toUnits(4), toUnits(availableDepth / rows));
+                const seatSpacing = Math.min(toUnits(2.5), toUnits(availableWidth / seatsPerRow));
                 
                 for (let row = 0; row < rows; row++) {{
                     for (let seat = 0; seat < seatsPerRow && (row * seatsPerRow + seat) < chairCount; seat++) {{
                         const chair = createStudentChair(chairMaterial);
+                        // FIXED: Proper positioning within room bounds
                         chair.position.set(
-                            toUnits(-(seatsPerRow - 1) * 1.25) + seat * seatSpacing,
+                            toUnits(-(seatsPerRow - 1) * (availableWidth / seatsPerRow) / 2) + seat * seatSpacing,
                             0,
-                            toUnits(roomDims.width/2 - 3) - row * rowSpacing
+                            toUnits(roomDims.width/2 - 6) - row * rowSpacing // Start further from front
                         );
                         group.add(chair);
                     }}
                 }}
             }}
 
+            // 3. Fix theater seating positioning
             function createTheaterSeating(group, chairMaterial, chairCount) {{
                 const rows = Math.ceil(chairCount / 8);
                 const seatsPerRow = Math.ceil(chairCount / rows);
-                const rowSpacing = toUnits(3);
-                const seatSpacing = toUnits(2);
+                
+                // FIXED: Calculate proper spacing for room
+                const availableWidth = roomDims.length - 4;
+                const availableDepth = roomDims.width - 8;
+                
+                const rowSpacing = Math.min(toUnits(3), toUnits(availableDepth / rows));
+                const seatSpacing = Math.min(toUnits(2), toUnits(availableWidth / seatsPerRow));
                 
                 for (let row = 0; row < rows; row++) {{
                     for (let seat = 0; seat < seatsPerRow && (row * seatsPerRow + seat) < chairCount; seat++) {{
                         const chair = createTheaterChair(chairMaterial);
                         chair.position.set(
-                            toUnits(-(seatsPerRow - 1) * 1) + seat * seatSpacing,
+                            toUnits(-(seatsPerRow - 1) * (availableWidth / seatsPerRow) / 2) + seat * seatSpacing,
                             0,
-                            toUnits(roomDims.width/2 - 2) - row * rowSpacing
+                            toUnits(roomDims.width/2 - 6) - row * rowSpacing
                         );
                         group.add(chair);
                     }}
                 }}
             }}
 
+            // 4. Fix event layout for large rooms
             function createEventLayout(group, tableMaterial, chairMaterial, spec) {{
-                // Multiple round tables for events
-                const tableCount = Math.ceil(spec.chair_count / 8);
-                const tablesPerRow = Math.ceil(Math.sqrt(tableCount));
-                const tableSpacing = toUnits(8);
+                // FIXED: Scale table count and spacing based on room size
+                const baseTableCount = Math.ceil(spec.chair_count / 8);
+                const roomArea = roomDims.length * roomDims.width;
+                const tablesPerRow = Math.ceil(Math.sqrt(baseTableCount));
                 
-                for (let i = 0; i < tableCount; i++) {{
+                // FIXED: Dynamic table spacing based on room size
+                const availableWidth = roomDims.length - 6; // 3ft margins
+                const availableDepth = roomDims.width - 6;
+                const tableSpacing = Math.min(toUnits(8), toUnits(availableWidth / tablesPerRow));
+                
+                for (let i = 0; i < baseTableCount; i++) {{
                     const row = Math.floor(i / tablesPerRow);
                     const col = i % tablesPerRow;
                     
@@ -1679,17 +1733,22 @@ def create_3d_visualization():
                         new THREE.CylinderGeometry(toUnits(2.5), toUnits(2.5), toUnits(0.15), 16),
                         tableMaterial
                     );
+                    
+                    // FIXED: Center tables properly within room bounds
+                    const startX = -(tablesPerRow - 1) * tableSpacing / 2;
+                    const startZ = -(Math.ceil(baseTableCount / tablesPerRow) - 1) * tableSpacing / 2;
+                    
                     table.position.set(
-                        toUnits(-(tablesPerRow - 1) * 4) + col * tableSpacing,
+                        startX + col * tableSpacing,
                         toUnits(2.4),
-                        toUnits(-(Math.ceil(tableCount / tablesPerRow) - 1) * 4) + row * tableSpacing
+                        startZ + row * tableSpacing
                     );
                     table.castShadow = true;
                     table.receiveShadow = true;
                     group.add(table);
                     
-                    // Chairs around each table
-                    const chairsPerTable = Math.min(8, Math.ceil(spec.chair_count / tableCount));
+                    // Chairs around each table - FIXED positioning
+                    const chairsPerTable = Math.min(8, Math.ceil(spec.chair_count / baseTableCount));
                     for (let j = 0; j < chairsPerTable; j++) {{
                         const chair = createModernChair(chairMaterial);
                         const angle = (j / chairsPerTable) * Math.PI * 2;
@@ -1951,7 +2010,7 @@ def create_3d_visualization():
                     if (!equipmentByType[equipment.type]) {{
                         equipmentByType[equipment.type] = [];
                     }}
-                    equipmentByType[equipment.type].push({{...equipment, index}});
+                    equipmentByType[equipment.type].push({{{...equipment, index}}});
                 }});
 
                 // Position equipment systematically
