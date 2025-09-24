@@ -1058,6 +1058,7 @@ def get_equipment_specs(equipment_type, product_name=""):
 
 
 # --- ENHANCED REALISTIC 3D VISUALIZATION FUNCTION ---
+# --- ENHANCED REALISTIC 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
     """Create a highly realistic, interactive 3D room visualization with enhanced materials and lighting."""
     st.subheader("Enhanced 3D Room Visualization")
@@ -1071,11 +1072,13 @@ def create_3d_visualization():
     # Enhanced equipment processing
     js_equipment = []
     for item in equipment_data:
+        # Correctly map the equipment type based on category and name
         equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''))
 
         if equipment_type == 'service':
             continue
             
+        # Get dimensions for the equipment
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
         
         try:
@@ -1628,7 +1631,7 @@ def create_3d_visualization():
                 }});
                 
                 // Place chairs
-                this.placeChairsAroundTable(group, tableLength, tableWidth, spec.chair_count, chairMaterial, isExecutive);
+                placeChairsAroundTable(group, tableLength, tableWidth, spec.chair_count, chairMaterial, isExecutive);
                 
                 // Add credenza for executive rooms
                 if (isExecutive) {{
@@ -1679,9 +1682,9 @@ def create_3d_visualization():
                     group.add(chair);
                     chairsPlaced++;
                 }
-            }
+            }}
 
-            function createTrainingLayout(group, spec) {
+            function createTrainingLayout(group, spec) {{
                 const tableMaterial = materials.lightWood;
                 const chairMaterial = materials.fabric;
                 
@@ -1689,7 +1692,7 @@ def create_3d_visualization():
                 const rows = Math.ceil(spec.chair_count / 5);
                 const chairsPerRow = Math.ceil(spec.chair_count / rows);
                 
-                for (let row = 0; row < rows; row++) {
+                for (let row = 0; row < rows; row++) {{
                     // Small tables for each row
                     const tableLength = toUnits(8);
                     const tableWidth = toUnits(2);
@@ -1709,18 +1712,18 @@ def create_3d_visualization():
                         [tableLength/3, tableWidth/2], [-tableLength/3, tableWidth/2]
                     ];
                     
-                    legPositions.forEach(pos => {
+                    legPositions.forEach(pos => {{
                         const leg = new THREE.Mesh(
                             new THREE.CylinderGeometry(toUnits(0.1), toUnits(0.1), toUnits(2.3)),
                             materials.brushedMetal
                         );
                         leg.position.set(pos[0], toUnits(1.15), toUnits(-roomDims.width/4 + row * 4) + pos[1]);
                         group.add(leg);
-                    });
+                    }});
                     
                     // Chairs for this row
                     const chairsThisRow = Math.min(chairsPerRow, spec.chair_count - row * chairsPerRow);
-                    for (let j = 0; j < chairsThisRow; j++) {
+                    for (let j = 0; j < chairsThisRow; j++) {{
                         const chair = createModernChair(chairMaterial);
                         chair.position.set(
                             (j - (chairsThisRow - 1) / 2) * toUnits(3),
@@ -1728,16 +1731,16 @@ def create_3d_visualization():
                             toUnits(-roomDims.width/4 + row * 4) + toUnits(1.5)
                         );
                         group.add(chair);
-                    }
-                }
+                    }}
+                }}
                 
                 // Presentation area at front
                 const podium = createPodium();
                 podium.position.set(toUnits(2), 0, toUnits(roomDims.width/2 - 3));
                 group.add(podium);
-            }
+            }}
 
-            function createMultipurposeLayout(group, spec) {
+            function createMultipurposeLayout(group, spec) {{
                 // Flexible seating arrangement
                 const sectionSize = Math.ceil(spec.chair_count / 4);
                 
@@ -1749,14 +1752,14 @@ def create_3d_visualization():
                     [roomDims.length/4, roomDims.width/4]
                 ];
                 
-                positions.forEach((pos, index) => {
+                positions.forEach((pos, index) => {{
                     const table = createRoundTable(toUnits(3), materials.lightWood);
                     table.position.set(toUnits(pos[0]), toUnits(2.5), toUnits(pos[1]));
                     group.add(table);
                     
                     // Chairs around each table
                     const chairsPerTable = Math.min(8, spec.chair_count - index * 8);
-                    for (let i = 0; i < chairsPerTable; i++) {
+                    for (let i = 0; i < chairsPerTable; i++) {{
                         const chair = createModernChair(materials.fabric);
                         const angle = (i / chairsPerTable) * Math.PI * 2;
                         chair.position.set(
@@ -1766,11 +1769,11 @@ def create_3d_visualization():
                         );
                         chair.rotation.y = angle + Math.PI;
                         group.add(chair);
-                    }
-                });
-            }
+                    }}
+                }});
+            }}
 
-            function createStudioLayout(group, spec) {
+            function createStudioLayout(group, spec) {{
                 // Production desk
                 const deskLength = toUnits(12);
                 const deskWidth = toUnits(4);
@@ -1792,7 +1795,7 @@ def create_3d_visualization():
                 group.add(controlSurface);
                 
                 // Director chairs
-                for (let i = 0; i < spec.chair_count; i++) {
+                for (let i = 0; i < spec.chair_count; i++) {{
                     const chair = createExecutiveChair(materials.leather);
                     chair.position.set(
                         (i - (spec.chair_count - 1) / 2) * toUnits(4),
@@ -1800,17 +1803,17 @@ def create_3d_visualization():
                         -deskWidth/2 - toUnits(2)
                     );
                     group.add(chair);
-                }
+                }}
                 
                 // Equipment racks
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 3; i++) {{
                     const rack = createEquipmentRack();
                     rack.position.set(toUnits(-roomDims.length/2 + 2), 0, toUnits(-roomDims.width/2 + 2 + i * 3));
                     group.add(rack);
-                }
-            }
+                }}
+            }}
 
-            function createTelepresenceLayout(group, spec) {
+            function createTelepresenceLayout(group, spec) {{
                 // Curved conference table for telepresence
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
@@ -1827,9 +1830,9 @@ def create_3d_visualization():
                 const chairsPerRow = 5;
                 const rows = Math.ceil(spec.chair_count / chairsPerRow);
                 
-                for (let row = 0; row < rows; row++) {
+                for (let row = 0; row < rows; row++) {{
                     const chairsThisRow = Math.min(chairsPerRow, spec.chair_count - row * chairsPerRow);
-                    for (let i = 0; i < chairsThisRow; i++) {
+                    for (let i = 0; i < chairsThisRow; i++) {{
                         const chair = createExecutiveChair(materials.executiveLeather);
                         chair.position.set(
                             (i - (chairsThisRow - 1) / 2) * toUnits(3),
@@ -1837,8 +1840,8 @@ def create_3d_visualization():
                             toUnits(-2 - row * 3)
                         );
                         group.add(chair);
-                    }
-                }
+                    }}
+                }}
                 
                 // Technology integration area
                 const techConsole = new THREE.Mesh(
@@ -1847,10 +1850,10 @@ def create_3d_visualization():
                 );
                 techConsole.position.set(0, toUnits(1.5), toUnits(roomDims.width/2 - 2));
                 group.add(techConsole);
-            }
+            }}
 
             // Helper functions for furniture creation
-            function createModernChair(material) {
+            function createModernChair(material) {{
                 const chairGroup = new THREE.Group();
                 
                 // Chair base
@@ -1888,20 +1891,20 @@ def create_3d_visualization():
                 chairGroup.add(backrest);
                 
                 return chairGroup;
-            }
+            }}
 
-            function createExecutiveChair(material) {
+            function createExecutiveChair(material) {{
                 const chairGroup = createModernChair(material);
                 
                 // Add armrests
-                [-0.9, 0.9].forEach(x => {
+                [-0.9, 0.9].forEach(x => {{
                     const armrest = new THREE.Mesh(
                         new THREE.BoxGeometry(toUnits(0.3), toUnits(0.3), toUnits(1.2)),
                         materials.brushedMetal
                     );
                     armrest.position.set(toUnits(x), toUnits(2.3), 0);
                     chairGroup.add(armrest);
-                });
+                }});
                 
                 // Higher backrest
                 const highBack = new THREE.Mesh(
@@ -1912,9 +1915,9 @@ def create_3d_visualization():
                 chairGroup.add(highBack);
                 
                 return chairGroup;
-            }
+            }}
 
-            function createRoundTable(radius, material) {
+            function createRoundTable(radius, material) {{
                 const tableGroup = new THREE.Group();
                 
                 // Table top
@@ -1936,9 +1939,9 @@ def create_3d_visualization():
                 tableGroup.add(base);
                 
                 return tableGroup;
-            }
+            }}
 
-            function createSideCabinet() {
+            function createSideCabinet() {{
                 const cabinetGroup = new THREE.Group();
                 
                 const cabinet = new THREE.Mesh(
@@ -1950,19 +1953,19 @@ def create_3d_visualization():
                 cabinetGroup.add(cabinet);
                 
                 // Cabinet doors
-                for (let i = 0; i < 2; i++) {
+                for (let i = 0; i < 2; i++) {{
                     const door = new THREE.Mesh(
                         new THREE.BoxGeometry(toUnits(1.8), toUnits(2.2), toUnits(0.1)),
                         materials.lightWood
                     );
                     door.position.set(toUnits(-0.9 + i * 1.8), toUnits(1.25), toUnits(0.8));
                     cabinetGroup.add(door);
-                }
+                }}
                 
                 return cabinetGroup;
-            }
+            }}
 
-            function createCredenza() {
+            function createCredenza() {{
                 const credenzaGroup = new THREE.Group();
                 
                 const main = new THREE.Mesh(
@@ -1982,9 +1985,9 @@ def create_3d_visualization():
                 credenzaGroup.add(top);
                 
                 return credenzaGroup;
-            }
+            }}
 
-            function createPodium() {
+            function createPodium() {{
                 const podiumGroup = new THREE.Group();
                 
                 const base = new THREE.Mesh(
@@ -2003,9 +2006,9 @@ def create_3d_visualization():
                 podiumGroup.add(top);
                 
                 return podiumGroup;
-            }
+            }}
 
-            function createEquipmentRack() {
+            function createEquipmentRack() {{
                 const rackGroup = new THREE.Group();
                 
                 const frame = new THREE.Mesh(
@@ -2017,39 +2020,39 @@ def create_3d_visualization():
                 rackGroup.add(frame);
                 
                 // Rack units
-                for (let i = 0; i < 8; i++) {
+                for (let i = 0; i < 8; i++) {{
                     const unit = new THREE.Mesh(
                         new THREE.BoxGeometry(toUnits(1.3), toUnits(0.6), toUnits(1.8)),
                         materials.plasticBlack
                     );
                     unit.position.set(0, toUnits(0.5 + i * 0.7), 0);
                     rackGroup.add(unit);
-                }
+                }}
                 
                 return rackGroup;
-            }
+            }}
 
-            function createAllEquipmentObjects() {
+            function createAllEquipmentObjects() {{
                 const equipmentGroup = new THREE.Group();
                 equipmentGroup.name = 'equipmentGroup';
                 
-                avEquipment.forEach((item, index) => {
+                avEquipment.forEach((item, index) => {{
                     const equipmentObject = createEquipmentObject(item);
-                    if (equipmentObject) {
+                    if (equipmentObject) {{
                         equipmentObject.userData = item;
-                        equipmentObject.name = `equipment_${item.id}`;
+                        equipmentObject.name = `equipment_${{item.id}}`;
                         equipmentGroup.add(equipmentObject);
-                    }
-                });
+                    }}
+                }});
                 
                 scene.add(equipmentGroup);
                 positionEquipmentInRoom();
-            }
+            }}
 
-            function createEquipmentObject(item) {
+            function createEquipmentObject(item) {{
                 const group = new THREE.Group();
                 
-                switch(item.type) {
+                switch(item.type) {{
                     case 'display':
                         return createDisplayObject(item, group);
                     case 'projector':
@@ -2078,14 +2081,14 @@ def create_3d_visualization():
                         return createInterfaceObject(item, group);
                     default:
                         return createGenericEquipmentObject(item, group);
-                }
-            }
+                }}
+            }}
 
-            function createDisplayObject(item, group) {
-                const specs = item.specs || {};
-                const width = toUnits(specs.width_inches || 65) / 12; // Convert to feet
-                const height = width * 9/16; // 16:9 aspect ratio
-                const depth = toUnits(0.3);
+            function createDisplayObject(item, group) {{
+                const specs = item.specs || [5.4, 3, 0.2]; // Default: ~65" display in feet
+                const width = toUnits(specs[0]);
+                const height = toUnits(specs[1]);
+                const depth = toUnits(specs[2]);
                 
                 // Screen
                 const screen = new THREE.Mesh(
@@ -2113,13 +2116,13 @@ def create_3d_visualization():
                 group.add(back);
                 
                 return group;
-            }
+            }}
 
-            function createProjectorObject(item, group) {
-                const specs = item.specs || {};
-                const length = toUnits(specs.length_inches || 15) / 12;
-                const width = toUnits(specs.width_inches || 12) / 12;
-                const height = toUnits(specs.height_inches || 6) / 12;
+            function createProjectorObject(item, group) {{
+                const specs = item.specs || [1.25, 0.5, 1.0]; // Default in feet
+                const length = toUnits(specs[0]);
+                const height = toUnits(specs[1]);
+                const width = toUnits(specs[2]);
                 
                 // Main body
                 const body = new THREE.Mesh(
@@ -2139,19 +2142,19 @@ def create_3d_visualization():
                 group.add(lens);
                 
                 // Cooling vents
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 3; i++) {{
                     const vent = new THREE.Mesh(
                         new THREE.BoxGeometry(toUnits(0.1), height * 0.8, toUnits(0.05)),
                         materials.blackMetal
                     );
                     vent.position.set(-length/4 + i * length/6, 0, width/2 + toUnits(0.025));
                     group.add(vent);
-                }
+                }}
                 
                 return group;
-            }
+            }}
 
-            function createCameraObject(item, group) {
+            function createCameraObject(item, group) {{
                 // Camera base
                 const base = new THREE.Mesh(
                     new THREE.CylinderGeometry(toUnits(0.4), toUnits(0.4), toUnits(0.3)),
@@ -2178,9 +2181,9 @@ def create_3d_visualization():
                 group.add(lens);
                 
                 return group;
-            }
+            }}
 
-            function createMicrophoneObject(item, group) {
+            function createMicrophoneObject(item, group) {{
                 // Microphone stand
                 const stand = new THREE.Mesh(
                     new THREE.CylinderGeometry(toUnits(0.05), toUnits(0.1), toUnits(1.5)),
@@ -2206,13 +2209,13 @@ def create_3d_visualization():
                 group.add(base);
                 
                 return group;
-            }
+            }}
 
-            function createSpeakerObject(item, group) {
-                const specs = item.specs || {};
-                const width = toUnits(specs.width_inches || 8) / 12;
-                const height = toUnits(specs.height_inches || 12) / 12;
-                const depth = toUnits(specs.depth_inches || 8) / 12;
+            function createSpeakerObject(item, group) {{
+                const specs = item.specs || [0.6, 1.0, 0.6]; // Default in feet
+                const width = toUnits(specs[0]);
+                const height = toUnits(specs[1]);
+                const depth = toUnits(specs[2]);
                 
                 // Speaker cabinet
                 const cabinet = new THREE.Mesh(
@@ -2223,8 +2226,8 @@ def create_3d_visualization():
                 group.add(cabinet);
                 
                 // Speaker drivers
-                const driverPositions = specs.drivers || [0.3, -0.3];
-                driverPositions.forEach(pos => {
+                const driverPositions = [0.3, -0.3];
+                driverPositions.forEach(pos => {{
                     const driver = new THREE.Mesh(
                         new THREE.CylinderGeometry(toUnits(0.2), toUnits(0.2), toUnits(0.1)),
                         materials.brushedMetal
@@ -2232,7 +2235,7 @@ def create_3d_visualization():
                     driver.rotation.x = Math.PI/2;
                     driver.position.set(0, height * pos, depth/2 + toUnits(0.05));
                     group.add(driver);
-                });
+                }});
                 
                 // Speaker grille
                 const grille = new THREE.Mesh(
@@ -2243,9 +2246,9 @@ def create_3d_visualization():
                 group.add(grille);
                 
                 return group;
-            }
+            }}
 
-            function createControlSystemObject(item, group) {
+            function createControlSystemObject(item, group) {{
                 // Rack unit style
                 const width = toUnits(19) / 12; // Standard rack width
                 const height = toUnits(1.75) / 12; // 1U height
@@ -2267,10 +2270,10 @@ def create_3d_visualization():
                 group.add(frontPanel);
                 
                 // LED indicators
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < 4; i++) {{
                     const led = new THREE.Mesh(
                         new THREE.SphereGeometry(toUnits(0.02)),
-                        new THREE.MeshBasicMaterial({ color: i === 0 ? 0x00ff00 : 0xff0000 })
+                        new THREE.MeshBasicMaterial({{ color: i === 0 ? 0x00ff00 : 0xff0000 }})
                     );
                     led.position.set(
                         -width/3 + i * width/6,
@@ -2278,12 +2281,12 @@ def create_3d_visualization():
                         depth/2 + toUnits(0.08)
                     );
                     group.add(led);
-                }
+                }}
                 
                 return group;
-            }
+            }}
 
-            function createCableObject(item, group) {
+            function createCableObject(item, group) {{
                 // Simple cable representation
                 const cable = new THREE.Mesh(
                     new THREE.CylinderGeometry(toUnits(0.02), toUnits(0.02), toUnits(6)),
@@ -2293,19 +2296,19 @@ def create_3d_visualization():
                 group.add(cable);
                 
                 // Cable connectors
-                [-1, 1].forEach(end => {
+                [-1, 1].forEach(end => {{
                     const connector = new THREE.Mesh(
                         new THREE.BoxGeometry(toUnits(0.1), toUnits(0.05), toUnits(0.2)),
                         materials.brushedMetal
                     );
                     connector.position.y = end * toUnits(3);
                     group.add(connector);
-                });
+                }});
                 
                 return group;
-            }
+            }}
 
-            function createMountObject(item, group) {
+            function createMountObject(item, group) {{
                 // Wall/ceiling mount bracket
                 const bracket = new THREE.Mesh(
                     new THREE.BoxGeometry(toUnits(0.8), toUnits(0.2), toUnits(0.8)),
@@ -2323,29 +2326,29 @@ def create_3d_visualization():
                 group.add(arm);
                 
                 return group;
-            }
+            }}
 
-            function createProcessorObject(item, group) {
+            function createProcessorObject(item, group) {{
                 return createRackUnitObject(item, group, 2); // 2U height
-            }
+            }}
 
-            function createAmplifierObject(item, group) {
+            function createAmplifierObject(item, group) {{
                 return createRackUnitObject(item, group, 3); // 3U height
-            }
+            }}
 
-            function createSwitcherObject(item, group) {
+            function createSwitcherObject(item, group) {{
                 return createRackUnitObject(item, group, 1); // 1U height
-            }
+            }}
 
-            function createRecorderObject(item, group) {
+            function createRecorderObject(item, group) {{
                 return createRackUnitObject(item, group, 2); // 2U height
-            }
+            }}
 
-            function createInterfaceObject(item, group) {
+            function createInterfaceObject(item, group) {{
                 return createRackUnitObject(item, group, 1); // 1U height
-            }
+            }}
 
-            function createRackUnitObject(item, group, units = 1) {
+            function createRackUnitObject(item, group, units = 1) {{
                 const width = toUnits(19) / 12; // Standard rack width
                 const height = toUnits(1.75 * units) / 12; // U height
                 const depth = toUnits(16) / 12; // Standard depth
@@ -2366,7 +2369,7 @@ def create_3d_visualization():
                 group.add(frontPanel);
                 
                 // Ventilation slots
-                for (let i = 0; i < Math.floor(units * 3); i++) {
+                for (let i = 0; i < Math.floor(units * 3); i++) {{
                     const slot = new THREE.Mesh(
                         new THREE.BoxGeometry(width * 0.8, toUnits(0.02), toUnits(0.06)),
                         materials.blackMetal
@@ -2377,12 +2380,12 @@ def create_3d_visualization():
                         depth/2 + toUnits(0.08)
                     );
                     group.add(slot);
-                }
+                }}
                 
                 return group;
-            }
+            }}
 
-            function createGenericEquipmentObject(item, group) {
+            function createGenericEquipmentObject(item, group) {{
                 // Default generic equipment box
                 const box = new THREE.Mesh(
                     new THREE.BoxGeometry(toUnits(1), toUnits(0.5), toUnits(1)),
@@ -2392,18 +2395,18 @@ def create_3d_visualization():
                 group.add(box);
                 
                 return group;
-            }
+            }}
 
-            function positionEquipmentInRoom() {
+            function positionEquipmentInRoom() {{
                 const equipmentGroup = scene.getObjectByName('equipmentGroup');
                 if (!equipmentGroup) return;
                 
-                const wallPositions = {
-                    front: { x: 0, z: toUnits(roomDims.width/2) - toUnits(1) },
-                    back: { x: 0, z: -toUnits(roomDims.width/2) + toUnits(1) },
-                    left: { x: -toUnits(roomDims.length/2) + toUnits(1), z: 0 },
-                    right: { x: toUnits(roomDims.length/2) - toUnits(1), z: 0 }
-                };
+                const wallPositions = {{
+                    front: {{ x: 0, z: toUnits(roomDims.width/2) - toUnits(1) }},
+                    back: {{ x: 0, z: -toUnits(roomDims.width/2) + toUnits(1) }},
+                    left: {{ x: -toUnits(roomDims.length/2) + toUnits(1), z: 0 }},
+                    right: {{ x: toUnits(roomDims.length/2) - toUnits(1), z: 0 }}
+                }};
                 
                 const ceilingPositions = [];
                 const floorPositions = [];
@@ -2412,71 +2415,71 @@ def create_3d_visualization():
                 let displayCount = 0, projectorCount = 0, cameraCount = 0;
                 let speakerCount = 0, microphoneCount = 0;
                 
-                equipmentGroup.children.forEach((equipment, index) => {
+                equipmentGroup.children.forEach((equipment, index) => {{
                     const item = equipment.userData;
-                    let position = { x: 0, y: 0, z: 0 };
+                    let position = {{ x: 0, y: 0, z: 0 }};
                     
-                    switch(item.type) {
+                    switch(item.type) {{
                         case 'display':
-                            if (displayCount === 0) {
-                                position = { ...wallPositions.front, y: toUnits(4) };
-                            } else {
-                                position = { 
+                            if (displayCount === 0) {{
+                                position = {{ ...wallPositions.front, y: toUnits(4) }};
+                            }} else {{
+                                position = {{ 
                                     x: wallPositions.front.x + toUnits((displayCount - 1) * 4), 
                                     y: toUnits(4), 
                                     z: wallPositions.front.z 
-                                };
-                            }
+                                }};
+                            }}
                             displayCount++;
                             break;
                             
                         case 'projector':
-                            position = {
+                            position = {{
                                 x: 0,
                                 y: toUnits(roomDims.height - 2),
                                 z: toUnits(-roomDims.width/4)
-                            };
+                            }};
                             projectorCount++;
                             break;
                             
                         case 'camera':
-                            if (cameraCount === 0) {
-                                position = { ...wallPositions.back, y: toUnits(8) };
-                            } else {
-                                position = {
+                            if (cameraCount === 0) {{
+                                position = {{ ...wallPositions.back, y: toUnits(8) }};
+                            }} else {{
+                                position = {{
                                     x: wallPositions.back.x + toUnits((cameraCount - 1) * 3),
                                     y: toUnits(8),
                                     z: wallPositions.back.z
-                                };
-                            }
+                                }};
+                            }}
                             cameraCount++;
                             break;
                             
                         case 'speaker':
                             const corners = [
-                                { x: toUnits(roomDims.length/2 - 2), z: toUnits(roomDims.width/2 - 2) },
-                                { x: -toUnits(roomDims.length/2 - 2), z: toUnits(roomDims.width/2 - 2) },
-                                { x: toUnits(roomDims.length/2 - 2), z: -toUnits(roomDims.width/2 - 2) },
-                                { x: -toUnits(roomDims.length/2 - 2), z: -toUnits(roomDims.width/2 - 2) }
+                                {{ x: toUnits(roomDims.length/2 - 2), z: toUnits(roomDims.width/2 - 2) }},
+                                {{ x: -toUnits(roomDims.length/2 - 2), z: toUnits(roomDims.width/2 - 2) }},
+                                {{ x: toUnits(roomDims.length/2 - 2), z: -toUnits(roomDims.width/2 - 2) }},
+                                {{ x: -toUnits(roomDims.length/2 - 2), z: -toUnits(roomDims.width/2 - 2) }}
                             ];
-                            if (speakerCount < corners.length) {
-                                position = { ...corners[speakerCount], y: toUnits(7) };
-                            } else {
-                                position = {
+                            if (speakerCount < corners.length) {{
+                                position = {{ ...corners[speakerCount], y: toUnits(7) }};
+                            }} else {{
+                                position = {{
                                     x: toUnits((speakerCount - 4) * 3),
                                     y: toUnits(7),
                                     z: wallPositions.front.z
-                                };
-                            }
+                                }};
+                            }}
                             speakerCount++;
                             break;
                             
                         case 'microphone':
-                            position = {
+                            position = {{
                                 x: toUnits((microphoneCount - 1) * 4),
                                 y: 0,
                                 z: toUnits(2)
-                            };
+                            }};
                             microphoneCount++;
                             break;
                             
@@ -2487,44 +2490,44 @@ def create_3d_visualization():
                         case 'recorder':
                         case 'interface':
                             // Place in equipment rack area
-                            position = {
+                            position = {{
                                 x: wallPositions.left.x,
                                 y: toUnits(3 + (index % 5) * 0.5),
                                 z: toUnits(-roomDims.width/4 + (Math.floor(index/5) * 2))
-                            };
+                            }};
                             break;
                             
                         default:
                             // Default positioning
-                            position = {
+                            position = {{
                                 x: toUnits((index % 4 - 2) * 3),
                                 y: toUnits(1),
                                 z: toUnits(roomDims.width/4)
-                            };
-                    }
+                            }};
+                    }}
                     
                     equipment.position.set(position.x, position.y, position.z);
                     equipment.castShadow = true;
                     equipment.receiveShadow = true;
-                });
-            }
+                }});
+            }}
 
-            function setupCameraControls() {
+            function setupCameraControls() {{
                 let isDragging = false;
-                let previousMousePosition = { x: 0, y: 0 };
+                let previousMousePosition = {{ x: 0, y: 0 }};
                 
-                renderer.domElement.addEventListener('mousedown', (event) => {
+                renderer.domElement.addEventListener('mousedown', (event) => {{
                     isDragging = true;
-                    previousMousePosition = { x: event.clientX, y: event.clientY };
-                });
+                    previousMousePosition = {{ x: event.clientX, y: event.clientY }};
+                }});
                 
-                renderer.domElement.addEventListener('mousemove', (event) => {
+                renderer.domElement.addEventListener('mousemove', (event) => {{
                     if (!isDragging) return;
                     
-                    const deltaMove = {
+                    const deltaMove = {{
                         x: event.clientX - previousMousePosition.x,
                         y: event.clientY - previousMousePosition.y
-                    };
+                    }};
                     
                     const deltaRotationQuaternion = new THREE.Quaternion()
                         .setFromEuler(new THREE.Euler(
@@ -2535,25 +2538,25 @@ def create_3d_visualization():
                         ));
                     
                     camera.quaternion.multiplyQuaternions(deltaRotationQuaternion, camera.quaternion);
-                    previousMousePosition = { x: event.clientX, y: event.clientY };
-                });
+                    previousMousePosition = {{ x: event.clientX, y: event.clientY }};
+                }});
                 
-                renderer.domElement.addEventListener('mouseup', () => {
+                renderer.domElement.addEventListener('mouseup', () => {{
                     isDragging = false;
-                });
+                }});
                 
-                renderer.domElement.addEventListener('wheel', (event) => {
+                renderer.domElement.addEventListener('wheel', (event) => {{
                     const zoomIntensity = 0.1;
                     const zoom = event.deltaY > 0 ? 1 + zoomIntensity : 1 - zoomIntensity;
                     
                     camera.position.multiplyScalar(zoom);
                     camera.position.clampLength(toUnits(5), toUnits(100));
-                });
+                }});
                 
                 renderer.domElement.addEventListener('click', onMouseClick);
-            }
+            }}
 
-            function onMouseClick(event) {
+            function onMouseClick(event) {{
                 const rect = renderer.domElement.getBoundingClientRect();
                 mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -2565,114 +2568,111 @@ def create_3d_visualization():
                 
                 const intersects = raycaster.intersectObjects(equipmentGroup.children, true);
                 
-                if (intersects.length > 0) {
+                if (intersects.length > 0) {{
                     let targetObject = intersects[0].object;
-                    while (targetObject.parent && !targetObject.userData.id) {
+                    while (targetObject.parent && !targetObject.userData.id) {{
                         targetObject = targetObject.parent;
-                    }
+                    }}
                     
                     selectEquipment(targetObject);
-                }
-            }
+                }}
+            }}
 
-            function selectEquipment(equipmentObject) {
+            function selectEquipment(equipmentObject) {{
                 // Clear previous selection
-                if (selectedObject) {
-                    selectedObject.traverse((child) => {
-                        if (child.material && child.material.emissive) {
+                if (selectedObject) {{
+                    selectedObject.traverse((child) => {{
+                        if (child.material && child.material.emissive) {{
                             child.material.emissive.setHex(0x000000);
-                        }
-                    });
-                }
+                        }}
+                    }});
+                }}
                 
                 selectedObject = equipmentObject;
                 
                 // Highlight selected object
-                if (selectedObject) {
-                    selectedObject.traverse((child) => {
-                        if (child.material && child.material.emissive) {
+                if (selectedObject) {{
+                    selectedObject.traverse((child) => {{
+                        if (child.material && child.material.emissive) {{
                             child.material.emissive.setHex(0x444444);
-                        }
-                    });
+                        }}
+                    }});
                     
                     updateSelectedItemInfo(selectedObject.userData);
                     updateEquipmentListSelection(selectedObject.userData.id);
-                }
-            }
+                }}
+            }}
 
-            function updateEquipmentList() {
+            function updateEquipmentList() {{
                 const listContainer = document.getElementById('equipmentList');
                 listContainer.innerHTML = '';
                 
-                avEquipment.forEach(item => {
+                avEquipment.forEach(item => {{
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'equipment-item';
                     itemDiv.dataset.itemId = item.id;
                     
                     itemDiv.innerHTML = `
-                        <div class="equipment-name">${item.name}</div>
+                        <div class="equipment-name">${{item.name}}</div>
                         <div class="equipment-details">
-                            ${item.brand} | $${item.price.toLocaleString()}
-                            ${item.original_quantity > 1 ? ` | Instance ${item.instance}/${item.original_quantity}` : ''}
+                            ${{item.brand}} | $${{item.price.toLocaleString()}}
+                            ${{item.original_quantity > 1 ? ` | Instance ${{item.instance}}/${{item.original_quantity}}` : ''}}
                         </div>
                     `;
                     
-                    itemDiv.addEventListener('click', () => {
+                    itemDiv.addEventListener('click', () => {{
                         const equipmentGroup = scene.getObjectByName('equipmentGroup');
-                        if (equipmentGroup) {
-                            const equipmentObject = equipmentGroup.getObjectByName(`equipment_${item.id}`);
-                            if (equipmentObject) {
+                        if (equipmentGroup) {{
+                            const equipmentObject = equipmentGroup.getObjectByName(`equipment_${{item.id}}`);
+                            if (equipmentObject) {{
                                 selectEquipment(equipmentObject);
                                 zoomToObject(equipmentObject);
-                            }
-                        }
-                    });
+                            }}
+                        }}
+                    }});
                     
                     listContainer.appendChild(itemDiv);
-                });
-            }
+                }});
+            }}
 
-            function updateEquipmentListSelection(itemId) {
-                document.querySelectorAll('.equipment-item').forEach(item => {
+            function updateEquipmentListSelection(itemId) {{
+                document.querySelectorAll('.equipment-item').forEach(item => {{
                     item.classList.remove('selected-item');
-                });
+                }});
                 
-                const selectedItem = document.querySelector(`[data-item-id="${itemId}"]`);
-                if (selectedItem) {
+                const selectedItem = document.querySelector(`[data-item-id="${{itemId}}"]`);
+                if (selectedItem) {{
                     selectedItem.classList.add('selected-item');
-                }
-            }
+                }}
+            }}
 
-            function updateSelectedItemInfo(item) {
+            function updateSelectedItemInfo(item) {{
                 const infoDiv = document.getElementById('selectedItemInfo');
-                if (!item) {
+                if (!item) {{
                     infoDiv.innerHTML = '<strong>Click an object or list item for details</strong>';
                     return;
-                }
+                }}
                 
-                const specs = item.specs || {};
+                const specs = item.specs || [];
                 let specsHtml = '';
                 
-                Object.keys(specs).forEach(key => {
-                    const value = specs[key];
-                    if (value && typeof value !== 'object') {
-                        specsHtml += `<div style="font-size: 11px; color: #aaa;">${key}: ${value}</div>`;
-                    }
-                });
+                if(Array.isArray(specs) && specs.length >= 3){{
+                    specsHtml += `<div style="font-size: 11px; color: #aaa;">Dimensions (ft): ${{specs[0].toFixed(2)}}W x ${{specs[1].toFixed(2)}}H x ${{specs[2].toFixed(2)}}D</div>`;
+                }}
                 
                 infoDiv.innerHTML = `
-                    <div style="color: #4FC3F7; font-weight: bold; margin-bottom: 8px;">${item.name}</div>
-                    <div style="font-size: 12px; color: #ccc;">Brand: ${item.brand}</div>
-                    <div style="font-size: 12px; color: #ccc;">Price: $${item.price.toLocaleString()}</div>
-                    <div style="font-size: 12px; color: #ccc;">Type: ${item.type}</div>
-                    ${item.original_quantity > 1 ? `<div style="font-size: 12px; color: #ccc;">Instance: ${item.instance}/${item.original_quantity}</div>` : ''}
+                    <div style="color: #4FC3F7; font-weight: bold; margin-bottom: 8px;">${{item.name}}</div>
+                    <div style="font-size: 12px; color: #ccc;">Brand: ${{item.brand}}</div>
+                    <div style="font-size: 12px; color: #ccc;">Price: $${{item.price.toLocaleString()}}</div>
+                    <div style="font-size: 12px; color: #ccc;">Type: ${{item.type}}</div>
+                    ${{item.original_quantity > 1 ? `<div style="font-size: 12px; color: #ccc;">Instance: ${{item.instance}}/${{item.original_quantity}}</div>` : ''}}
                     <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #444;">
-                        ${specsHtml || '<div style="font-size: 11px; color: #888;">No specifications available</div>'}
+                        ${{specsHtml || '<div style="font-size: 11px; color: #888;">No specifications available</div>'}}
                     </div>
                 `;
-            }
+            }}
 
-            function setView(viewType, animate = true, buttonElement) {
+            function setView(viewType, animate = true, buttonElement) {{
                 // Update active button
                 document.querySelectorAll('.control-btn').forEach(btn => btn.classList.remove('active'));
                 if (buttonElement) buttonElement.classList.add('active');
@@ -2680,7 +2680,7 @@ def create_3d_visualization():
                 const roomCenter = new THREE.Vector3(0, toUnits(roomDims.height/2), 0);
                 let targetPosition;
                 
-                switch(viewType) {
+                switch(viewType) {{
                     case 'overview':
                         targetPosition = new THREE.Vector3(
                             toUnits(roomDims.length * 0.8),
@@ -2697,22 +2697,22 @@ def create_3d_visualization():
                     case 'top':
                         targetPosition = new THREE.Vector3(0, toUnits(roomDims.height * 1.5), 0);
                         break;
-                }
+                }}
                 
-                if (animate) {
+                if (animate) {{
                     animateCamera(targetPosition, roomCenter);
-                } else {
+                }} else {{
                     camera.position.copy(targetPosition);
                     camera.lookAt(roomCenter);
-                }
-            }
+                }}
+            }}
 
-            function animateCamera(targetPosition, targetLookAt) {
+            function animateCamera(targetPosition, targetLookAt) {{
                 const startPosition = camera.position.clone();
                 const startTime = Date.now();
                 const duration = 1500;
                 
-                function updateCamera() {
+                function updateCamera() {{
                     const elapsed = Date.now() - startTime;
                     const progress = Math.min(elapsed / duration, 1);
                     const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
@@ -2720,24 +2720,24 @@ def create_3d_visualization():
                     camera.position.lerpVectors(startPosition, targetPosition, eased);
                     camera.lookAt(targetLookAt);
                     
-                    if (progress < 1) {
+                    if (progress < 1) {{
                         requestAnimationFrame(updateCamera);
-                    }
-                }
+                    }}
+                }}
                 
                 updateCamera();
-            }
+            }}
 
-            function zoomToSelected() {
-                if (!selectedObject) {
+            function zoomToSelected() {{
+                if (!selectedObject) {{
                     alert('Please select an equipment item first');
                     return;
-                }
+                }}
                 
                 zoomToObject(selectedObject);
-            }
+            }}
 
-            function zoomToObject(object) {
+            function zoomToObject(object) {{
                 const box = new THREE.Box3().setFromObject(object);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
@@ -2752,30 +2752,30 @@ def create_3d_visualization():
                 );
                 
                 animateCamera(targetPosition, center);
-            }
+            }}
 
-            function toggleWireframe() {
+            function toggleWireframe() {{
                 wireframeMode = !wireframeMode;
                 
-                scene.traverse((child) => {
-                    if (child.isMesh && child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(mat => {
+                scene.traverse((child) => {{
+                    if (child.isMesh && child.material) {{
+                        if (Array.isArray(child.material)) {{
+                            child.material.forEach(mat => {{
                                 mat.wireframe = wireframeMode;
-                            });
-                        } else {
+                            }});
+                        }} else {{
                             child.material.wireframe = wireframeMode;
-                        }
-                    }
-                });
-            }
+                        }}
+                    }}
+                }});
+            }}
 
-            function setLighting(type, buttonElement) {
+            function setLighting(type, buttonElement) {{
                 // Update active button
                 document.querySelectorAll('.lighting-btn').forEach(btn => btn.classList.remove('active'));
                 if (buttonElement) buttonElement.classList.add('active');
                 
-                switch(type) {
+                switch(type) {{
                     case 'default':
                         ambientLight.intensity = 0.4;
                         directionalLight1.intensity = 0.8;
@@ -2811,25 +2811,25 @@ def create_3d_visualization():
                         directionalLight1.color.setHex(0xF5F5DC);
                         directionalLight2.color.setHex(0xF0F8FF);
                         break;
-                }
-            }
+                }}
+            }}
 
-            function toRadians(degrees) {
+            function toRadians(degrees) {{
                 return degrees * (Math.PI / 180);
-            }
+            }}
 
-            function animate() {
+            function animate() {{
                 animationId = requestAnimationFrame(animate);
                 renderer.render(scene, camera);
-            }
+            }}
 
             // Handle window resize
-            window.addEventListener('resize', () => {
+            window.addEventListener('resize', () => {{
                 const container = document.getElementById('container');
                 camera.aspect = container.clientWidth / container.clientHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(container.clientWidth, container.clientHeight);
-            });
+            }});
 
             // Initialize the scene
             init();
