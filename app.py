@@ -1720,7 +1720,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
             }}
 
             // Equipment creation and positioning functions
-            function createAllEquipmentObjects() {
+            function createAllEquipmentObjects() {{
                 avEquipment.forEach((equipment, index) => {
                     const equipmentObj = createEquipmentObject(equipment);
                     if (equipmentObj) {
@@ -1729,7 +1729,7 @@ function createStudioLayout(group, tableMaterial, chairMaterial, spec) {{
                         scene.add(equipmentObj);
                     }
                 });
-            }
+            }}
 
             function createEquipmentObject(equipment) {
                 const group = new THREE.Group();
