@@ -1954,7 +1954,7 @@ def create_3d_visualization():
                     if (!equipmentByType[equipment.type]) {{
                         equipmentByType[equipment.type] = [];
                     }}
-                    equipmentByType[equipment.type].push({{{...equipment, index}}});
+                    equipmentByType[equipment.type].push({{{...equipment, index}}}); 
                 }});
 
                 // Position equipment systematically
