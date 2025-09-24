@@ -406,16 +406,16 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available", key="dedicated_circuit_checkbox")
         network_capability = st.selectbox("Network Infrastructure", 
-                                        ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
+                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
         security_clearance = st.selectbox("Security Level", 
-                                        ["Standard", "Restricted", "Classified"], key="security_clearance_select")
+                                          ["Standard", "Restricted", "Classified"], key="security_clearance_select")
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -972,9 +972,9 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost * 1.30, 'USD')}**")
 
-# --- FIXED UTILITY FUNCTIONS FOR VISUALIZATION ---
+# --- FIXED UTILITY FUNCTIONS FOR VISUALIZATION (UPDATED AS PER YOUR REQUEST) ---
 
-def map_equipment_type(category, product_name=""):
+def map_equipment_type(category, product_name="", brand=""):
     """Enhanced mapping function that considers both category and product name."""
     if not category and not product_name:
         return 'control'
@@ -1032,7 +1032,8 @@ def get_equipment_specs(equipment_type, product_name=""):
         'mount': [0.3, 0.3, 0.8],
         'cable': [0.1, 0.1, 2],
         'power': [1.0, 0.4, 0.8],
-        'service': [0, 0, 0]  # Services won't be visualized
+        'service': [0, 0, 0],  # Services won't be visualized
+        'generic_equipment': [0.8, 0.6, 0.6]
     }
     
     base_spec = default_specs.get(equipment_type, [1, 1, 1])
@@ -1057,6 +1058,7 @@ def get_equipment_specs(equipment_type, product_name=""):
             return [spec * 0.8 for spec in base_spec]
     
     return base_spec
+
 
 # --- FINAL CORRECTED 3D VISUALIZATION FUNCTION ---
 def create_3d_visualization():
