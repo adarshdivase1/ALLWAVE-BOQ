@@ -1104,6 +1104,8 @@ def create_3d_visualization():
     room_height = st.session_state.get('ceiling_height_input', 9.0)
     room_type_str = st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)')
     
+    # IMPORTANT: All curly braces { and } in the CSS and JS below have been doubled to {{ and }}
+    # This is necessary to escape them inside a Python f-string.
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -1176,7 +1178,7 @@ def create_3d_visualization():
         <script>
             let scene, camera, renderer, raycaster, mouse;
             let animationId, selectedObject = null;
-            const toUnits = (feet) => feet * 0.3048; // Correct feet to meters conversion
+            const toUnits = (feet) => feet * 0.3048;
             const avEquipment = {json.dumps(js_equipment)};
             const roomType = `{room_type_str}`;
             const roomDims = {{
@@ -1192,7 +1194,7 @@ def create_3d_visualization():
                 
                 const container = document.getElementById('container');
                 camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-                setView('overview', false); // Initial set without animation
+                setView('overview', false);
                 
                 renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -1247,7 +1249,6 @@ def create_3d_visualization():
                 scene.add(dirLight);
             }}
 
-            // --- START OF REVISED JAVASCRIPT LAYOUTS ---
             function createRoomFurniture() {{
                 const furnitureGroup = new THREE.Group();
                 const spec = getRoomSpecFromType(roomType);
@@ -1307,7 +1308,6 @@ def create_3d_visualization():
                 const tableLength = toUnits(spec.table_size[0]);
                 const tableWidth = toUnits(spec.table_size[1]);
 
-                // Create table with legs
                 const tableTop = new THREE.Mesh(new THREE.BoxGeometry(tableLength, toUnits(0.2), tableWidth), tableMaterial);
                 tableTop.position.y = toUnits(2.5);
                 tableTop.castShadow = true; tableTop.receiveShadow = true;
@@ -1316,10 +1316,10 @@ def create_3d_visualization():
                 const legHeight = toUnits(2.4);
                 const legSize = toUnits(0.2);
                 const legPositions = [
-                    {x: tableLength/2 - legSize, z: tableWidth/2 - legSize},
-                    {x: -tableLength/2 + legSize, z: tableWidth/2 - legSize},
-                    {x: tableLength/2 - legSize, z: -tableWidth/2 + legSize},
-                    {x: -tableLength/2 + legSize, z: -tableWidth/2 + legSize},
+                    {{x: tableLength/2 - legSize, z: tableWidth/2 - legSize}},
+                    {{x: -tableLength/2 + legSize, z: tableWidth/2 - legSize}},
+                    {{x: tableLength/2 - legSize, z: -tableWidth/2 + legSize}},
+                    {{x: -tableLength/2 + legSize, z: -tableWidth/2 + legSize}},
                 ];
                 legPositions.forEach(pos => {{
                     const leg = new THREE.Mesh(new THREE.BoxGeometry(legSize, legHeight, legSize), tableMaterial);
@@ -1328,12 +1328,10 @@ def create_3d_visualization():
                     group.add(leg);
                 }});
 
-                // Place chairs
                 const chairSpacing = toUnits(2.8);
                 const chairsPerSide = Math.floor((tableLength - toUnits(2)) / chairSpacing);
                 let chairsPlaced = 0;
 
-                // Place chairs on long sides
                 for(let side = 0; side < 2; side++) {{
                     const zPos = (side === 0) ? tableWidth / 2 + toUnits(1.5) : -tableWidth / 2 - toUnits(1.5);
                     const rotation = (side === 0) ? Math.PI : 0;
@@ -1348,7 +1346,6 @@ def create_3d_visualization():
                     }}
                 }}
                 
-                // Place chairs at ends if space/count allows
                 if (chairsPlaced < spec.chair_count) {{
                     const chair = isExecutive ? createExecutiveChair(chairMaterial) : createChair(chairMaterial);
                     chair.position.set(tableLength / 2 + toUnits(2.0), 0, 0);
@@ -1366,17 +1363,14 @@ def create_3d_visualization():
             }}
 
             function createTrainingLayout(group, tableMaterial, chairMaterial, whiteboardMaterial, spec) {{
-                // Whiteboard at the front
                 const whiteboard = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(10), toUnits(4)), whiteboardMaterial);
                 whiteboard.position.set(0, toUnits(5), -toUnits(roomDims.width / 2) + toUnits(0.1));
                 group.add(whiteboard);
                 
-                // Instructor table
                 const presTable = createTable(toUnits(5), toUnits(2.5), toUnits(0.2), 4, tableMaterial);
                 presTable.position.set(0, toUnits(2.5), -toUnits(roomDims.width/2) + toUnits(4));
                 group.add(presTable);
 
-                // Rows of chairs
                 const chairCount = spec.chair_count;
                 const rowSpacing = toUnits(4);
                 const seatSpacing = toUnits(3.5);
@@ -1393,14 +1387,13 @@ def create_3d_visualization():
                         const xPos = -rowWidth/2 + s * seatSpacing;
                         const zPos = startZ + r * rowSpacing;
                         chair.position.set(toUnits(xPos), 0, zPos);
-                        chair.rotation.y = Math.PI; // Face front
+                        chair.rotation.y = Math.PI;
                         group.add(chair);
                         chairsPlaced++;
                     }}
                 }}
             }}
             
-            // IMPROVED: More realistic chair models
             function createChair(material) {{
                 const chair = new THREE.Group();
                 const seat = new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5), toUnits(0.2), toUnits(1.5)), material);
@@ -1429,13 +1422,12 @@ def create_3d_visualization():
                 return chair;
             }}
 
-            // IMPROVED: Helper to create a table with legs
             function createTable(width, depth, height, segments, material) {{
                 const tableGroup = new THREE.Group();
                 const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(width, depth, height, segments), material);
                 tableTop.castShadow = true; tableTop.receiveShadow = true;
                 tableGroup.add(tableTop);
-                // Simple pedestal leg
+
                 const legHeight = toUnits(2.4);
                 const leg = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.4, depth * 0.4, legHeight, segments), material);
                 leg.position.y = -legHeight/2;
@@ -1443,7 +1435,6 @@ def create_3d_visualization():
                 tableGroup.add(leg);
                 return tableGroup;
             }}
-            // --- END OF REVISED JAVASCRIPT LAYOUTS ---
 
             function createAllEquipmentObjects() {{
                 avEquipment.forEach((equipment, index) => {{
