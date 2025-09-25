@@ -288,15 +288,27 @@ def generate_with_retry(model, prompt, max_retries=3):
     return None
 
 # --- FIX: REPLACE THIS ENTIRE FUNCTION ---
+# --- FIX: REPLACE THIS ENTIRE FUNCTION ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
-    # --- THIS LINE IS THE FIX ---
-    # It safely escapes any special characters in the user's text inputs.
-    safe_features = re.escape(features) if features else ""
-    
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
+
+    # --- THIS IS THE FIX ---
+    # Pre-format all potentially problematic variables into safe, simple strings
+    # before they are used in the f-string. This prevents parsing errors.
+    
+    # 1. Safely format the user-provided features text
+    safe_features = str(features) if features else "None"
+    
+    # 2. Safely format the technical requirements dictionary
+    tech_reqs_str = ", ".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in technical_reqs.items()])
+    
+    # 3. Safely format the constraints that use parentheses
+    display_size_str = f"{room_spec['recommended_display_size'][0]} to {room_spec['recommended_display_size'][1]} inches"
+    viewing_dist_str = f"{room_spec['viewing_distance_ft'][0]} to {room_spec['viewing_distance_ft'][1]} ft"
+    budget_range_str = f"${room_spec['typical_budget_range'][0]:,} to ${room_spec['typical_budget_range'][1]:,}"
     
     enhanced_prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready Bill of Quantities (BOQ).
@@ -306,14 +318,14 @@ You are a Professional AV Systems Engineer with 15+ years of experience in the I
 - Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
 - Special Requirements: {safe_features}
-- Infrastructure: {technical_reqs}
+- Infrastructure: {tech_reqs_str}
 
 **TECHNICAL CONSTRAINTS & GUIDELINES:**
 - Adhere to the provided AVIXA standards.
-- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
-- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
+- Display size range: {display_size_str}
+- Viewing distance: {viewing_dist_str}
 - Audio coverage: {room_spec['audio_coverage']}
-- Budget target: ${{room_spec['typical_budget_range'][0]:,}}-${{room_spec['typical_budget_range'][1]:,}}
+- Budget target: {budget_range_str}
 
 **MANDATORY REQUIREMENTS:**
 1.  **ONLY use products from the provided product catalog sample.**
@@ -339,14 +351,12 @@ Generate the detailed BOQ now:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
             boq_content = response.text
-            # We now use a new extraction function for the new format
             boq_items = extract_new_format_boq_items(boq_content, product_df)
             return boq_content, boq_items
         return None, []
     except Exception as e:
         st.error(f"Enhanced BOQ generation failed: {str(e)}")
         return None, []
-
 # --- BOQ Validation & Data Extraction ---
 class BOQValidator:
     def __init__(self, room_specs, product_df):
