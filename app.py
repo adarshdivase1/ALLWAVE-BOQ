@@ -107,6 +107,7 @@ def load_and_validate_data():
         return None, None, [f"Data loading error: {str(e)}"]
 
 # --- Enhanced Room Specifications Database ---
+# UPDATED ROOM_SPECS OBJECT
 ROOM_SPECS = {
     "Small Huddle Room (2-3 People)": {
         "area_sqft": (40, 80),
@@ -118,7 +119,7 @@ ROOM_SPECS = {
         "network_ports": 1,
         "typical_budget_range": (3000, 8000),
         "furniture_config": "small_huddle",
-        "table_size": [4, 2.5],  # length, width in feet
+        "table_size": [4, 2.5],
         "chair_count": 3,
         "chair_arrangement": "casual"
     },
@@ -151,7 +152,7 @@ ROOM_SPECS = {
         "chair_arrangement": "rectangular"
     },
     "Large Conference Room (8-12 People)": {
-        "area_sqft": (250, 400),
+        "area_sqft": (300, 450),
         "recommended_display_size": (65, 75),
         "viewing_distance_ft": (10, 16),
         "audio_coverage": "Distributed ceiling mics with expansion",
@@ -160,12 +161,12 @@ ROOM_SPECS = {
         "network_ports": 3,
         "typical_budget_range": (25000, 50000),
         "furniture_config": "large_conference",
-        "table_size": [14, 5],
+        "table_size": [16, 5],
         "chair_count": 12,
         "chair_arrangement": "rectangular"
     },
     "Executive Boardroom (10-16 People)": {
-        "area_sqft": (350, 600),
+        "area_sqft": (400, 700),
         "recommended_display_size": (75, 86),
         "viewing_distance_ft": (12, 20),
         "audio_coverage": "Distributed ceiling and table mics",
@@ -174,12 +175,12 @@ ROOM_SPECS = {
         "network_ports": 4,
         "typical_budget_range": (50000, 100000),
         "furniture_config": "executive_boardroom",
-        "table_size": [16, 6],
+        "table_size": [20, 6],
         "chair_count": 16,
         "chair_arrangement": "oval"
     },
     "Training Room (15-25 People)": {
-        "area_sqft": (300, 500),
+        "area_sqft": (500, 800),
         "recommended_display_size": (65, 86),
         "viewing_distance_ft": (10, 18),
         "audio_coverage": "Distributed with wireless mic support",
@@ -188,12 +189,12 @@ ROOM_SPECS = {
         "network_ports": 3,
         "typical_budget_range": (30000, 70000),
         "furniture_config": "training_room",
-        "table_size": [8, 4],  # Instructor table
+        "table_size": [10, 4],
         "chair_count": 25,
         "chair_arrangement": "classroom"
     },
     "Large Training/Presentation Room (25-40 People)": {
-        "area_sqft": (500, 800),
+        "area_sqft": (800, 1200),
         "recommended_display_size": (86, 98),
         "viewing_distance_ft": (15, 25),
         "audio_coverage": "Full distributed system with handheld mics",
@@ -202,12 +203,12 @@ ROOM_SPECS = {
         "network_ports": 4,
         "typical_budget_range": (60000, 120000),
         "furniture_config": "large_training",
-        "table_size": [10, 4],  # Instructor table
+        "table_size": [12, 4],
         "chair_count": 40,
         "chair_arrangement": "theater"
     },
     "Multipurpose Event Room (40+ People)": {
-        "area_sqft": (800, 1500),
+        "area_sqft": (1200, 2000),
         "recommended_display_size": (98, 110),
         "viewing_distance_ft": (20, 35),
         "audio_coverage": "Professional distributed PA system",
@@ -216,12 +217,12 @@ ROOM_SPECS = {
         "network_ports": 6,
         "typical_budget_range": (100000, 250000),
         "furniture_config": "multipurpose_event",
-        "table_size": [12, 6],  # Main presentation table
+        "table_size": [16, 6],
         "chair_count": 50,
         "chair_arrangement": "flexible"
     },
     "Video Production Studio": {
-        "area_sqft": (200, 400),
+        "area_sqft": (400, 600),
         "recommended_display_size": (32, 55),
         "viewing_distance_ft": (6, 12),
         "audio_coverage": "Professional studio monitors",
@@ -230,12 +231,12 @@ ROOM_SPECS = {
         "network_ports": 4,
         "typical_budget_range": (75000, 200000),
         "furniture_config": "production_studio",
-        "table_size": [8, 4],  # Control desk
+        "table_size": [12, 5],
         "chair_count": 6,
         "chair_arrangement": "production"
     },
     "Telepresence Suite": {
-        "area_sqft": (150, 300),
+        "area_sqft": (350, 500),
         "recommended_display_size": (65, 98),
         "viewing_distance_ft": (8, 14),
         "audio_coverage": "High-fidelity spatial audio",
@@ -244,7 +245,7 @@ ROOM_SPECS = {
         "network_ports": 3,
         "typical_budget_range": (80000, 180000),
         "furniture_config": "telepresence",
-        "table_size": [12, 4],
+        "table_size": [14, 4],
         "chair_count": 8,
         "chair_arrangement": "telepresence"
     }
@@ -364,6 +365,7 @@ def create_project_header():
     
     return project_id, quote_valid_days
 
+# UPDATED create_room_calculator FUNCTION
 def create_room_calculator():
     """Room size calculator and validator."""
     st.subheader("Room Analysis & Specifications")
@@ -371,9 +373,9 @@ def create_room_calculator():
     col1, col2 = st.columns(2)
     
     with col1:
-        room_length = st.number_input("Room Length (ft)", min_value=8.0, max_value=50.0, value=16.0, key="room_length_input")
-        room_width = st.number_input("Room Width (ft)", min_value=6.0, max_value=30.0, value=12.0, key="room_width_input")
-        ceiling_height = st.number_input("Ceiling Height (ft)", min_value=8.0, max_value=20.0, value=9.0, key="ceiling_height_input")
+        room_length = st.number_input("Room Length (ft)", min_value=10.0, max_value=80.0, value=28.0, key="room_length_input")
+        room_width = st.number_input("Room Width (ft)", min_value=8.0, max_value=50.0, value=20.0, key="room_width_input")
+        ceiling_height = st.number_input("Ceiling Height (ft)", min_value=8.0, max_value=20.0, value=10.0, key="ceiling_height_input")
     
     with col2:
         room_area = room_length * room_width
@@ -1693,7 +1695,7 @@ def create_3d_visualization():
                 createRoomFurniture();
                 createPlaceableEquipmentObjects();
                 setupEnhancedControls();
-                setupKeyboardControls(); // ADDED
+                setupKeyboardControls();
                 updateEquipmentList();
                 animate();
             }}
@@ -1797,11 +1799,9 @@ def create_3d_visualization():
                 }});
             }}
             
-            // --- NEW FURNITURE LOGIC (FIX 3) ---
             function createRoomFurniture() {{
                 const roomSpec = allRoomSpecs[roomType] || {{ chair_count: 8 }};
                 
-                // Table configuration based on room type
                 let tableConfig = getTableConfig(roomType, roomSpec);
                 
                 const tableMaterial = new THREE.MeshStandardMaterial({{
@@ -1810,7 +1810,6 @@ def create_3d_visualization():
                     metalness: 0.1
                 }});
                 
-                // Create table with room-specific dimensions
                 const table = new THREE.Mesh(
                     new THREE.BoxGeometry(
                         toUnits(tableConfig.length),
@@ -1825,14 +1824,13 @@ def create_3d_visualization():
                 table.name = 'conference_table';
                 scene.add(table);
 
-                // Room-specific furniture additions
                 addRoomSpecificFurniture(roomType, roomSpec);
                 
-                // Create chairs with proper spacing
                 const chairPositions = calculateChairPositions(roomSpec, tableConfig);
                 createChairs(chairPositions);
             }}
 
+            // UPDATED JAVASCRIPT FUNCTION
             function getTableConfig(roomType, roomSpec) {{
                 const tableSize = roomSpec.table_size || [10, 4];
                 const configs = {{
@@ -1845,53 +1843,116 @@ def create_3d_visualization():
                     'Standard Conference Room (6-8 People)': {{
                         length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: 0
                     }},
+                    'Large Conference Room (8-12 People)': {{
+                        length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: 0
+                    }},
                     'Executive Boardroom (10-16 People)': {{
                         length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: 0
                     }},
                     'Training Room (15-25 People)': {{
-                        length: tableSize[0], width: tableSize[1], height: 2.5, x: -toUnits(roomDims.length/2 - tableSize[0]/2 - 2), z: 0
+                        length: tableSize[0], width: tableSize[1], height: 2.5, 
+                        x: -toUnits(roomDims.length/2 - tableSize[0]/2 - 3), z: -toUnits(roomDims.width/4)
+                    }},
+                    'Large Training/Presentation Room (25-40 People)': {{
+                        length: tableSize[0], width: tableSize[1], height: 2.5, 
+                        x: -toUnits(roomDims.length/2 - tableSize[0]/2 - 4), z: -toUnits(roomDims.width/3)
+                    }},
+                    'Multipurpose Event Room (40+ People)': {{
+                        length: tableSize[0], width: tableSize[1], height: 2.5, 
+                        x: -toUnits(roomDims.length/2 - tableSize[0]/2 - 5), z: -toUnits(roomDims.width/3)
                     }},
                     'Video Production Studio': {{
-                        length: tableSize[0], width: tableSize[1], height: 3, x: toUnits(2), z: 0
+                        length: tableSize[0], width: tableSize[1], height: 3, 
+                        x: toUnits(roomDims.length/2 - tableSize[0]/2 - 2), z: 0
                     }},
                     'Telepresence Suite': {{
-                        length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: toUnits(1)
+                        length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: toUnits(2)
                     }}
                 }};
                 
                 return configs[roomType] || {{ length: tableSize[0], width: tableSize[1], height: 2.5, x: 0, z: 0 }};
             }}
             
+            // UPDATED JAVASCRIPT FUNCTION
             function addRoomSpecificFurniture(roomType, roomSpec) {{
                 const furnitureMaterial = new THREE.MeshStandardMaterial({{ color: 0x666666 }});
+                const woodMaterial = new THREE.MeshStandardMaterial({{ color: 0x8B4513 }});
                 
                 if (roomType.includes('Training')) {{
-                    // Add student desks for training rooms
-                    const numDesks = Math.min(12, roomSpec.chair_count);
-                    const deskRows = 3;
-                    const deskCols = Math.ceil(numDesks / deskRows);
-                    for (let i = 0; i < numDesks; i++) {{
-                        const desk = new THREE.Mesh(
-                            new THREE.BoxGeometry(toUnits(4), toUnits(2.5), toUnits(2)),
-                            furnitureMaterial
-                        );
-                        const row = Math.floor(i / deskCols);
-                        const col = i % deskCols;
-                        desk.position.set(
-                            toUnits(-roomDims.length/2 + 6 + col * 5),
-                            toUnits(1.25),
-                            toUnits(-roomDims.width/2 + 5 + row * 4)
-                        );
-                        scene.add(desk);
+                    // Add student desks for training rooms with better spacing
+                    const numRows = roomType.includes('Large') ? 6 : 4;
+                    const seatsPerRow = Math.ceil(roomSpec.chair_count / numRows);
+                    
+                    for (let row = 0; row < numRows; row++) {{
+                        for (let seat = 0; seat < seatsPerRow && (row * seatsPerRow + seat) < roomSpec.chair_count - 1; seat++) {{
+                            const desk = new THREE.Mesh(
+                                new THREE.BoxGeometry(toUnits(4), toUnits(2.5), toUnits(2)),
+                                woodMaterial
+                            );
+                            desk.position.set(
+                                toUnits(-roomDims.length/2 + 8 + seat * 6),
+                                toUnits(1.25),
+                                toUnits(roomDims.width/2 - 6 - row * 5)
+                            );
+                            desk.castShadow = true;
+                            desk.receiveShadow = true;
+                            scene.add(desk);
+                        }}
                     }}
                 }} else if (roomType.includes('Production Studio')) {{
-                    // Add control console
+                    // Add control console and equipment racks
                     const console = new THREE.Mesh(
-                        new THREE.BoxGeometry(toUnits(8), toUnits(3), toUnits(2)),
+                        new THREE.BoxGeometry(toUnits(12), toUnits(3), toUnits(3)),
                         furnitureMaterial
                     );
-                    console.position.set(toUnits(-6), toUnits(1.5), 0);
+                    console.position.set(toUnits(roomDims.length/2 - 8), toUnits(1.5), 0);
+                    console.castShadow = true;
+                    console.receiveShadow = true;
                     scene.add(console);
+                    
+                    // Equipment racks
+                    for (let i = 0; i < 3; i++) {{
+                        const rack = new THREE.Mesh(
+                            new THREE.BoxGeometry(toUnits(2), toUnits(6), toUnits(2)),
+                            new THREE.MeshStandardMaterial({{ color: 0x333333 }})
+                        );
+                        rack.position.set(
+                            toUnits(roomDims.length/2 - 6),
+                            toUnits(3),
+                            toUnits(-4 + i * 4)
+                        );
+                        rack.castShadow = true;
+                        rack.receiveShadow = true;
+                        scene.add(rack);
+                    }}
+                }} else if (roomType.includes('Multipurpose Event')) {{
+                    // Add stage area
+                    const stage = new THREE.Mesh(
+                        new THREE.BoxGeometry(toUnits(16), toUnits(1), toUnits(8)),
+                        woodMaterial
+                    );
+                    stage.position.set(
+                        toUnits(-roomDims.length/2 + 8),
+                        toUnits(0.5),
+                        0
+                    );
+                    stage.castShadow = true;
+                    stage.receiveShadow = true;
+                    scene.add(stage);
+                }} else if (roomType.includes('Executive Boardroom')) {{
+                    // Add credenza
+                    const credenza = new THREE.Mesh(
+                        new THREE.BoxGeometry(toUnits(8), toUnits(3), toUnits(2)),
+                        woodMaterial
+                    );
+                    credenza.position.set(
+                        0,
+                        toUnits(1.5),
+                        toUnits(-roomDims.width/2 + 1)
+                    );
+                    credenza.castShadow = true;
+                    credenza.receiveShadow = true;
+                    scene.add(credenza);
                 }}
             }}
 
@@ -1927,27 +1988,48 @@ def create_3d_visualization():
                 }});
             }}
 
+            // UPDATED JAVASCRIPT FUNCTION
             function calculateChairPositions(roomSpec, tableConfig) {{
                 const positions = [];
                 const tableLength = tableConfig.length;
                 const tableWidth = tableConfig.width;
-                const chairSpacing = 4;
                 
-                const chairsPerLongSide = Math.floor((tableLength - 2) / chairSpacing);
-                
-                for (let i = 0; i < chairsPerLongSide && positions.length < roomSpec.chair_count; i++) {{
-                    const x = -tableLength / 2 + (i + 1) * (tableLength / (chairsPerLongSide + 1));
-                    positions.push({{ x: x, z: tableWidth / 2 + 2, rotationY: Math.PI }});
-                    if (positions.length < roomSpec.chair_count) {{
-                        positions.push({{ x: x, z: -tableWidth / 2 - 2, rotationY: 0 }});
+                if (roomSpec.chair_arrangement === 'theater' || roomSpec.chair_arrangement === 'classroom') {{
+                    // Theater/classroom seating for training rooms
+                    const numRows = Math.ceil(roomSpec.chair_count / 8);
+                    const chairsPerRow = Math.min(8, roomSpec.chair_count);
+                    
+                    for (let row = 0; row < numRows; row++) {{
+                        for (let seat = 0; seat < chairsPerRow && positions.length < roomSpec.chair_count; seat++) {{
+                            positions.push({{
+                                x: -chairsPerRow * 2 + seat * 4,
+                                z: tableWidth/2 + 4 + row * 4,
+                                rotationY: 0
+                            }});
+                        }}
                     }}
-                }}
-                
-                if (positions.length < roomSpec.chair_count) {{
-                    positions.push({{ x: tableLength / 2 + 2, z: 0, rotationY: -Math.PI / 2 }});
-                }}
-                if (positions.length < roomSpec.chair_count) {{
-                    positions.push({{ x: -tableLength / 2 - 2, z: 0, rotationY: Math.PI / 2 }});
+                }} else {{
+                    // Traditional conference table seating
+                    const chairSpacing = Math.max(3, Math.min(4.5, tableLength / (roomSpec.chair_count / 2 + 1)));
+                    const chairsPerLongSide = Math.floor((tableLength - 2) / chairSpacing);
+                    
+                    // Long sides of table
+                    for (let i = 0; i < chairsPerLongSide && positions.length < roomSpec.chair_count; i++) {{
+                        const x = -tableLength / 2 + (i + 1) * (tableLength / (chairsPerLongSide + 1));
+                        
+                        positions.push({{ x: x, z: tableWidth / 2 + 2, rotationY: Math.PI }});
+                        if (positions.length < roomSpec.chair_count) {{
+                            positions.push({{ x: x, z: -tableWidth / 2 - 2, rotationY: 0 }});
+                        }}
+                    }}
+                    
+                    // Short sides of table
+                    if (positions.length < roomSpec.chair_count && tableWidth > 6) {{
+                        positions.push({{ x: tableLength / 2 + 2, z: 0, rotationY: -Math.PI / 2 }});
+                        if (positions.length < roomSpec.chair_count) {{
+                            positions.push({{ x: -tableLength / 2 - 2, z: 0, rotationY: Math.PI / 2 }});
+                        }}
+                    }}
                 }}
                 
                 return positions.slice(0, roomSpec.chair_count);
@@ -1962,7 +2044,6 @@ def create_3d_visualization():
                 }});
             }}
             
-            // --- NEW/UPDATED FUNCTION: Enhanced Equipment Visualization with Better Materials ---
             function createEquipmentMesh(equipment) {{
                 const group = new THREE.Group();
                 const specs = equipment.specs;
@@ -2264,11 +2345,9 @@ def create_3d_visualization():
                 }}
             }}
 
-            // --- NEW/UPDATED FUNCTION: Fix Camera Controls (Add Orbit Controls) ---
             function setupEnhancedControls() {{
                 const container = document.getElementById('container');
                 
-                // Add orbit controls for camera movement
                 let isMouseDown = false;
                 let previousMousePosition = {{ x: 0, y: 0 }};
                 
@@ -2287,7 +2366,6 @@ def create_3d_visualization():
                             y: event.clientY - previousMousePosition.y
                         }};
                         
-                        // Rotate camera around the center of the room
                         const spherical = new THREE.Spherical();
                         spherical.setFromVector3(camera.position);
                         
@@ -2300,7 +2378,6 @@ def create_3d_visualization():
                         
                         previousMousePosition = {{ x: event.clientX, y: event.clientY }};
                     }} else {{
-                        // Update mouse position for placement mode
                         const rect = event.target.getBoundingClientRect();
                         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -2339,7 +2416,6 @@ def create_3d_visualization():
                 container.addEventListener('drop', onDrop);
             }}
 
-            // --- NEW/UPDATED FUNCTION: Improved Mouse Handling for Placement Mode ---
             function onMouseDown(event) {{
                 if (!placementMode) return;
 
@@ -2350,14 +2426,12 @@ def create_3d_visualization():
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
 
-                // Check if clicking on existing equipment to move it
                 const equipmentIntersect = intersects.find(intersect =>
                     intersect.object.parent && intersect.object.parent.name.startsWith('equipment_') &&
                     intersect.object.parent.userData.placed
                 );
 
                 if (equipmentIntersect) {{
-                    // Start moving existing equipment
                     const equipmentObj = equipmentIntersect.object.parent;
                     selectedObject = equipmentObj;
                     equipmentObj.userData.placed = false;
@@ -2368,7 +2442,6 @@ def create_3d_visualization():
                     return;
                 }}
 
-                // Place new equipment if dragging from panel
                 const validIntersect = intersects.find(intersect => 
                     intersect.object.name === 'floor' ||
                     intersect.object.name.startsWith('wall_') ||
@@ -2438,7 +2511,7 @@ def create_3d_visualization():
                 const zoomFactor = 1 + (event.deltaY > 0 ? zoomSpeed : -zoomSpeed);
                 const distanceToTarget = camera.position.length();
 
-                if (distanceToTarget * zoomFactor > toUnits(5) && distanceToTarget * zoomFactor < toUnits(50)) {{
+                if (distanceToTarget * zoomFactor > toUnits(5) && distanceToTarget * zoomFactor < toUnits(100)) {{
                     camera.position.multiplyScalar(zoomFactor);
                 }}
             }}
@@ -2465,7 +2538,6 @@ def create_3d_visualization():
                 const equipment = avEquipment.find(eq => eq.id.toString() === equipmentId);
                 
                 if (equipment) {{
-                    // Get drop position
                     const rect = event.target.getBoundingClientRect();
                     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -2536,7 +2608,6 @@ def create_3d_visualization():
                 }}
             }}
             
-            // --- NEW/UPDATED FUNCTION: Remove Placement Constraints (Allow Free Placement) ---
             function updateDraggedEquipmentPosition() {{
                 const equipmentToMove = selectedObject ? selectedObject.userData.equipment : draggedEquipment;
                 if (!equipmentToMove) return;
@@ -2544,7 +2615,6 @@ def create_3d_visualization():
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 
-                // Allow placement on any surface (floor, walls, ceiling)
                 const validIntersect = intersects.find(intersect => 
                     intersect.object.name === 'floor' ||
                     intersect.object.name.startsWith('wall_') || 
@@ -2557,17 +2627,14 @@ def create_3d_visualization():
                         const intersectPoint = validIntersect.point.clone();
                         const normal = validIntersect.face.normal.clone();
                         
-                        // Position object slightly away from surface based on normal
                         const offset = normal.multiplyScalar(toUnits(Math.max(...equipmentToMove.specs) / 2 + 0.1));
                         obj.position.copy(intersectPoint.add(offset));
                         
-                        // Constrain within room bounds
                         const bounds = spaceAnalytics.roomBounds;
                         obj.position.x = Math.max(bounds.minX + toUnits(0.5), Math.min(bounds.maxX - toUnits(0.5), obj.position.x));
                         obj.position.z = Math.max(bounds.minZ + toUnits(0.5), Math.min(bounds.maxZ - toUnits(0.5), obj.position.z));
                         obj.position.y = Math.max(toUnits(0.1), Math.min(bounds.height - toUnits(0.1), obj.position.y));
                         
-                        // Add visual feedback during dragging
                         if (!selectedObject) highlightEquipment(obj, true);
                         
                         obj.visible = true;
@@ -2575,15 +2642,11 @@ def create_3d_visualization():
                 }}
             }}
 
-            // --- NEW/UPDATED FUNCTION: Remove Placement Constraints (Allow Free Placement) ---
             function placeDraggedEquipment(position) {{
                 if (!draggedEquipment) return;
                 
                 const obj = scene.getObjectByName(`equipment_${{draggedEquipment.id}}`);
                 if (obj) {{
-                    // Simply use the position from updateDraggedEquipmentPosition
-                    // No additional constraints - equipment can be placed anywhere
-                    
                     obj.visible = true;
                     obj.userData.placed = true;
                     
@@ -2615,26 +2678,34 @@ def create_3d_visualization():
                 }}
             }}
 
+            // UPDATED JAVASCRIPT FUNCTION
             function setView(viewType, animate = true, buttonElement = null) {{
                 if (buttonElement) {{
                     document.querySelectorAll('.control-btn').forEach(btn => btn.classList.remove('active'));
                     buttonElement.classList.add('active');
                 }}
                 
+                const roomSize = Math.max(roomDims.length, roomDims.width);
+                const baseDist = roomSize > 30 ? roomSize * 0.8 : roomSize * 0.6;
+                
                 let newPosition;
                 
                 switch (viewType) {{
                     case 'overview':
-                        newPosition = new THREE.Vector3(toUnits(15), toUnits(12), toUnits(15));
+                        newPosition = new THREE.Vector3(
+                            toUnits(baseDist * 0.7), 
+                            toUnits(roomDims.height + baseDist * 0.4), 
+                            toUnits(baseDist * 0.7)
+                        );
                         break;
                     case 'front':
-                        newPosition = new THREE.Vector3(0, toUnits(5), toUnits(roomDims.width / 2 + 10));
+                        newPosition = new THREE.Vector3(0, toUnits(roomDims.height * 0.6), toUnits(roomDims.width / 2 + baseDist * 0.5));
                         break;
                     case 'side':
-                        newPosition = new THREE.Vector3(toUnits(roomDims.length / 2 + 10), toUnits(5), 0);
+                        newPosition = new THREE.Vector3(toUnits(roomDims.length / 2 + baseDist * 0.5), toUnits(roomDims.height * 0.6), 0);
                         break;
                     case 'top':
-                        newPosition = new THREE.Vector3(0, toUnits(roomDims.height + 15), 0.1);
+                        newPosition = new THREE.Vector3(0, toUnits(roomDims.height + baseDist * 0.8), 0.1);
                         break;
                 }}
                 
@@ -2649,7 +2720,7 @@ def create_3d_visualization():
                         const eased = 1 - Math.pow(1 - progress, 3);
                         
                         camera.position.lerpVectors(startPosition, newPosition, eased);
-                        camera.lookAt(0, toUnits(3), 0);
+                        camera.lookAt(0, toUnits(roomDims.height * 0.3), 0);
                         
                         if (progress < 1) {{
                             requestAnimationFrame(animateCamera);
@@ -2658,7 +2729,7 @@ def create_3d_visualization():
                     animateCamera();
                 }} else {{
                     camera.position.copy(newPosition);
-                    camera.lookAt(0, toUnits(3), 0);
+                    camera.lookAt(0, toUnits(roomDims.height * 0.3), 0);
                 }}
             }}
 
@@ -2708,7 +2779,6 @@ def create_3d_visualization():
                 alert('Layout saved successfully!');
             }}
             
-            // --- NEW FUNCTION: Add Keyboard Shortcuts for Better Navigation ---
             function setupKeyboardControls() {{
                 document.addEventListener('keydown', (event) => {{
                     switch(event.key.toLowerCase()) {{
