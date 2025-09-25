@@ -12,7 +12,6 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-# from openpyxl.drawing.image import Image as ExcelImage # Correct import path might vary based on version
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -623,6 +622,24 @@ def create_multi_room_interface():
             st.session_state.project_rooms.append(new_room)
             st.success(f"Added '{room_name}' to the project.")
             st.rerun()
+    
+    with col3:
+        st.write("")
+        st.write("")
+        if st.session_state.project_rooms:
+            excel_data = generate_professional_excel(rooms_data=st.session_state.project_rooms)
+            project_name = st.session_state.get('project_name_input', 'Multi_Room_Project')
+            filename = f"{project_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            
+            st.download_button(
+                label="📊 Download Full Project BOQ",
+                data=excel_data,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="secondary"
+            )
+
 
     # Display current rooms
     if st.session_state.project_rooms:
@@ -911,29 +928,20 @@ def product_search_interface(product_df, currency):
                         st.rerun()
 
 # --- NEW: Excel Generation Functions ---
-def generate_professional_excel():
-    """Generate Excel file with Indian GST calculations and professional formatting."""
-    
-    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
-        st.error("No BOQ items to export. Generate a BOQ first.")
-        return None
-    
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = "Professional BOQ"
-    
+def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
+    """Helper function to populate a single Excel sheet with BOQ data."""
     # Header
-    sheet.merge_cells('A1:L3')
+    sheet.merge_cells('A1:K3')
     header_cell = sheet['A1']
     header_cell.value = "AllWave AV Solutions - Professional Bill of Quantities"
     header_cell.font = Font(size=18, bold=True, color="FFFFFF")
     header_cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
-    
+
     # Project Info
     project_info = [
-        ("Project:", st.session_state.get('project_name_input', 'AV Installation')),
-        ("Client:", st.session_state.get('client_name_input', 'Valued Client')),
+        ("Project:", project_name),
+        ("Client:", client_name),
         ("Date:", datetime.now().strftime('%B %d, %Y')),
     ]
     row = 5
@@ -942,11 +950,11 @@ def generate_professional_excel():
         sheet[f'A{row}'].font = Font(bold=True)
         sheet[f'B{row}'] = value
         row += 1
-    
+
     # Table Headers
     row = 9
     headers = [
-        'S.No.', 'Category', 'Brand', 'Product Name', 'Qty', 'Unit Price (₹)', 
+        'S.No.', 'Category', 'Brand', 'Product Name', 'Qty', 'Unit Price (₹)',
         'Subtotal (₹)', 'GST %', 'GST Amt (₹)', 'Total (₹)', 'Justification'
     ]
     for col, header in enumerate(headers, 1):
@@ -954,23 +962,21 @@ def generate_professional_excel():
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    
+
     # Add Items
-    row += 1
-    total_before_gst = 0
-    total_gst = 0
-    
-    all_items = st.session_state.boq_items
-    
-    for idx, item in enumerate(all_items, 1):
+    total_before_gst_hardware = 0
+    total_gst_hardware = 0
+    hardware_item_count = 0
+    for idx, item in enumerate(items, 1):
+        hardware_item_count = idx
         unit_price_inr = convert_currency(item['price'], 'INR')
         subtotal = unit_price_inr * item['quantity']
         gst_rate = item.get('gst_rate', 18)
         gst_amount = subtotal * (gst_rate / 100)
         total_with_gst = subtotal + gst_amount
         
-        total_before_gst += subtotal
-        total_gst += gst_amount
+        total_before_gst_hardware += subtotal
+        total_gst_hardware += gst_amount
         
         row_data = [
             idx, item['category'], item['brand'], item['name'], item['quantity'],
@@ -979,6 +985,9 @@ def generate_professional_excel():
         ]
         sheet.append(row_data)
 
+    total_before_gst = total_before_gst_hardware
+    total_gst = total_gst_hardware
+
     # Add Services
     services = [
         ("Installation & Commissioning", 0.15),
@@ -986,20 +995,20 @@ def generate_professional_excel():
         ("Project Management", 0.10)
     ]
     for service_name, percentage in services:
-        service_amount = sum(i['price'] * i['quantity'] for i in all_items) * 1.15 * percentage # Base on hardware cost
-        service_amount_inr = convert_currency(service_amount, 'INR')
-        service_gst = service_amount_inr * (st.session_state.gst_rates['Services'] / 100)
+        service_amount_inr = total_before_gst_hardware * percentage
+        service_gst = service_amount_inr * (gst_rates['Services'] / 100)
         service_total = service_amount_inr + service_gst
         
         total_before_gst += service_amount_inr
         total_gst += service_gst
         
+        hardware_item_count += 1
         sheet.append([
-            "", "Professional Services", "AllWave AV", service_name, 1,
-            service_amount_inr, service_amount_inr, f"{st.session_state.gst_rates['Services']}%",
+            hardware_item_count, "Professional Services", "AllWave AV", service_name, 1,
+            service_amount_inr, service_amount_inr, f"{gst_rates['Services']}%",
             service_gst, service_total, "Certified professional service for system deployment"
         ])
-    
+
     # Grand Total
     row = sheet.max_row + 2
     grand_total = total_before_gst + total_gst
@@ -1017,9 +1026,64 @@ def generate_professional_excel():
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
     for r in range(10, sheet.max_row + 1):
-        sheet.row_dimensions[r].height = 45
-        for c in range(6, 11):
-            sheet.cell(row=r, column=c).number_format = '₹ #,##0'
+        try:
+            sheet.row_dimensions[r].height = 30
+            for c in range(6, 11):
+                sheet.cell(row=r, column=c).number_format = '₹ #,##0'
+        except Exception:
+            pass # Skip formatting for merged total rows
+
+    return total_before_gst, total_gst, grand_total
+
+def generate_professional_excel(rooms_data=None):
+    """Generate Excel file with Indian GST calculations and professional formatting."""
+    
+    if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
+        st.error("No BOQ items to export. Generate a BOQ first.")
+        return None
+    
+    workbook = openpyxl.Workbook()
+    
+    project_name = st.session_state.get('project_name_input', 'AV Installation')
+    client_name = st.session_state.get('client_name_input', 'Valued Client')
+    gst_rates = st.session_state.get('gst_rates', {'Services': 18})
+
+    if rooms_data:
+        summary_sheet = workbook.active
+        summary_sheet.title = "Project Summary"
+        summary_data = []
+
+        for room in rooms_data:
+            if room.get('boq_items'):
+                safe_room_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:30]
+                room_sheet = workbook.create_sheet(title=safe_room_name)
+                subtotal, gst, total = _populate_boq_sheet(room_sheet, room['boq_items'], gst_rates, f"{project_name} - {room['name']}", client_name)
+                summary_data.append([room['name'], subtotal, gst, total])
+
+        # Populate Summary Sheet
+        summary_sheet.append(["Project Summary", "", "", ""])
+        summary_sheet['A1'].font = Font(size=16, bold=True, color="002060")
+        summary_sheet.append([]) # Blank row
+        summary_sheet.append(["Room Name", "Subtotal (₹)", "Total GST (₹)", "Grand Total (₹)"])
+        for col in ['A', 'B', 'C', 'D']:
+            summary_sheet[f'{col}3'].font = Font(bold=True)
+
+        project_grand_total = 0
+        for row_data in summary_data:
+            summary_sheet.append(row_data)
+            project_grand_total += row_data[3]
+        
+        total_row = summary_sheet.max_row + 1
+        summary_sheet[f'C{total_row}'] = "Project Grand Total (₹)"
+        summary_sheet[f'D{total_row}'] = project_grand_total
+        summary_sheet[f'D{total_row}'].number_format = '₹ #,##0.00'
+        summary_sheet[f'C{total_row}'].font = Font(bold=True)
+        summary_sheet[f'D{total_row}'].font = Font(bold=True)
+    
+    else: # Single room mode
+        sheet = workbook.active
+        sheet.title = "Professional BOQ"
+        _populate_boq_sheet(sheet, st.session_state.boq_items, gst_rates, project_name, client_name)
 
     add_terms_conditions_sheet(workbook)
     
@@ -1028,6 +1092,7 @@ def generate_professional_excel():
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
+
 
 def add_terms_conditions_sheet(workbook):
     """Add Terms & Conditions sheet with Indian business terms."""
@@ -1047,8 +1112,97 @@ def add_terms_conditions_sheet(workbook):
         elif style == "section": cell.font = Font(size=12, bold=True, color="002060")
     sheet.column_dimensions['A'].width = 100
 
-# --- 3D Visualization (No Changes Needed) ---
-# ... (All your existing 3D visualization functions: create_3d_visualization, map_equipment_type, etc., remain here unchanged) ...
+# --- FIX: Added Missing 3D Visualization Helper Functions ---
+def map_equipment_type(category, name, brand):
+    """Maps a BOQ item to a standardized equipment type for 3D rendering."""
+    cat_lower = str(category).lower()
+    name_lower = str(name).lower()
+    
+    if 'display' in cat_lower or 'monitor' in name_lower or 'screen' in name_lower:
+        return 'display'
+    if 'camera' in cat_lower or 'rally' in name_lower or 'conferencing' in cat_lower:
+        return 'camera'
+    if 'speaker' in name_lower or 'soundbar' in name_lower:
+        return 'audio_speaker'
+    if 'microphone' in name_lower or 'mic' in name_lower:
+        return 'audio_mic'
+    if 'switch' in name_lower or 'router' in name_lower:
+        return 'network_switch'
+    if 'control' in cat_lower or 'processor' in name_lower:
+        return 'control_processor'
+    if 'mount' in cat_lower or 'bracket' in name_lower:
+        return 'mount'
+    if 'rack' in name_lower:
+        return 'rack'
+    if 'service' in cat_lower or 'installation' in name_lower or 'warranty' in name_lower:
+        return 'service' # Special type to be skipped
+    return 'generic_box' # Fallback for unknown items
+
+def get_equipment_specs(equipment_type, name):
+    """Returns estimated [width, height, depth] in feet for 3D models."""
+    name_lower = str(name).lower()
+    
+    # Check for specific size in name (e.g., 65")
+    size_match = re.search(r'(\d{2})[ -]*inch|\"', name_lower)
+    if size_match and equipment_type == 'display':
+        size_inches = int(size_match.group(1))
+        width = size_inches * 0.87 / 12
+        height = size_inches * 0.49 / 12
+        return [width, height, 0.3]
+
+    # Default sizes in feet
+    specs = {
+        'display': [4.0, 2.3, 0.3],
+        'camera': [0.8, 0.5, 0.6],
+        'audio_speaker': [0.8, 1.2, 0.8],
+        'audio_mic': [0.5, 0.1, 0.5],
+        'network_switch': [1.5, 0.15, 0.8],
+        'control_processor': [1.5, 0.3, 1.0],
+        'mount': [2.0, 1.5, 0.2],
+        'rack': [2.0, 6.0, 2.5],
+        'generic_box': [1.0, 1.0, 1.0]
+    }
+    return specs.get(equipment_type, [1, 1, 1])
+
+def get_placement_constraints(equipment_type):
+    """Defines where an object can be placed."""
+    constraints = {
+        'display': ['wall'],
+        'camera': ['wall', 'ceiling', 'table'],
+        'audio_speaker': ['wall', 'ceiling', 'floor'],
+        'audio_mic': ['table', 'ceiling'],
+        'network_switch': ['floor', 'rack'],
+        'control_processor': ['floor', 'rack'],
+        'mount': ['wall'],
+        'rack': ['floor']
+    }
+    return constraints.get(equipment_type, ['floor', 'table'])
+
+def get_power_requirements(equipment_type):
+    """Estimates power draw in Watts."""
+    power = {
+        'display': 250,
+        'camera': 15,
+        'audio_speaker': 80,
+        'network_switch': 100,
+        'control_processor': 50
+    }
+    return power.get(equipment_type, 20)
+
+def get_weight_estimate(equipment_type, specs):
+    """Estimates weight in lbs based on volume."""
+    volume = specs[0] * specs[1] * specs[2]
+    density = { # lbs per cubic foot
+        'display': 20,
+        'camera': 15,
+        'audio_speaker': 25,
+        'network_switch': 30,
+        'control_processor': 25,
+        'rack': 10
+    }
+    return volume * density.get(equipment_type, 10)
+
+# --- 3D Visualization ---
 def create_3d_visualization():
     """Create production-ready 3D room planner with drag-drop and space analytics."""
     st.subheader("Interactive 3D Room Planner & Space Analytics")
@@ -1059,7 +1213,6 @@ def create_3d_visualization():
         st.info("No BOQ items to visualize. Generate a BOQ first or add items manually.")
         return
 
-    # [FIX 1 APPLIED HERE] Enhanced equipment processing with better type mapping
     js_equipment = []
     for item in equipment_data:
         equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''), item.get('brand', ''))
@@ -2469,9 +2622,9 @@ def create_3d_visualization():
                     const placed = scene.getObjectByName(`equipment_${{equipment.id}}`)?.userData.placed || false;
                     return `
                         <div class="equipment-item ${{placed ? 'placed' : ''}}" 
-                                 draggable="true" 
-                                 onclick="selectEquipment(${{equipment.id}})"
-                                 ondragstart="startDragFromPanel(event, ${{equipment.id}})">
+                                draggable="true" 
+                                onclick="selectEquipment(${{equipment.id}})"
+                                ondragstart="startDragFromPanel(event, ${{equipment.id}})">
                             <div class="equipment-name">${{equipment.name}}</div>
                             <div class="equipment-details">
                                 ${{equipment.brand}} • $${{equipment.price.toLocaleString()}}
@@ -2848,10 +3001,14 @@ def main():
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
                 excel_data = generate_professional_excel()
-                filename = f"{project_name or 'Project'}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                room_name = "CurrentRoom"
+                if st.session_state.project_rooms:
+                    room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+
+                filename = f"{project_name or 'Project'}_{room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
                 
                 st.download_button(
-                    label="📊 Download Excel BOQ",
+                    label="📊 Download Current Room BOQ",
                     data=excel_data,
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
