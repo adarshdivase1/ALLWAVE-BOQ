@@ -294,8 +294,8 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
-    enhanced_prompt = f"""
-You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready BOQ with detailed justifications.
+   enhanced_prompt = f"""
+You are a Professional AV Systems Engineer with 15+ years of experience creating detailed BOQs for the Indian market. Create a production-ready BOQ.
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
@@ -312,14 +312,17 @@ You are a Professional AV Systems Engineer with 15+ years of experience in the I
 - Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
 
 **MANDATORY REQUIREMENTS:**
-1. ONLY use products from the provided product catalog sample.
-2. For EACH product, provide a concise, single-line justification in the 'WHY' column.
-3. Include appropriate mounting, cabling, and installation services.
-4. Add standard service line items (Installation 15%, Warranty 5%, Project Management/Contingency 10%).
+1. ONLY use products from the provided product catalog sample. Do not invent products.
+2. The 'Model No.' must be the same as the 'name' column from the catalog.
+3. For EACH product, provide a concise, single-line technical description.
+4. Categorize each item into a 'System' like 'Display System', 'Audio System', 'Video Conferencing', 'Control System', 'Cables & Connectivity', etc.
+5. Provide a 'UoM' (Unit of Measure) for each item (e.g., Nos, Set, Lot).
+6. Include appropriate mounting, cabling, and installation services as line items.
+7. Add standard service line items (Installation, Warranty, Project Management).
 
 **OUTPUT FORMAT REQUIREMENT:**
 Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns:
-| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) | WHY (Justification) |
+| System | Brand | Model No. | Description | Qty | UoM |
 
 **PRODUCT CATALOG SAMPLE:**
 {product_catalog_string}
@@ -421,7 +424,7 @@ def extract_enhanced_boq_items(boq_content, product_df):
         line = line.strip()
         
         # Detect table start
-        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'product', 'why', 'justification']):
+        if '|' in line and any(keyword in line.lower() for keyword in ['system', 'model no.', 'brand']):
             in_table = True
             continue
             
@@ -433,58 +436,50 @@ def extract_enhanced_boq_items(boq_content, product_df):
         if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
             parts = [part.strip() for part in line.split('|') if part.strip()]
             if len(parts) >= 6:
-                category = parts[0] if len(parts) > 0 else 'General'
-                brand = parts[1] if len(parts) > 1 else 'Unknown'
-                product_name = parts[2] if len(parts) > 2 else 'Unknown'
-                justification = parts[6] if len(parts) > 6 else "Essential AV system component."
+                system = parts[0]
+                brand = parts[1]
+                model_no = parts[2]
+                description = parts[3]
                 
-                # Extract quantity and price more robustly
-                quantity = 1
-                price = 0
                 try:
-                    quantity = int(parts[3])
+                    quantity = int(parts[4])
                 except (ValueError, IndexError):
                     quantity = 1
-
-                try:
-                    price_str = parts[4].replace('$', '').replace(',', '')
-                    price = float(price_str)
-                except (ValueError, IndexError):
-                    price = 0
                 
-                # Match with product database
-                matched_product = match_product_in_database(product_name, brand, product_df)
+                uom = parts[5] if len(parts) > 5 else 'Nos'
+                
+                # Match with product database to get price and other details
+                matched_product = match_product_in_database(model_no, brand, product_df)
+                
                 if matched_product is not None:
-                    price = float(matched_product.get('price', price))
-                    actual_brand = matched_product.get('brand', brand)
-                    actual_category = matched_product.get('category', category)
-                    actual_name = matched_product.get('name', product_name)
+                    price = float(matched_product.get('price', 0))
                     image_url = matched_product.get('image_url', '')
                     gst_rate = matched_product.get('gst_rate', 18)
                 else:
-                    actual_brand = brand
-                    actual_category = normalize_category(category, product_name)
-                    actual_name = product_name
+                    # Handle services or unmatched items
+                    price = 0
                     image_url = ''
-                    gst_rate = 18
-                
+                    gst_rate = 18 if 'service' in system.lower() else 18
+
                 items.append({
-                    'category': actual_category,
-                    'name': actual_name,
-                    'brand': actual_brand,
+                    'system': system,
+                    'brand': brand,
+                    'model_no': model_no, # Using model_no as the primary identifier now
+                    'name': model_no,    # Keep 'name' for compatibility with other functions
+                    'description': description,
                     'quantity': quantity,
+                    'uom': uom,
                     'price': price,
-                    'justification': justification,
                     'image_url': image_url,
                     'gst_rate': gst_rate,
-                    'matched': matched_product is not None
+                    'matched': matched_product is not None,
+                    'category': system # Use 'system' as the new 'category'
                 })
                 
         elif in_table and not line.startswith('|'):
             in_table = False
     
     return items
-
 def match_product_in_database(product_name, brand, product_df):
     """Try to match a product name and brand with the database."""
     if product_df is None or len(product_df) == 0:
@@ -931,10 +926,10 @@ def product_search_interface(product_df, currency):
 def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
     """Helper function to populate a single Excel sheet with BOQ data."""
     # Header
-    sheet.merge_cells('A1:K3')
+    sheet.merge_cells('A1:L2')
     header_cell = sheet['A1']
-    header_cell.value = "AllWave AV Solutions - Professional Bill of Quantities"
-    header_cell.font = Font(size=18, bold=True, color="FFFFFF")
+    header_cell.value = "AllWave AV Solutions - Commercial Proposal"
+    header_cell.font = Font(size=20, bold=True, color="FFFFFF")
     header_cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
 
@@ -942,20 +937,23 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
     project_info = [
         ("Project:", project_name),
         ("Client:", client_name),
-        ("Date:", datetime.now().strftime('%B %d, %Y')),
+        ("Location:", st.session_state.get('location_input', 'N/A')),
+        ("Date:", datetime.now().strftime('%d-%b-%Y')),
+        ("Architect/PMC:", st.session_state.get('architect_input', 'N/A')),
     ]
-    row = 5
+    row = 4
     for label, value in project_info:
         sheet[f'A{row}'] = label
         sheet[f'A{row}'].font = Font(bold=True)
+        sheet.merge_cells(f'B{row}:C{row}')
         sheet[f'B{row}'] = value
         row += 1
 
     # Table Headers
-    row = 9
+    row = 10
     headers = [
-        'S.No.', 'Category', 'Brand', 'Product Name', 'Qty', 'Unit Price (₹)',
-        'Subtotal (₹)', 'GST %', 'GST Amt (₹)', 'Total (₹)', 'Justification'
+        'Sr. No.', 'System', 'Brand', 'Model No.', 'Description', 'Qty.', 'UoM',
+        'Unit Rate', 'Amount', 'GST %', 'GST Amount', 'Total Amount with GST'
     ]
     for col, header in enumerate(headers, 1):
         cell = sheet.cell(row=row, column=col, value=header)
@@ -964,76 +962,105 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Add Items
-    total_before_gst_hardware = 0
-    total_gst_hardware = 0
-    hardware_item_count = 0
-    for idx, item in enumerate(items, 1):
-        hardware_item_count = idx
+    row_num = row + 1
+    s_no = 1
+    total_hardware_amount = 0
+    total_services_amount = 0
+    
+    # Separate hardware and services
+    hardware_items = [item for item in items if 'service' not in item.get('system', '').lower()]
+    service_items = [item for item in items if 'service' in item.get('system', '').lower()]
+
+    for item in hardware_items:
         unit_price_inr = convert_currency(item['price'], 'INR')
-        subtotal = unit_price_inr * item['quantity']
-        gst_rate = item.get('gst_rate', 18)
-        gst_amount = subtotal * (gst_rate / 100)
-        total_with_gst = subtotal + gst_amount
-        
-        total_before_gst_hardware += subtotal
-        total_gst_hardware += gst_amount
-        
+        amount = unit_price_inr * item['quantity']
+        gst_rate = item.get('gst_rate', gst_rates['Electronics'])
+        gst_amount = amount * (gst_rate / 100)
+        total_with_gst = amount + gst_amount
+        total_hardware_amount += amount
+
         row_data = [
-            idx, item['category'], item['brand'], item['name'], item['quantity'],
-            unit_price_inr, subtotal, f"{gst_rate}%", gst_amount, total_with_gst,
-            item.get('justification', 'Component')
+            s_no, item.get('system'), item.get('brand'), item.get('model_no'),
+            item.get('description'), item.get('quantity'), item.get('uom', 'Nos'),
+            unit_price_inr, amount, f"{gst_rate}%", gst_amount, total_with_gst
         ]
         sheet.append(row_data)
+        s_no += 1
 
-    total_before_gst = total_before_gst_hardware
-    total_gst = total_gst_hardware
+    # Subtotal for Hardware
+    hardware_total_row = sheet.max_row + 1
+    sheet.merge_cells(f'H{hardware_total_row}:I{hardware_total_row}')
+    sheet[f'H{hardware_total_row}'] = "Hardware Cost"
+    sheet[f'H{hardware_total_row}'].font = Font(bold=True)
+    sheet[f'H{hardware_total_row}'].alignment = Alignment(horizontal='right')
+    sheet[f'L{hardware_total_row}'] = total_hardware_amount
+    sheet[f'L{hardware_total_row}'].font = Font(bold=True)
+    sheet[f'L{hardware_total_row}'].number_format = '₹ #,##0'
 
-    # Add Services
-    services = [
-        ("Installation & Commissioning", 0.15),
-        ("System Warranty (3 Years)", 0.05),
-        ("Project Management", 0.10)
-    ]
-    for service_name, percentage in services:
-        service_amount_inr = total_before_gst_hardware * percentage
-        service_gst = service_amount_inr * (gst_rates['Services'] / 100)
-        service_total = service_amount_inr + service_gst
-        
-        total_before_gst += service_amount_inr
-        total_gst += service_gst
-        
-        hardware_item_count += 1
-        sheet.append([
-            hardware_item_count, "Professional Services", "AllWave AV", service_name, 1,
-            service_amount_inr, service_amount_inr, f"{gst_rates['Services']}%",
-            service_gst, service_total, "Certified professional service for system deployment"
-        ])
+    # Add Services based on percentage of hardware cost
+    if service_items:
+        sheet.append([]) # Blank row
+        for item in service_items:
+             # Calculate service cost as a percentage of hardware if price is 0
+            if item['price'] == 0:
+                percentage = 0.15 if 'install' in item['name'].lower() else \
+                             0.05 if 'warrant' in item['name'].lower() else \
+                             0.10 if 'manage' in item['name'].lower() else 0.10
+                unit_price_inr = total_hardware_amount * percentage
+            else:
+                unit_price_inr = convert_currency(item['price'], 'INR')
+
+            amount = unit_price_inr * item['quantity']
+            gst_rate = gst_rates['Services']
+            gst_amount = amount * (gst_rate / 100)
+            total_with_gst = amount + gst_amount
+            total_services_amount += amount
+
+            row_data = [
+                s_no, item.get('system'), item.get('brand'), item.get('model_no'),
+                item.get('description'), item.get('quantity'), item.get('uom', 'Lot'),
+                unit_price_inr, amount, f"{gst_rate}%", gst_amount, total_with_gst
+            ]
+            sheet.append(row_data)
+            s_no += 1
+
+    # Subtotal for Services
+    services_total_row = sheet.max_row + 1
+    sheet.merge_cells(f'H{services_total_row}:I{services_total_row}')
+    sheet[f'H{services_total_row}'] = "Professional Services Cost"
+    sheet[f'H{services_total_row}'].font = Font(bold=True)
+    sheet[f'H{services_total_row}'].alignment = Alignment(horizontal='right')
+    sheet[f'L{services_total_row}'] = total_services_amount
+    sheet[f'L{services_total_row}'].font = Font(bold=True)
+    sheet[f'L{services_total_row}'].number_format = '₹ #,##0'
+
 
     # Grand Total
-    row = sheet.max_row + 2
-    grand_total = total_before_gst + total_gst
-    sheet[f'G{row}'] = "GRAND TOTAL (₹)"
-    sheet[f'G{row}'].font = Font(size=14, bold=True)
-    sheet[f'G{row}'].alignment = Alignment(horizontal='right')
-    
-    sheet[f'J{row}'] = grand_total
-    sheet[f'J{row}'].font = Font(size=14, bold=True, color="FFFFFF")
-    sheet[f'J{row}'].fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
-    sheet[f'J{row}'].number_format = '₹ #,##0'
+    grand_total_row = sheet.max_row + 2
+    grand_total = total_hardware_amount + total_services_amount # This is total before tax
+    sheet.merge_cells(f'H{grand_total_row}:I{grand_total_row}')
+    sheet[f'H{grand_total_row}'] = "Grand Total (Excluding GST)"
+    sheet[f'H{grand_total_row}'].font = Font(size=14, bold=True)
+    sheet[f'H{grand_total_row}'].alignment = Alignment(horizontal='right')
+    sheet[f'L{grand_total_row}'] = grand_total
+    sheet[f'L{grand_total_row}'].font = Font(size=14, bold=True, color="FFFFFF")
+    sheet[f'L{grand_total_row}'].fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
+    sheet[f'L{grand_total_row}'].number_format = '₹ #,##0'
 
     # Formatting
-    column_widths = {'A': 6, 'B': 18, 'C': 18, 'D': 45, 'E': 6, 'F': 15, 'G': 15, 'H': 8, 'I': 15, 'J': 18, 'K': 50}
+    column_widths = {'A': 8, 'B': 20, 'C': 20, 'D': 30, 'E': 50, 'F': 6, 'G': 8, 'H': 15, 'I': 15, 'J': 8, 'K': 15, 'L': 20}
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
-    for r in range(10, sheet.max_row + 1):
-        try:
-            sheet.row_dimensions[r].height = 30
-            for c in range(6, 11):
-                sheet.cell(row=r, column=c).number_format = '₹ #,##0'
-        except Exception:
-            pass # Skip formatting for merged total rows
+        
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    return total_before_gst, total_gst, grand_total
+    for r in range(row + 1, sheet.max_row + 1):
+        # Apply border and number formatting
+        for c in range(1, 13):
+            cell = sheet.cell(row=r, column=c)
+            cell.border = thin_border
+            if c >= 8: # Currency columns
+                 cell.number_format = '₹ #,##0'
 
 def generate_professional_excel(rooms_data=None):
     """Generate Excel file with Indian GST calculations and professional formatting."""
@@ -2934,10 +2961,14 @@ def main():
     project_id, quote_valid_days = create_project_header()
     
     # --- Sidebar ---
-    with st.sidebar:
-        st.header("Project Configuration")
-        client_name = st.text_input("Client Name", key="client_name_input")
-        project_name = st.text_input("Project Name", key="project_name_input")
+# --- Sidebar ---
+with st.sidebar:
+    st.header("Project Configuration")
+    st.text_input("Client Name", key="client_name_input", value="Valued Client")
+    st.text_input("Project Name", key="project_name_input", value="AV Integration Project")
+    # --- NEW ADDITIONS ---
+    st.text_input("Location", key="location_input", value="Mumbai")
+    st.text_input("Architect/PMC", key="architect_input", value="N/A")
         
         st.markdown("---")
         st.subheader("🇮🇳 Indian Business Settings")
