@@ -420,7 +420,7 @@ def extract_enhanced_boq_items(boq_content, product_df):
                     price_str = parts[4].replace('$', '').replace(',', '')
                     price = float(price_str)
                 except (ValueError, IndexError):
-                     price = 0
+                    price = 0
                 
                 # Match with database
                 matched_product = match_product_in_database(product_name, brand, product_df)
@@ -996,174 +996,6 @@ def get_weight_estimate(equipment_type, specs):
         weight += volume * 10
     
     return round(weight, 1)
-
-# --- UTILITY FUNCTIONS FOR 3D VISUALIZATION (ALL FUNCTIONS NOW INCLUDED) ---
-
-def map_equipment_type(category, product_name="", brand=""):
-    """Enhanced mapping function that considers both category and product name."""
-    if not category and not product_name and not brand:
-        return 'control'
-    
-    search_text = f"{category} {product_name} {brand}".lower()
-    
-    # More specific mappings for your BOQ items
-    if 'qm85c' in search_text or 'display' in search_text or '85"' in search_text:
-        return 'display'
-    elif 'studio x52' in search_text or 'video bar' in search_text:
-        return 'camera'
-    elif 'xsm1u' in search_text or 'wall mount' in search_text or 'vesa mount' in search_text:
-        return 'mount'
-    elif 'expansion' in search_text and 'microphone' in search_text:
-        return 'audio_microphone'
-    elif 'ceiling' in search_text and 'microphone' in search_text:
-        return 'audio_microphone'
-    elif 'c64p' in search_text or 'pendant speaker' in search_text:
-        return 'audio_speaker'
-    elif 'tap ip' in search_text or 'controller' in search_text:
-        return 'control_panel'
-    elif 'tap scheduler' in search_text:
-        return 'control_panel'
-    elif 'cbs350' in search_text or 'switch' in search_text or 'poe' in search_text:
-        return 'network_switch'
-    elif 'cable' in search_text or 'connector' in search_text or 'hdmi' in search_text or 'usb' in search_text:
-        return 'cable'
-    elif any(term in search_text for term in ['installation', 'commissioning', 'testing', 'labor', 'service', 'warranty', 'contingency']):
-        return 'service'  # Skip visualization
-
-    # Enhanced mapping with more comprehensive patterns
-    if any(term in search_text for term in ['display', 'monitor', 'screen', 'projector', 'tv', 'panel', 'signage', 'uh5j']):
-        return 'display'
-    elif any(term in search_text for term in ['speaker', 'audio', 'sound', 'amplifier', 'amp', 'c64p', 'pendant']):
-        return 'audio_speaker'
-    elif any(term in search_text for term in ['microphone', 'mic', 'sm58', 'handheld', 'wireless mic', 'mxw']):
-        return 'audio_microphone'
-    elif any(term in search_text for term in ['camera', 'video', 'conferencing', 'codec', 'webcam', 'studio', 'video bar', 'poly']):
-        return 'camera'
-    elif any(term in search_text for term in ['switch', 'network', 'poe', 'managed', 'cisco', 'cbs350', 'ethernet']):
-        return 'network_switch'
-    elif any(term in search_text for term in ['access point', 'transceiver', 'wireless', 'mxwapt', 'ap']):
-        return 'network_device'
-    elif any(term in search_text for term in ['charging station', 'charger', 'mxwncs', 'battery']):
-        return 'charging_station'
-    elif any(term in search_text for term in ['scheduler', 'controller', 'touch panel', 'tap', 'logitech', 'tc10']):
-        return 'control_panel'
-    elif any(term in search_text for term in ['control', 'processor', 'matrix', 'hub', 'interface']):
-        return 'control'
-    elif any(term in search_text for term in ['rack', 'cabinet', 'enclosure']):
-        return 'rack'
-    elif any(term in search_text for term in ['mount', 'bracket', 'stand', 'arm', 'vesa']):
-        return 'mount'
-    elif any(term in search_text for term in ['cable', 'wire', 'cord', 'connector', 'hdmi', 'usb', 'ethernet', 'kit']):
-        return 'cable'
-    elif any(term in search_text for term in ['power', 'ups', 'supply', 'conditioner']):
-        return 'power'
-    else:
-        return 'control'  # Default fallback
-
-def get_equipment_specs(equipment_type, product_name=""):
-    """Enhanced specifications with new equipment types."""
-    
-    # Enhanced specifications by equipment type (width, height, depth in feet)
-    default_specs = {
-        'display': [4, 2.5, 0.2],
-        'audio_speaker': [0.6, 1.0, 0.6],
-        'audio_microphone': [0.2, 0.1, 0.2],
-        'camera': [1.0, 0.4, 0.6],
-        'control': [1.2, 0.6, 0.2],
-        'control_panel': [0.8, 0.5, 0.1],
-        'network_switch': [1.3, 0.15, 1.0],
-        'network_device': [0.8, 0.8, 0.3],
-        'charging_station': [1.0, 0.3, 0.8],
-        'rack': [1.5, 5, 1.5],
-        'mount': [0.3, 0.3, 0.8],
-        'cable': [0.1, 0.1, 2],
-        'power': [1.0, 0.4, 0.8],
-        'service': [0, 0, 0],  # Services won't be visualized
-        'generic_equipment': [0.8, 0.6, 0.6]
-    }
-    
-    base_spec = default_specs.get(equipment_type, [1, 1, 1])
-    
-    # Extract size from product name for displays
-    if equipment_type == 'display' and product_name:
-        size_match = re.search(r'(\d+)"', product_name)
-        if size_match:
-            size_inches = int(size_match.group(1))
-            # Convert diagonal size to approximate width/height (16:9 ratio)
-            width_inches = size_inches * 0.87
-            height_inches = size_inches * 0.49
-            return [width_inches / 12, height_inches / 12, 0.2]
-    
-    # Scale based on product name keywords
-    if product_name:
-        product_lower = product_name.lower()
-        if any(term in product_lower for term in ['large', 'big', 'tower']):
-            return [spec * 1.3 for spec in base_spec]
-        elif any(term in product_lower for term in ['small', 'compact', 'mini']):
-            return [spec * 0.8 for spec in base_spec]
-    
-    return base_spec
-
-def get_placement_constraints(equipment_type):
-    """(FIX ADDED) Get placement constraints for a given equipment type."""
-    constraints = {
-        'display': {'surface': 'wall', 'height': [3, 5]},  # Height in feet from floor
-        'audio_speaker': {'surface': 'wall_ceiling', 'height': [6, 9]},
-        'audio_microphone': {'surface': 'table', 'height': [2.5, 3]},
-        'camera': {'surface': 'wall', 'height': [4, 6]},
-        'network_switch': {'surface': 'floor', 'height': [0, 4]},
-        'network_device': {'surface': 'table_ceiling', 'height': [2.5, 9]},
-        'charging_station': {'surface': 'table', 'height': [2.5, 3]},
-        'control_panel': {'surface': 'wall_table', 'height': [3, 5]},
-        'control': {'surface': 'floor', 'height': [0, 4]}, # Assumed to be in a rack
-        'rack': {'surface': 'floor', 'height': [0, 7]},
-        'power': {'surface': 'floor', 'height': [0, 2]}
-    }
-    # Return specific constraint or a generic default if not found
-    return constraints.get(equipment_type, {'surface': 'table', 'height': [2.5, 3]})
-
-def get_power_requirements(equipment_type):
-    """(FIX ADDED) Get estimated power consumption in watts."""
-    power_map = {
-        'display': 150,
-        'audio_speaker': 50,
-        'audio_microphone': 5,
-        'camera': 15,
-        'network_switch': 80,
-        'network_device': 10,
-        'charging_station': 40,
-        'control_panel': 12,
-        'control': 100,
-        'rack': 500, # Assuming it contains equipment
-        'power': 20
-    }
-    return power_map.get(equipment_type, 25) # Default wattage
-
-def get_weight_estimate(equipment_type, specs):
-    """(FIX ADDED) Get estimated weight in lbs."""
-    base_weight = {
-        'display': 30,
-        'audio_speaker': 10,
-        'audio_microphone': 2,
-        'camera': 3,
-        'network_switch': 8,
-        'network_device': 2,
-        'charging_station': 5,
-        'control_panel': 4,
-        'control': 20,
-        'rack': 150,
-        'power': 15
-    }
-    
-    # Add weight based on size (volume) for some items
-    volume = specs[0] * specs[1] * specs[2]
-    weight = base_weight.get(equipment_type, 5)
-    
-    if equipment_type == 'display':
-        weight += volume * 10 # Heavier as they get bigger
-    
-    return round(weight, 1)
-
 
 def create_3d_visualization():
     """Create production-ready 3D room planner with drag-drop and space analytics."""
@@ -1908,6 +1740,98 @@ You are a Professional AV Systems Engineer with 15+ years experience creating pr
 
 Generate the BOQ now:
 """
+
+# --- MAIN APPLICATION LOGIC ---
+def main():
+    """Main function to run the Streamlit application."""
+    
+    # --- Initialize Session State ---
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = ""
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = {"issues": [], "warnings": []}
+    if 'currency' not in st.session_state:
+        st.session_state.currency = "USD"
+    if 'project_rooms' not in st.session_state:
+        st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state:
+        st.session_state.current_room_index = -1
+        
+    # --- Load Data and Setup Model ---
+    product_df, guidelines, validation_issues = load_and_validate_data()
+    model = setup_gemini()
+
+    if validation_issues:
+        with st.expander("Data Loading Issues", expanded=False):
+            for issue in validation_issues:
+                st.warning(issue)
+    
+    # --- Sidebar UI for User Inputs ---
+    with st.sidebar:
+        st.header("System Configuration")
+        st.session_state.currency = st.radio("Select Currency", ["USD", "INR"], index=0, key="currency_select")
+        
+        room_type = st.selectbox(
+            "Select Room Type",
+            list(ROOM_SPECS.keys()),
+            key="room_type_select"
+        )
+        
+        budget_tier = st.select_slider(
+            "Budget Tier",
+            options=['Economy', 'Standard', 'Premium', 'High-End'],
+            value='Standard',
+            key="budget_tier_slider"
+        )
+        
+        features = st.text_area(
+            "Key Features / Special Requirements",
+            "Wireless presentation, advanced collaboration tools, room scheduling integration.",
+            height=100,
+            key="features_textarea"
+        )
+        
+        if st.button("Generate BOQ", type="primary", use_container_width=True):
+            if model and product_df is not None:
+                # Gather all inputs before calling generate
+                room_area, _ = create_room_calculator()
+                technical_reqs = create_advanced_requirements()
+                generate_boq(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area)
+            else:
+                st.error("Application is not ready. Check data loading or API key.")
+
+    # --- Main Panel UI ---
+    if product_df is None or model is None:
+        st.error("Failed to load critical components. The application cannot proceed.")
+        st.stop()
+        
+    project_id, quote_valid_days = create_project_header()
+    st.markdown("---")
+    
+    # These functions are here to ensure their inputs are captured in the generate_boq call
+    # They are part of the main UI layout
+    with st.expander("1. Room & Technical Specs", expanded=True):
+        room_area, ceiling_height = create_room_calculator()
+        technical_reqs = create_advanced_requirements()
+    
+    st.markdown("---")
+    
+    with st.expander("2. Generated Quote & Editor", expanded=True):
+        display_boq_results(
+            st.session_state.boq_content,
+            st.session_state.validation_results,
+            project_id,
+            quote_valid_days,
+            product_df
+        )
+
+    st.markdown("---")
+    
+    with st.expander("3. Interactive 3D Room Planner", expanded=False):
+        create_3d_visualization()
+
 
 if __name__ == "__main__":
     main()
