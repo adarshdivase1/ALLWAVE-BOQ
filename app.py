@@ -1054,7 +1054,11 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     ]
     
     if services:
-        sheet.append([f"{category_letters[len(grouped_items)]}", "Services"])
+        # --- FIX START ---
+        # Calculate the next letter for services instead of indexing out of bounds.
+        services_letter = chr(ord('A') + len(grouped_items))
+        sheet.append([services_letter, "Services"])
+        # --- FIX END ---
         cat_row_idx = sheet.max_row
         sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
         sheet[f'A{cat_row_idx}'].font = styles['bold']
@@ -1099,7 +1103,10 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
         cell.fill = styles['total_fill']
 
     # Services Total
-    services_total_row = ["", f"Total for Services ({category_letters[len(grouped_items)]})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
+    # --- FIX START ---
+    # Use the correctly calculated services_letter variable here as well.
+    services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
+    # --- FIX END ---
     sheet.append(services_total_row)
     for cell in sheet[sheet.max_row]:
         cell.font = styles['bold']
