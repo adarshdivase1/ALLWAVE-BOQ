@@ -2971,24 +2971,24 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🇮🇳 Indian Business Settings")
         
-        currency = st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
-        st.session_state['currency'] = currency
+    currency = st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
+    st.session_state['currency'] = currency
         
-        electronics_gst = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=28, key="electronics_gst")
-        services_gst = st.number_input("Services GST (%)", value=18, min_value=0, max_value=28, key="services_gst")
-        st.session_state.gst_rates['Electronics'] = electronics_gst
-        st.session_state.gst_rates['Services'] = services_gst
+    electronics_gst = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=28, key="electronics_gst")
+    services_gst = st.number_input("Services GST (%)", value=18, min_value=0, max_value=28, key="services_gst")
+    st.session_state.gst_rates['Electronics'] = electronics_gst
+    st.session_state.gst_rates['Services'] = services_gst
         
-        st.markdown("---")
-        st.subheader("Room Design Settings")
+    st.markdown("---")
+    st.subheader("Room Design Settings")
         
-        room_type = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
-        budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+    room_type = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
+    budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
         
-        room_spec = ROOM_SPECS[room_type]
-        st.markdown("#### Room Guidelines")
-        st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
-        st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
+    room_spec = ROOM_SPECS[room_type]
+    st.markdown("#### Room Guidelines")
+    st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
+    st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
 
     # --- Main Content Tabs ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Multi-Room Project", "Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
