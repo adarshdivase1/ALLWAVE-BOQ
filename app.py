@@ -289,12 +289,14 @@ def generate_with_retry(model, prompt, max_retries=3):
 
 # --- NEW: Enhanced BOQ Generation with Justifications ---
 # --- CHANGE 1: REPLACE THIS ENTIRE FUNCTION ---
+# --- FIX: REPLACE THIS ENTIRE FUNCTION ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
+    # FIX APPLIED HERE: Doubled the curly braces around the budget range
     enhanced_prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready Bill of Quantities (BOQ).
 
@@ -310,7 +312,7 @@ You are a Professional AV Systems Engineer with 15+ years of experience in the I
 - Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
 - Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
 - Audio coverage: {room_spec['audio_coverage']}
-- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
+- Budget target: ${{room_spec['typical_budget_range'][0]:,}}-${{room_spec['typical_budget_range'][1]:,}}
 
 **MANDATORY REQUIREMENTS:**
 1.  **ONLY use products from the provided product catalog sample.**
@@ -336,7 +338,6 @@ Generate the detailed BOQ now:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
             boq_content = response.text
-            # We now use a new extraction function for the new format
             boq_items = extract_new_format_boq_items(boq_content, product_df)
             return boq_content, boq_items
         return None, []
