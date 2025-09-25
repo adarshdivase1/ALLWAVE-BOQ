@@ -403,16 +403,16 @@ def create_advanced_requirements():
         st.write("**Infrastructure**")
         has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available", key="dedicated_circuit_checkbox")
         network_capability = st.selectbox("Network Infrastructure", 
-                                          ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
+                                            ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                            ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
         security_clearance = st.selectbox("Security Level", 
-                                          ["Standard", "Restricted", "Classified"], key="security_clearance_select")
+                                            ["Standard", "Restricted", "Classified"], key="security_clearance_select")
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -969,7 +969,7 @@ def edit_current_boq(currency):
         else:
             st.markdown(f"### **Total Project Cost: {format_currency(total_cost * 1.30, 'USD')}**")
 
-# --- FIXED UTILITY FUNCTIONS FOR VISUALIZATION (UPDATED AS PER YOUR REQUEST) ---
+# --- UTILITY FUNCTIONS FOR 3D VISUALIZATION (ALL FUNCTIONS NOW INCLUDED) ---
 
 def map_equipment_type(category, product_name="", brand=""):
     """Enhanced mapping function that considers both category and product name."""
@@ -1037,7 +1037,6 @@ def get_equipment_specs(equipment_type, product_name=""):
     
     # Extract size from product name for displays
     if equipment_type == 'display' and product_name:
-        import re
         size_match = re.search(r'(\d+)"', product_name)
         if size_match:
             size_inches = int(size_match.group(1))
@@ -1055,6 +1054,66 @@ def get_equipment_specs(equipment_type, product_name=""):
             return [spec * 0.8 for spec in base_spec]
     
     return base_spec
+
+def get_placement_constraints(equipment_type):
+    """(FIX ADDED) Get placement constraints for a given equipment type."""
+    constraints = {
+        'display': {'surface': 'wall', 'height': [3, 5]},  # Height in feet from floor
+        'audio_speaker': {'surface': 'wall_ceiling', 'height': [6, 9]},
+        'audio_microphone': {'surface': 'table', 'height': [2.5, 3]},
+        'camera': {'surface': 'wall', 'height': [4, 6]},
+        'network_switch': {'surface': 'floor', 'height': [0, 4]},
+        'network_device': {'surface': 'table_ceiling', 'height': [2.5, 9]},
+        'charging_station': {'surface': 'table', 'height': [2.5, 3]},
+        'control_panel': {'surface': 'wall_table', 'height': [3, 5]},
+        'control': {'surface': 'floor', 'height': [0, 4]}, # Assumed to be in a rack
+        'rack': {'surface': 'floor', 'height': [0, 7]},
+        'power': {'surface': 'floor', 'height': [0, 2]}
+    }
+    # Return specific constraint or a generic default if not found
+    return constraints.get(equipment_type, {'surface': 'table', 'height': [2.5, 3]})
+
+def get_power_requirements(equipment_type):
+    """(FIX ADDED) Get estimated power consumption in watts."""
+    power_map = {
+        'display': 150,
+        'audio_speaker': 50,
+        'audio_microphone': 5,
+        'camera': 15,
+        'network_switch': 80,
+        'network_device': 10,
+        'charging_station': 40,
+        'control_panel': 12,
+        'control': 100,
+        'rack': 500, # Assuming it contains equipment
+        'power': 20
+    }
+    return power_map.get(equipment_type, 25) # Default wattage
+
+def get_weight_estimate(equipment_type, specs):
+    """(FIX ADDED) Get estimated weight in lbs."""
+    base_weight = {
+        'display': 30,
+        'audio_speaker': 10,
+        'audio_microphone': 2,
+        'camera': 3,
+        'network_switch': 8,
+        'network_device': 2,
+        'charging_station': 5,
+        'control_panel': 4,
+        'control': 20,
+        'rack': 150,
+        'power': 15
+    }
+    
+    # Add weight based on size (volume) for some items
+    volume = specs[0] * specs[1] * specs[2]
+    weight = base_weight.get(equipment_type, 5)
+    
+    if equipment_type == 'display':
+        weight += volume * 10 # Heavier as they get bigger
+    
+    return round(weight, 1)
 
 
 def create_3d_visualization():
@@ -1074,6 +1133,7 @@ def create_3d_visualization():
         if equipment_type == 'service':
             continue
 
+        # CORRECTED LINE 1: Function name typo fixed
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
 
         try:
@@ -1091,6 +1151,7 @@ def create_3d_visualization():
                 'instance': i + 1,
                 'original_quantity': quantity,
                 'specs': specs,
+                # CORRECTED LINES 2, 3, 4: These functions now exist
                 'placement_constraints': get_placement_constraints(equipment_type),
                 'power_requirements': get_power_requirements(equipment_type),
                 'weight': get_weight_estimate(equipment_type, specs)
@@ -1878,7 +1939,7 @@ def create_3d_visualization():
                         break;
                         
                     default:
-                        geometry = new THREE.BoxGeometry(toUnits(specs.width || 2), toUnits(specs.height || 1), toUnits(specs.depth || 1));
+                        geometry = new THREE.BoxGeometry(toUnits(specs[0] || 2), toUnits(specs[1] || 1), toUnits(specs[2] || 1));
                         material = new THREE.MeshStandardMaterial({{ color: 0x666666 }});
                         mesh = new THREE.Mesh(geometry, material);
                 }}
@@ -1965,16 +2026,16 @@ def create_3d_visualization():
                     const placed = scene.getObjectByName(`equipment_${{equipment.id}}`)?.userData.placed || false;
                     return `
                         <div class="equipment-item ${{placed ? 'placed' : ''}}" 
-                             draggable="true" 
-                             onclick="selectEquipment(${{equipment.id}})"
-                             ondragstart="startDragFromPanel(event, ${{equipment.id}})">
+                                draggable="true" 
+                                onclick="selectEquipment(${{equipment.id}})"
+                                ondragstart="startDragFromPanel(event, ${{equipment.id}})">
                             <div class="equipment-name">${{equipment.name}}</div>
                             <div class="equipment-details">
                                 ${{equipment.brand}} • $${{equipment.price.toLocaleString()}}
                                 ${{equipment.instance > 1 ? ` (${{equipment.instance}}/${{equipment.original_quantity}})` : ''}}
                             </div>
                             <div class="equipment-specs">
-                                ${{equipment.specs.width || 0}}W × ${{equipment.specs.height || 0}}H × ${{equipment.specs.depth || 0}}D in
+                                ${{equipment.specs[0].toFixed(1)}}W × ${{equipment.specs[1].toFixed(1)}}H × ${{equipment.specs[2].toFixed(1)}}D ft
                                 ${{equipment.power_requirements ? ` • ${{equipment.power_requirements}}W` : ''}}
                             </div>
                         </div>
@@ -2014,7 +2075,7 @@ def create_3d_visualization():
                     const obj = scene.getObjectByName(`equipment_${{draggedEquipment.id}}`);
                     if (obj) {{
                         obj.position.copy(floorIntersect.point);
-                        obj.position.y = toUnits(draggedEquipment.specs.height / 2);
+                        obj.position.y = toUnits(draggedEquipment.specs[1] / 2);
                         obj.visible = true;
                     }}
                 }}
@@ -2026,7 +2087,7 @@ def create_3d_visualization():
                 const obj = scene.getObjectByName(`equipment_${{draggedEquipment.id}}`);
                 if (obj) {{
                     obj.position.copy(position);
-                    obj.position.y = toUnits(draggedEquipment.specs.height / 2);
+                    obj.position.y = toUnits(draggedEquipment.specs[1] / 2);
                     obj.visible = true;
                     obj.userData.placed = true;
                     
