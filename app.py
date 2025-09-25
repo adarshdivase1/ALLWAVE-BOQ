@@ -291,10 +291,10 @@ def generate_with_retry(model, prompt, max_retries=3):
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
-    room_spec = ROOM_SPECS[room_type]
+ room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
-   enhanced_prompt = f"""
+    enhanced_prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years of experience creating detailed BOQs for the Indian market. Create a production-ready BOQ.
 
 **PROJECT SPECIFICATIONS:**
