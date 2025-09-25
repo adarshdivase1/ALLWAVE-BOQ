@@ -287,11 +287,10 @@ def generate_with_retry(model, prompt, max_retries=3):
             time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
-# --- NEW: Enhanced BOQ Generation with Justifications ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
- room_spec = ROOM_SPECS[room_type]
+    room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
     enhanced_prompt = f"""
@@ -330,7 +329,7 @@ Start with a brief System Design Summary, then provide the BOQ in a Markdown tab
 **AVIXA GUIDELINES:**
 {guidelines}
 
-Generate the detailed BOQ with justifications:
+Generate the detailed BOQ:
 """
     
     try:
@@ -343,7 +342,6 @@ Generate the detailed BOQ with justifications:
     except Exception as e:
         st.error(f"Enhanced BOQ generation failed: {str(e)}")
         return None, []
-
 
 # --- BOQ Validation & Data Extraction ---
 class BOQValidator:
