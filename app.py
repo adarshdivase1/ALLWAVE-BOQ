@@ -405,14 +405,14 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                             ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                        ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
         ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
         fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
         security_clearance = st.selectbox("Security Level", 
-                                          ["Standard", "Restricted", "Classified"], key="security_clearance_select")
+                                            ["Standard", "Restricted", "Classified"], key="security_clearance_select")
     
     return {
         "dedicated_circuit": has_dedicated_circuit,
@@ -1960,30 +1960,48 @@ def create_3d_visualization():
                     scene.add(obj);
                 }});
             }}
-
+            
+            // --- NEW: Enhanced Equipment Mesh Creation with Better Visuals ---
             function createEquipmentMesh(equipment) {{
                 const group = new THREE.Group();
                 const specs = equipment.specs;
                 const type = equipment.type;
                 let geometry, material, mesh;
-                
+
+                // Enhanced materials with better visual quality
+                const metalMaterial = new THREE.MeshStandardMaterial({{
+                    color: 0x444444,
+                    roughness: 0.3,
+                    metalness: 0.8,
+                    envMapIntensity: 0.8
+                }});
+
+                const plasticMaterial = new THREE.MeshStandardMaterial({{
+                    color: 0x2a2a2a,
+                    roughness: 0.7,
+                    metalness: 0.1
+                }});
+
                 switch (type) {{
                     case 'display':
                         const displayWidth = toUnits(specs[0]);
                         const displayHeight = toUnits(specs[1]);
                         const displayDepth = toUnits(specs[2]);
-                        
+
+                        // Main display body
                         geometry = new THREE.BoxGeometry(displayWidth, displayHeight, displayDepth);
-                        material = new THREE.MeshStandardMaterial({{ 
-                            color: 0x222222, 
+                        material = new THREE.MeshStandardMaterial({{
+                            color: 0x1a1a1a,
                             roughness: 0.3,
                             metalness: 0.7
                         }});
                         mesh = new THREE.Mesh(geometry, material);
-                        
-                        const screenMaterial = new THREE.MeshStandardMaterial({{ 
-                            color: 0x000044, 
-                            emissive: 0x000022,
+
+                        // Screen with subtle glow
+                        const screenMaterial = new THREE.MeshStandardMaterial({{
+                            color: 0x001122,
+                            emissive: 0x001122,
+                            emissiveIntensity: 0.3,
                             roughness: 0.1,
                             metalness: 0.1
                         }});
@@ -1993,80 +2011,204 @@ def create_3d_visualization():
                         );
                         screen.position.z = displayDepth / 2 + 0.01;
                         group.add(screen);
+
+                        // Add bezel details
+                        const bezelMaterial = new THREE.MeshStandardMaterial({{ color: 0x333333 }});
+                        const bezel = new THREE.Mesh(
+                            new THREE.RingGeometry(Math.min(displayWidth, displayHeight) * 0.45, Math.min(displayWidth, displayHeight) * 0.48, 32),
+                            bezelMaterial
+                        );
+                        bezel.position.z = displayDepth / 2 + 0.02;
+                        group.add(bezel);
                         break;
-                    
+
                     case 'audio_speaker':
                         geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
-                        material = new THREE.MeshStandardMaterial({{ 
+                        material = new THREE.MeshStandardMaterial({{
                             color: 0x1a1a1a,
-                            roughness: 0.8 
+                            roughness: 0.8
                         }});
                         mesh = new THREE.Mesh(geometry, material);
-                        
-                        const grilleGeometry = new THREE.CylinderGeometry(toUnits(specs[0] * 0.3), toUnits(specs[0] * 0.3), toUnits(0.1));
-                        const grilleMaterial = new THREE.MeshStandardMaterial({{ color: 0x333333 }});
+
+                        // Speaker grille with better detail
+                        const grilleGeometry = new THREE.CylinderGeometry(toUnits(specs[0] * 0.3), toUnits(specs[0] * 0.3), toUnits(0.05), 16);
+                        const grilleMaterial = new THREE.MeshStandardMaterial({{
+                            color: 0x222222,
+                            roughness: 0.9,
+                            metalness: 0.3
+                        }});
                         const grille = new THREE.Mesh(grilleGeometry, grilleMaterial);
                         grille.rotation.x = Math.PI / 2;
                         grille.position.z = toUnits(specs[2] / 2);
                         group.add(grille);
+
+                        // Add multiple driver elements
+                        for (let i = 0; i < 3; i++) {{
+                            const driver = new THREE.Mesh(
+                                new THREE.RingGeometry(toUnits(0.1), toUnits(0.15), 8),
+                                new THREE.MeshStandardMaterial({{ color: 0x333333 }})
+                            );
+                            driver.rotation.x = Math.PI / 2;
+                            driver.position.set(0, toUnits(specs[1] * (0.2 + i * 0.3) - specs[1]/2), toUnits(specs[2] / 2 + 0.01));
+                            group.add(driver);
+                        }}
                         break;
                         
                     case 'camera':
                         geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x2a2a2a }});
+                        material = plasticMaterial;
                         mesh = new THREE.Mesh(geometry, material);
-                        
-                        const lensGeometry = new THREE.CylinderGeometry(toUnits(0.3), toUnits(0.4), toUnits(0.2));
-                        const lensMaterial = new THREE.MeshStandardMaterial({{ 
+
+                        // Camera lens with realistic appearance
+                        const lensGeometry = new THREE.CylinderGeometry(toUnits(0.25), toUnits(0.3), toUnits(0.15), 16);
+                        const lensMaterial = new THREE.MeshStandardMaterial({{
                             color: 0x111111,
-                            roughness: 0.1,
-                            metalness: 0.8
+                            roughness: 0.05,
+                            metalness: 0.9,
+                            envMapIntensity: 1.0
                         }});
                         const lens = new THREE.Mesh(lensGeometry, lensMaterial);
                         lens.rotation.x = Math.PI / 2;
-                        lens.position.z = toUnits(specs[2] / 2 + 0.1);
+                        lens.position.z = toUnits(specs[2] / 2 + 0.08);
                         group.add(lens);
+
+                        // LED indicator
+                        const led = new THREE.Mesh(
+                            new THREE.SphereGeometry(toUnits(0.03)),
+                            new THREE.MeshStandardMaterial({{
+                                color: 0x00ff00,
+                                emissive: 0x004400,
+                                emissiveIntensity: 0.5
+                            }})
+                        );
+                        led.position.set(toUnits(specs[0] * 0.3), toUnits(specs[1] * 0.3), toUnits(specs[2] / 2));
+                        group.add(led);
                         break;
                         
                     case 'network_switch':
                         geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x444444 }});
+                        material = metalMaterial;
                         mesh = new THREE.Mesh(geometry, material);
-                        
-                        for (let i = 0; i < 8; i++) {{
-                            const portGeometry = new THREE.BoxGeometry(toUnits(0.1), toUnits(0.05), toUnits(0.05));
-                            const portMaterial = new THREE.MeshStandardMaterial({{ color: 0x222222 }});
+
+                        // Add realistic network ports
+                        const portMaterial = new THREE.MeshStandardMaterial({{ color: 0x111111 }});
+                        for (let i = 0; i < 24; i++) {{
+                            const portGeometry = new THREE.BoxGeometry(toUnits(0.08), toUnits(0.04), toUnits(0.06));
                             const port = new THREE.Mesh(portGeometry, portMaterial);
+                            const row = Math.floor(i / 12);
+                            const col = i % 12;
                             port.position.set(
-                                toUnits(-specs[0] / 2 + 0.2 + i * 0.15),
-                                toUnits(-specs[1] / 2),
-                                toUnits(specs[2] / 2)
+                                toUnits(-specs[0] / 2 + 0.15 + col * (specs[0] - 0.3) / 12),
+                                toUnits(-specs[1] / 2 + 0.05 + row * 0.06),
+                                toUnits(specs[2] / 2 + 0.02)
                             );
                             group.add(port);
+                        }}
+
+                        // Status LEDs
+                        for (let i = 0; i < 4; i++) {{
+                            const statusLED = new THREE.Mesh(
+                                new THREE.SphereGeometry(toUnits(0.02)),
+                                new THREE.MeshStandardMaterial({{
+                                    color: Math.random() > 0.5 ? 0x00ff00 : 0xff4400,
+                                    emissive: Math.random() > 0.5 ? 0x002200 : 0x220000,
+                                    emissiveIntensity: 0.3
+                                }})
+                            );
+                            statusLED.position.set(
+                                toUnits(-specs[0] / 2 + 0.1 + i * 0.1),
+                                toUnits(specs[1] / 2 - 0.05),
+                                toUnits(specs[2] / 2)
+                            );
+                            group.add(statusLED);
                         }}
                         break;
                         
                     default:
                         geometry = new THREE.BoxGeometry(toUnits(specs[0] || 2), toUnits(specs[1] || 1), toUnits(specs[2] || 1));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x666666 }});
+                        material = new THREE.MeshStandardMaterial({{
+                            color: 0x666666,
+                            roughness: 0.6,
+                            metalness: 0.3
+                        }});
                         mesh = new THREE.Mesh(geometry, material);
+
+                        // Add generic equipment details
+                        const indicator = new THREE.Mesh(
+                            new THREE.SphereGeometry(toUnits(0.05)),
+                            new THREE.MeshStandardMaterial({{
+                                color: 0x0066ff,
+                                emissive: 0x001133,
+                                emissiveIntensity: 0.2
+                            }})
+                        );
+                        indicator.position.set(toUnits(specs[0] * 0.4), toUnits(specs[1] * 0.4), toUnits(specs[2] / 2));
+                        group.add(indicator);
                 }}
-                
+
                 if (mesh) {{
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     group.add(mesh);
                 }}
-                
+
+                // Add selection highlight (invisible by default)
+                const highlightGeometry = new THREE.BoxGeometry(
+                    toUnits(specs[0] + 0.2), 
+                    toUnits(specs[1] + 0.2), 
+                    toUnits(specs[2] + 0.2)
+                );
+                const highlightMaterial = new THREE.MeshBasicMaterial({{
+                    color: 0x40C4FF,
+                    transparent: true,
+                    opacity: 0,
+                    wireframe: true
+                }});
+                const highlight = new THREE.Mesh(highlightGeometry, highlightMaterial);
+                highlight.name = 'highlight';
+                group.add(highlight);
+
                 group.name = `equipment_${{equipment.id}}`;
                 return group;
             }}
+            
+            // --- NEW: Add Right-Click Context Menu for Equipment Management ---
+            function onContextMenu(event) {{
+                event.preventDefault();
 
+                const rect = event.target.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+
+                const equipmentIntersect = intersects.find(intersect =>
+                    intersect.object.parent && intersect.object.parent.name.startsWith('equipment_') &&
+                    intersect.object.parent.userData.placed
+                );
+
+                if (equipmentIntersect) {{
+                    const equipmentObj = equipmentIntersect.object.parent;
+                    const equipment = equipmentObj.userData.equipment;
+
+                    // Simple context actions
+                    if (confirm(`Remove ${{equipment.name}} from layout?`)) {{
+                        equipmentObj.visible = false;
+                        equipmentObj.userData.placed = false;
+                        spaceAnalytics.removePlacedEquipment(equipmentObj);
+                        updateEquipmentList();
+                    }}
+                }}
+            }}
+
+            // --- NEW: Update Event Listeners ---
             function setupEnhancedControls() {{
                 const container = document.getElementById('container');
                 container.addEventListener('mousemove', onMouseMove);
                 container.addEventListener('mousedown', onMouseDown);
                 container.addEventListener('mouseup', onMouseUp);
+                container.addEventListener('contextmenu', onContextMenu); // Add this line
                 container.addEventListener('dblclick', onDoubleClick);
                 container.addEventListener('wheel', onMouseWheel);
                 container.addEventListener('touchstart', onTouchStart);
@@ -2081,33 +2223,61 @@ def create_3d_visualization():
                 mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
                 
-                if (placementMode && draggedEquipment) {{
+                if (placementMode && (draggedEquipment || selectedObject)) {{
                     updateDraggedEquipmentPosition();
                 }}
             }}
-
+            
+            // --- NEW: Fix Equipment Movement After Placement ---
             function onMouseDown(event) {{
-                if (!placementMode) return;
-                
                 const rect = event.target.getBoundingClientRect();
                 mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-                
+
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-                const floorIntersect = intersects.find(intersect => intersect.object.name === 'floor');
-                
-                if (floorIntersect && draggedEquipment) {{
-                    const pos = floorIntersect.point.clone();
-                    const bounds = spaceAnalytics.roomBounds;
-                    pos.x = Math.max(bounds.minX + 1, Math.min(bounds.maxX - 1, pos.x));
-                    pos.z = Math.max(bounds.minZ + 1, Math.min(bounds.maxZ - 1, pos.z));
-                    
-                    placeDraggedEquipment(pos);
+
+                if (placementMode) {{
+                    // Check if clicking on existing equipment to move it
+                    const equipmentIntersect = intersects.find(intersect =>
+                        intersect.object.parent && intersect.object.parent.name.startsWith('equipment_') &&
+                        intersect.object.parent.userData.placed
+                    );
+
+                    if (equipmentIntersect) {{
+                        // Start moving existing equipment
+                        const equipmentObj = equipmentIntersect.object.parent;
+                        selectedObject = equipmentObj;
+                        equipmentObj.userData.placed = false; // Temporarily unplace for moving
+                        spaceAnalytics.removePlacedEquipment(equipmentObj);
+                        draggedEquipment = equipmentObj.userData.equipment;
+                        document.getElementById('modeIndicator').textContent = `MOVING: ${{draggedEquipment.name}}`;
+                        return;
+                    }}
+
+                    // Place new equipment if dragging from panel
+                    const floorIntersect = intersects.find(intersect => intersect.object.name === 'floor' || intersect.object.name.startsWith('wall'));
+                    if (floorIntersect && draggedEquipment) {{
+                        const pos = floorIntersect.point.clone();
+                        const bounds = spaceAnalytics.roomBounds;
+                        pos.x = Math.max(bounds.minX + 1, Math.min(bounds.maxX - 1, pos.x));
+                        pos.z = Math.max(bounds.minZ + 1, Math.min(bounds.maxZ - 1, pos.z));
+                        placeDraggedEquipment(pos);
+                    }}
                 }}
             }}
 
-            function onMouseUp(event) {{}}
+            function onMouseUp(event) {{
+                 if (selectedObject) {{
+                    selectedObject.userData.placed = true;
+                    draggedEquipment = null;
+                    spaceAnalytics.addPlacedEquipment(selectedObject, selectedObject.userData.equipment)
+                    highlightEquipment(selectedObject, false);
+                    selectedObject = null;
+                    document.getElementById('modeIndicator').textContent = 'PLACE MODE';
+                    updateEquipmentList();
+                 }}
+            }}
 
             function onDoubleClick(event) {{
                 const rect = event.target.getBoundingClientRect();
@@ -2217,9 +2387,9 @@ def create_3d_visualization():
                     const placed = scene.getObjectByName(`equipment_${{equipment.id}}`)?.userData.placed || false;
                     return `
                         <div class="equipment-item ${{placed ? 'placed' : ''}}" 
-                                 draggable="true" 
-                                 onclick="selectEquipment(${{equipment.id}})"
-                                 ondragstart="startDragFromPanel(event, ${{equipment.id}})">
+                                draggable="true" 
+                                onclick="selectEquipment(${{equipment.id}})"
+                                ondragstart="startDragFromPanel(event, ${{equipment.id}})">
                             <div class="equipment-name">${{equipment.name}}</div>
                             <div class="equipment-details">
                                 ${{equipment.brand}} • $${{equipment.price.toLocaleString()}}
@@ -2254,22 +2424,57 @@ def create_3d_visualization():
                 draggedEquipment = equipment;
                 document.getElementById('modeIndicator').textContent = `PLACING: ${{equipment.name}}`;
             }}
-
+            
+            // --- NEW: Add Equipment Selection and Movement Feedback ---
+            function highlightEquipment(equipmentObj, highlightStatus = true) {{
+                const highlightMesh = equipmentObj.getObjectByName('highlight');
+                if (highlightMesh) {{
+                    if (highlightStatus) {{
+                        highlightMesh.material.opacity = 0.3;
+                        // Animate the highlight
+                        const startTime = Date.now();
+                        function animate() {{
+                            if (!highlightMesh) return;
+                            const elapsed = Date.now() - startTime;
+                            const pulse = Math.sin(elapsed * 0.005) * 0.1 + 0.3;
+                            highlightMesh.material.opacity = pulse;
+                            if (selectedObject === equipmentObj) {{ // Only continue animation if still selected
+                                requestAnimationFrame(animate);
+                            }} else {{
+                                highlightMesh.material.opacity = 0;
+                            }}
+                        }}
+                        animate();
+                    }} else {{
+                        highlightMesh.material.opacity = 0;
+                    }}
+                }}
+            }}
+            
+            // --- NEW: Improve Drag Visual Feedback ---
             function updateDraggedEquipmentPosition() {{
-                if (!draggedEquipment) return;
-                
+                const equipmentToMove = selectedObject ? selectedObject.userData.equipment : draggedEquipment;
+                if (!equipmentToMove) return;
+
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-                const intersectPoint = intersects.find(intersect => intersect.object.name.startsWith('wall') || intersect.object.name === 'floor' || intersect.object.name === 'ceiling');
-                
+                const intersectPoint = intersects.find(intersect => 
+                    intersect.object.name.startsWith('wall') || 
+                    intersect.object.name === 'floor' || 
+                    intersect.object.name === 'ceiling'
+                );
+
                 if (intersectPoint) {{
-                    const obj = scene.getObjectByName(`equipment_${{draggedEquipment.id}}`);
+                    const obj = scene.getObjectByName(`equipment_${{equipmentToMove.id}}`);
                     if (obj) {{
                         obj.position.copy(intersectPoint.point);
-                        // Apply placement height and wall snapping logic here as well
-                        const constraints = draggedEquipment.placement_constraints;
-                        const equipmentType = draggedEquipment.type;
 
+                        // Add visual feedback during dragging
+                        if(!selectedObject) highlightEquipment(obj, true);
+                        
+                        // Apply placement constraints
+                        const constraints = equipmentToMove.placement_constraints;
+                        
                         if (constraints.surface.includes('wall')) {{
                             obj.position.y = toUnits(constraints.height[0] + (constraints.height[1] - constraints.height[0]) / 2);
                             
@@ -2281,13 +2486,13 @@ def create_3d_visualization():
                             else if (Math.abs(obj.position.x - bounds.minX) < tolerance) obj.position.x = bounds.minX + toUnits(0.1);
                             else if (Math.abs(obj.position.x - bounds.maxX) < tolerance) obj.position.x = bounds.maxX - toUnits(0.1);
                         }} else if (constraints.surface.includes('ceiling')) {{
-                            obj.position.y = toUnits(roomDims.height - draggedEquipment.specs[1]/2);
+                            obj.position.y = toUnits(roomDims.height - equipmentToMove.specs[1]/2);
                         }} else if (constraints.surface.includes('table')) {{
-                            obj.position.y = toUnits(2.5 + draggedEquipment.specs[1] / 2);
+                            obj.position.y = toUnits(2.5 + equipmentToMove.specs[1] / 2);
                         }} else {{
-                            obj.position.y = toUnits(draggedEquipment.specs[1] / 2);
+                            obj.position.y = toUnits(equipmentToMove.specs[1] / 2);
                         }}
-
+                        
                         obj.visible = true;
                     }}
                 }}
