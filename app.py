@@ -1074,7 +1074,7 @@ def create_3d_visualization():
         if equipment_type == 'service':
             continue
 
-        specs = get_enhanced_equipment_specs(equipment_type, item.get('name', ''))
+        specs = get_equipment_specs(equipment_type, item.get('name', ''))
 
         try:
             quantity = int(item.get('quantity', 1))
