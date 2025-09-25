@@ -405,7 +405,7 @@ def create_advanced_requirements():
         network_capability = st.selectbox("Network Infrastructure", 
                                             ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
         cable_management = st.selectbox("Cable Management", 
-                                            ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+                                          ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
     
     with col2:
         st.write("**Compliance & Standards**")
@@ -1126,14 +1126,15 @@ def create_3d_visualization():
         st.info("No BOQ items to visualize. Generate a BOQ first or add items manually.")
         return
 
-    # Enhanced equipment processing with realistic specifications
+    # [FIX 1 APPLIED HERE] Enhanced equipment processing with better type mapping
     js_equipment = []
     for item in equipment_data:
         equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''))
-        if equipment_type == 'service':
+        # Skip service items properly
+        if (equipment_type == 'service' or 
+            any(term in item.get('name', '').lower() for term in ['installation', 'labor', 'warranty', 'commissioning', 'contingency'])):
             continue
 
-        # CORRECTED LINE 1: Function name typo fixed
         specs = get_equipment_specs(equipment_type, item.get('name', ''))
 
         try:
@@ -1141,6 +1142,7 @@ def create_3d_visualization():
         except (ValueError, TypeError):
             quantity = 1
 
+        # Create individual instances for each quantity
         for i in range(quantity):
             js_equipment.append({
                 'id': len(js_equipment) + 1,
@@ -1151,7 +1153,6 @@ def create_3d_visualization():
                 'instance': i + 1,
                 'original_quantity': quantity,
                 'specs': specs,
-                # CORRECTED LINES 2, 3, 4: These functions now exist
                 'placement_constraints': get_placement_constraints(equipment_type),
                 'power_requirements': get_power_requirements(equipment_type),
                 'weight': get_weight_estimate(equipment_type, specs)
@@ -1545,17 +1546,18 @@ def create_3d_visualization():
                     }}
                 }}
                 
+                // [FIX 5 APPLIED HERE]
                 updateAnalytics() {{
                     const totalRoomArea = roomDims.length * roomDims.width;
                     const furnitureArea = this.calculateFurnitureFootprint();
                     const equipmentFootprint = this.placedEquipment.reduce((sum, item) => sum + item.footprint, 0);
                     const usableArea = totalRoomArea - furnitureArea;
-                    const remainingSpace = usableArea - equipmentFootprint;
+                    const remainingSpace = Math.max(0, usableArea - equipmentFootprint);
                     const wallSpaceUsed = this.getWallSpaceUsed();
                     const totalPowerDraw = this.placedEquipment.reduce((sum, item) => sum + item.powerDraw, 0);
                     const cableRuns = this.calculateCableRuns();
                     
-                    // Update UI
+                    // Update UI with proper formatting
                     document.getElementById('usableArea').textContent = `${{usableArea.toFixed(0)}} sq ft`;
                     document.getElementById('equipmentFootprint').textContent = `${{equipmentFootprint.toFixed(1)}} sq ft`;
                     document.getElementById('remainingSpace').textContent = `${{remainingSpace.toFixed(1)}} sq ft`;
@@ -1563,7 +1565,7 @@ def create_3d_visualization():
                     document.getElementById('powerLoad').textContent = `${{totalPowerDraw}}W`;
                     document.getElementById('cableRuns').textContent = cableRuns;
                     
-                    // Update visual indicators
+                    // Visual warnings
                     const remainingMetric = document.getElementById('remainingSpace').parentElement;
                     if (remainingSpace < totalRoomArea * 0.2) {{
                         remainingMetric.classList.add('space-warning');
@@ -1572,7 +1574,6 @@ def create_3d_visualization():
                     }}
                     
                     this.generateRecommendations(remainingSpace, wallSpaceUsed);
-                    this.generateSuggestions(remainingSpace);
                 }}
                 
                 calculateFurnitureFootprint() {{
@@ -1839,30 +1840,33 @@ def create_3d_visualization():
                 return specs[roomType] || specs['Standard Conference Room (6-8 People)'];
             }}
 
+            // [FIX 2 APPLIED HERE]
             function calculateChairPositions(roomSpec) {{
                 const positions = [];
                 const tableLength = roomSpec.table_size[0];
                 const tableWidth = roomSpec.table_size[1];
-                const chairSpacing = 3;
+                const chairSpacing = 2.5; // Better spacing
                 
-                const chairsPerSide = Math.floor(tableLength / chairSpacing);
-                const sideChairs = Math.min(chairsPerSide, Math.floor(roomSpec.chair_count / 2));
+                const chairsPerLongSide = Math.floor((tableLength - 2) / chairSpacing);
                 
-                for (let i = 0; i < sideChairs; i++) {{
-                    const x = -tableLength / 2 + (i + 1) * (tableLength / (sideChairs + 1));
-                    positions.push({{ x: x, z: tableWidth / 2 + 2 }});
+                // Distribute chairs along long sides first
+                for (let i = 0; i < chairsPerLongSide && positions.length < roomSpec.chair_count; i++) {{
+                    const x = -tableLength / 2 + (i + 1) * (tableLength / (chairsPerLongSide + 1));
+                    positions.push({{ x: x, z: tableWidth / 2 + 1.5 }});
                     if (positions.length < roomSpec.chair_count) {{
-                        positions.push({{ x: x, z: -tableWidth / 2 - 2 }});
+                        positions.push({{ x: x, z: -tableWidth / 2 - 1.5 }});
                     }}
                 }}
                 
-                const remainingChairs = roomSpec.chair_count - positions.length;
-                for (let i = 0; i < remainingChairs && i < 2; i++) {{
-                    if (i === 0) positions.push({{ x: tableLength / 2 + 2, z: 0 }});
-                    if (i === 1) positions.push({{ x: -tableLength / 2 - 2, z: 0 }});
+                // Add head/foot chairs if needed
+                if (positions.length < roomSpec.chair_count) {{
+                    positions.push({{ x: tableLength / 2 + 1.5, z: 0 }});
+                }}
+                if (positions.length < roomSpec.chair_count) {{
+                    positions.push({{ x: -tableLength / 2 - 1.5, z: 0 }});
                 }}
                 
-                return positions;
+                return positions.slice(0, roomSpec.chair_count);
             }}
 
             function createPlaceableEquipmentObjects() {{
@@ -1874,6 +1878,7 @@ def create_3d_visualization():
                 }});
             }}
 
+            // [FIX 5 APPLIED HERE]
             function createEquipmentMesh(equipment) {{
                 const group = new THREE.Group();
                 const specs = equipment.specs;
@@ -1882,60 +1887,95 @@ def create_3d_visualization():
                 
                 switch (type) {{
                     case 'display':
-                        geometry = new THREE.BoxGeometry(toUnits(specs.width), toUnits(specs.height), toUnits(specs.depth));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x111111 }});
+                        // More realistic display with stand
+                        const displayWidth = toUnits(specs[0]);
+                        const displayHeight = toUnits(specs[1]);
+                        const displayDepth = toUnits(specs[2]);
+                        
+                        // Main display body
+                        geometry = new THREE.BoxGeometry(displayWidth, displayHeight, displayDepth);
+                        material = new THREE.MeshStandardMaterial({{ 
+                            color: 0x222222, 
+                            roughness: 0.3,
+                            metalness: 0.7
+                        }});
                         mesh = new THREE.Mesh(geometry, material);
                         
-                        const screenMaterial = new THREE.MeshStandardMaterial({{ color: 0x000033, emissive: 0x000011 }});
+                        // Screen
+                        const screenMaterial = new THREE.MeshStandardMaterial({{ 
+                            color: 0x000044, 
+                            emissive: 0x000022,
+                            roughness: 0.1,
+                            metalness: 0.1
+                        }});
                         const screen = new THREE.Mesh(
-                            new THREE.PlaneGeometry(toUnits(specs.width * 0.9), toUnits(specs.height * 0.9)),
+                            new THREE.PlaneGeometry(displayWidth * 0.9, displayHeight * 0.9),
                             screenMaterial
                         );
-                        screen.position.z = toUnits(specs.depth / 2 + 0.01);
+                        screen.position.z = displayDepth / 2 + 0.01;
                         group.add(screen);
+                        
+                        // Stand
+                        const standGeometry = new THREE.CylinderGeometry(toUnits(0.5), toUnits(1), toUnits(0.5));
+                        const standMaterial = new THREE.MeshStandardMaterial({{ color: 0x444444 }});
+                        const stand = new THREE.Mesh(standGeometry, standMaterial);
+                        stand.position.y = -displayHeight / 2 - toUnits(0.25);
+                        group.add(stand);
                         break;
                     
-                    case 'projector':
-                        geometry = new THREE.BoxGeometry(toUnits(specs.width), toUnits(specs.height), toUnits(specs.depth));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x444444 }});
+                    case 'audio_speaker':
+                        geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
+                        material = new THREE.MeshStandardMaterial({{ 
+                            color: 0x1a1a1a,
+                            roughness: 0.8 
+                        }});
                         mesh = new THREE.Mesh(geometry, material);
                         
-                        const lens = new THREE.Mesh(
-                            new THREE.CylinderGeometry(toUnits(1), toUnits(1), toUnits(0.5)),
-                            new THREE.MeshStandardMaterial({{ color: 0x222222 }})
-                        );
+                        // Speaker grille
+                        const grilleGeometry = new THREE.CylinderGeometry(toUnits(specs[0] * 0.3), toUnits(specs[0] * 0.3), toUnits(0.1));
+                        const grilleMaterial = new THREE.MeshStandardMaterial({{ color: 0x333333 }});
+                        const grille = new THREE.Mesh(grilleGeometry, grilleMaterial);
+                        grille.rotation.x = Math.PI / 2;
+                        grille.position.z = toUnits(specs[2] / 2);
+                        group.add(grille);
+                        break;
+                        
+                    case 'camera':
+                        // Camera body
+                        geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
+                        material = new THREE.MeshStandardMaterial({{ color: 0x2a2a2a }});
+                        mesh = new THREE.Mesh(geometry, material);
+                        
+                        // Camera lens
+                        const lensGeometry = new THREE.CylinderGeometry(toUnits(0.3), toUnits(0.4), toUnits(0.2));
+                        const lensMaterial = new THREE.MeshStandardMaterial({{ 
+                            color: 0x111111,
+                            roughness: 0.1,
+                            metalness: 0.8
+                        }});
+                        const lens = new THREE.Mesh(lensGeometry, lensMaterial);
                         lens.rotation.x = Math.PI / 2;
-                        lens.position.set(0, 0, toUnits(specs.depth / 2));
+                        lens.position.z = toUnits(specs[2] / 2 + 0.1);
                         group.add(lens);
                         break;
                         
-                    case 'audio_mixer':
-                    case 'amplifier':
-                        geometry = new THREE.BoxGeometry(toUnits(specs.width), toUnits(specs.height), toUnits(specs.depth));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x333333 }});
+                    case 'network_switch':
+                        geometry = new THREE.BoxGeometry(toUnits(specs[0]), toUnits(specs[1]), toUnits(specs[2]));
+                        material = new THREE.MeshStandardMaterial({{ color: 0x444444 }});
                         mesh = new THREE.Mesh(geometry, material);
                         
-                        const panel = new THREE.Mesh(
-                            new THREE.PlaneGeometry(toUnits(specs.width * 0.8), toUnits(specs.height * 0.6)),
-                            new THREE.MeshStandardMaterial({{ color: 0x111111 }})
-                        );
-                        panel.position.y = toUnits(specs.height / 2 + 0.01);
-                        panel.rotation.x = -Math.PI / 2;
-                        group.add(panel);
-                        break;
-                        
-                    case 'microphone':
-                        const stand = new THREE.Mesh(
-                            new THREE.CylinderGeometry(toUnits(0.1), toUnits(0.3), toUnits(3)),
-                            new THREE.MeshStandardMaterial({{ color: 0x444444 }})
-                        );
-                        stand.position.y = toUnits(1.5);
-                        group.add(stand);
-                        
-                        geometry = new THREE.CylinderGeometry(toUnits(0.2), toUnits(0.2), toUnits(0.8));
-                        material = new THREE.MeshStandardMaterial({{ color: 0x222222 }});
-                        mesh = new THREE.Mesh(geometry, material);
-                        mesh.position.y = toUnits(3.4);
+                        // Add port indicators
+                        for (let i = 0; i < 8; i++) {{
+                            const portGeometry = new THREE.BoxGeometry(toUnits(0.1), toUnits(0.05), toUnits(0.05));
+                            const portMaterial = new THREE.MeshStandardMaterial({{ color: 0x222222 }});
+                            const port = new THREE.Mesh(portGeometry, portMaterial);
+                            port.position.set(
+                                toUnits(-specs[0] / 2 + 0.2 + i * 0.15),
+                                toUnits(-specs[1] / 2),
+                                toUnits(specs[2] / 2)
+                            );
+                            group.add(port);
+                        }}
                         break;
                         
                     default:
@@ -1954,11 +1994,13 @@ def create_3d_visualization():
                 return group;
             }}
 
+            // [FIX 4 APPLIED HERE]
             function setupEnhancedControls() {{
                 const container = document.getElementById('container');
                 container.addEventListener('mousemove', onMouseMove);
                 container.addEventListener('mousedown', onMouseDown);
                 container.addEventListener('mouseup', onMouseUp);
+                container.addEventListener('dblclick', onDoubleClick); // Add this line
                 container.addEventListener('wheel', onMouseWheel);
                 container.addEventListener('touchstart', onTouchStart);
                 container.addEventListener('touchmove', onTouchMove);
@@ -1977,19 +2019,84 @@ def create_3d_visualization():
                 }}
             }}
 
+            // [FIX 3 APPLIED HERE]
             function onMouseDown(event) {{
                 if (!placementMode) return;
+                
+                const rect = event.target.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
                 
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 const floorIntersect = intersects.find(intersect => intersect.object.name === 'floor');
                 
                 if (floorIntersect && draggedEquipment) {{
-                    placeDraggedEquipment(floorIntersect.point);
+                    // Constrain to room bounds
+                    const pos = floorIntersect.point.clone();
+                    const bounds = spaceAnalytics.roomBounds;
+                    pos.x = Math.max(bounds.minX + 1, Math.min(bounds.maxX - 1, pos.x));
+                    pos.z = Math.max(bounds.minZ + 1, Math.min(bounds.maxZ - 1, pos.z));
+                    
+                    placeDraggedEquipment(pos);
                 }}
             }}
 
             function onMouseUp(event) {{}}
+
+            // [FIX 4 APPLIED HERE]
+            function onDoubleClick(event) {{
+                const rect = event.target.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                const equipmentIntersect = intersects.find(intersect => 
+                    intersect.object.parent && intersect.object.parent.name.startsWith('equipment_')
+                );
+                
+                if (equipmentIntersect) {{
+                    const equipmentObj = equipmentIntersect.object.parent;
+                    focusOnEquipment(equipmentObj);
+                }}
+            }}
+
+            function focusOnEquipment(equipmentObj) {{
+                const bbox = new THREE.Box3().setFromObject(equipmentObj);
+                const center = bbox.getCenter(new THREE.Vector3());
+                const size = bbox.getSize(new THREE.Vector3());
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const distance = maxDim * 4;
+                
+                const targetPosition = new THREE.Vector3(
+                    center.x + distance * 0.7,
+                    center.y + distance * 0.5,
+                    center.z + distance * 0.7
+                );
+                
+                // Animate camera
+                const startPosition = camera.position.clone();
+                const startTime = Date.now();
+                const duration = 1500;
+                
+                function animateToEquipment() {{
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    
+                    camera.position.lerpVectors(startPosition, targetPosition, eased);
+                    camera.lookAt(center);
+                    
+                    if (progress < 1) {{
+                        requestAnimationFrame(animateToEquipment);
+                    }}
+                }}
+                
+                animateToEquipment();
+            }}
 
             function onMouseWheel(event) {{
                 event.preventDefault();
