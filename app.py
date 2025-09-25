@@ -293,10 +293,12 @@ def generate_with_retry(model, prompt, max_retries=3):
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
+    # --- ADD THIS LINE TO FIX THE ERROR ---
+    if features and features.strip() and features.strip()[0] in "*+?": features = " " + features
+
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
-    # FIX APPLIED HERE: Doubled the curly braces around the budget range
     enhanced_prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready Bill of Quantities (BOQ).
 
@@ -338,6 +340,7 @@ Generate the detailed BOQ now:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
             boq_content = response.text
+            # We now use a new extraction function for the new format
             boq_items = extract_new_format_boq_items(boq_content, product_df)
             return boq_content, boq_items
         return None, []
