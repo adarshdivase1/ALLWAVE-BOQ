@@ -287,15 +287,14 @@ def generate_with_retry(model, prompt, max_retries=3):
             time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
-# --- NEW: Enhanced BOQ Generation with Justifications ---
-# --- CHANGE 1: REPLACE THIS ENTIRE FUNCTION ---
 # --- FIX: REPLACE THIS ENTIRE FUNCTION ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
-    # --- ADD THIS LINE TO FIX THE ERROR ---
-    if features and features.strip() and features.strip()[0] in "*+?": features = " " + features
-
+    # --- THIS LINE IS THE FIX ---
+    # It safely escapes any special characters in the user's text inputs.
+    safe_features = re.escape(features) if features else ""
+    
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
@@ -306,7 +305,7 @@ You are a Professional AV Systems Engineer with 15+ years of experience in the I
 - Room Type: {room_type}
 - Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
-- Special Requirements: {features}
+- Special Requirements: {safe_features}
 - Infrastructure: {technical_reqs}
 
 **TECHNICAL CONSTRAINTS & GUIDELINES:**
