@@ -287,56 +287,39 @@ def generate_with_retry(model, prompt, max_retries=3):
             time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
-# --- FIX: REPLACE THIS ENTIRE FUNCTION ---
-# --- FIX: REPLACE THIS ENTIRE FUNCTION ---
+# --- NEW: Enhanced BOQ Generation with Justifications ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
-
-    # --- THIS IS THE FIX ---
-    # Pre-format all potentially problematic variables into safe, simple strings
-    # before they are used in the f-string. This prevents parsing errors.
-    
-    # 1. Safely format the user-provided features text
-    safe_features = str(features) if features else "None"
-    
-    # 2. Safely format the technical requirements dictionary
-    tech_reqs_str = ", ".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in technical_reqs.items()])
-    
-    # 3. Safely format the constraints that use parentheses
-    display_size_str = f"{room_spec['recommended_display_size'][0]} to {room_spec['recommended_display_size'][1]} inches"
-    viewing_dist_str = f"{room_spec['viewing_distance_ft'][0]} to {room_spec['viewing_distance_ft'][1]} ft"
-    budget_range_str = f"${room_spec['typical_budget_range'][0]:,} to ${room_spec['typical_budget_range'][1]:,}"
     
     enhanced_prompt = f"""
-You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready Bill of Quantities (BOQ).
+You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Create a production-ready BOQ with detailed justifications.
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
 - Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
-- Special Requirements: {safe_features}
-- Infrastructure: {tech_reqs_str}
+- Special Requirements: {features}
+- Infrastructure: {technical_reqs}
 
 **TECHNICAL CONSTRAINTS & GUIDELINES:**
 - Adhere to the provided AVIXA standards.
-- Display size range: {display_size_str}
-- Viewing distance: {viewing_dist_str}
+- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
+- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
 - Audio coverage: {room_spec['audio_coverage']}
-- Budget target: {budget_range_str}
+- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
 
 **MANDATORY REQUIREMENTS:**
-1.  **ONLY use products from the provided product catalog sample.**
-2.  For each product, provide a brief note in the 'Remarks' column.
-3.  Fill in the 'Specifications' and 'Model No.' columns with realistic data based on the product name.
-4.  Include appropriate mounting, cabling, and installation services.
-5.  Add standard service line items (Installation, Warranty, Project Management).
+1. ONLY use products from the provided product catalog sample.
+2. For EACH product, provide a concise, single-line justification in the 'WHY' column.
+3. Include appropriate mounting, cabling, and installation services.
+4. Add standard service line items (Installation 15%, Warranty 5%, Project Management/Contingency 10%).
 
 **OUTPUT FORMAT REQUIREMENT:**
-Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns. Do not include currency symbols in the price columns.
-| Description of Goods / Services | Specifications | Make | Model No. | Qty. | Unit Rate (USD) | Total (USD) | Remarks |
+Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns:
+| Category | Brand | Product Name | Quantity | Unit Price (USD) | Total (USD) | WHY (Justification) |
 
 **PRODUCT CATALOG SAMPLE:**
 {product_catalog_string}
@@ -344,19 +327,21 @@ Start with a brief System Design Summary, then provide the BOQ in a Markdown tab
 **AVIXA GUIDELINES:**
 {guidelines}
 
-Generate the detailed BOQ now:
+Generate the detailed BOQ with justifications:
 """
     
     try:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
             boq_content = response.text
-            boq_items = extract_new_format_boq_items(boq_content, product_df)
+            boq_items = extract_enhanced_boq_items(boq_content, product_df)
             return boq_content, boq_items
         return None, []
     except Exception as e:
         st.error(f"Enhanced BOQ generation failed: {str(e)}")
         return None, []
+
+
 # --- BOQ Validation & Data Extraction ---
 class BOQValidator:
     def __init__(self, room_specs, product_df):
@@ -493,73 +478,6 @@ def extract_enhanced_boq_items(boq_content, product_df):
                     'image_url': image_url,
                     'gst_rate': gst_rate,
                     'matched': matched_product is not None
-                })
-                
-        elif in_table and not line.startswith('|'):
-            in_table = False
-    
-    return items
-
-# --- CHANGE 2: ADD THIS NEW FUNCTION ---
-def extract_new_format_boq_items(boq_content, product_df):
-    """Extracts BOQ items from the new AI response format."""
-    items = []
-    lines = boq_content.split('\n')
-    in_table = False
-    
-    for line in lines:
-        line = line.strip()
-        
-        # Detect table start
-        if '|' in line and 'model no.' in line.lower() and 'unit rate' in line.lower():
-            in_table = True
-            continue
-            
-        # Skip separator lines
-        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
-            continue
-            
-        # Process table rows
-        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
-            parts = [part.strip() for part in line.split('|') if part.strip()]
-            if len(parts) >= 7:
-                description = parts[0]
-                specifications = parts[1]
-                make = parts[2]
-                model_no = parts[3]
-                remarks = parts[7] if len(parts) > 7 else "As per system design."
-
-                try:
-                    quantity = int(parts[4])
-                except (ValueError, IndexError):
-                    quantity = 1
-                
-                try:
-                    price_str = parts[5].replace('$', '').replace(',', '')
-                    price = float(price_str)
-                except (ValueError, IndexError):
-                    price = 0
-                
-                # Match with product database to get accurate data
-                matched_product = match_product_in_database(description, make, product_df)
-                if matched_product is not None:
-                    price = float(matched_product.get('price', price))
-                    category = matched_product.get('category', 'General')
-                    gst_rate = matched_product.get('gst_rate', 18)
-                else:
-                    category = normalize_category(description, description)
-                    gst_rate = 18
-
-                items.append({
-                    'name': description,
-                    'specifications': specifications,
-                    'brand': make,
-                    'model_no': model_no,
-                    'quantity': quantity,
-                    'price': price,
-                    'justification': remarks, # Re-using the 'justification' key
-                    'category': category,
-                    'gst_rate': gst_rate,
                 })
                 
         elif in_table and not line.startswith('|'):
@@ -1010,99 +928,113 @@ def product_search_interface(product_df, currency):
                         st.rerun()
 
 # --- NEW: Excel Generation Functions ---
-# --- CHANGE 3: REPLACE THIS ENTIRE HELPER FUNCTION ---
 def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
-    """Helper function to populate a single Excel sheet with BOQ data in the new format."""
+    """Helper function to populate a single Excel sheet with BOQ data."""
     # Header
-    sheet.merge_cells('A1:O3')
+    sheet.merge_cells('A1:K3')
     header_cell = sheet['A1']
-    header_cell.value = "AllWave AV Systems - Design & BOQ"
-    header_cell.font = Font(size=20, bold=True, color="FFFFFF")
+    header_cell.value = "AllWave AV Solutions - Professional Bill of Quantities"
+    header_cell.font = Font(size=18, bold=True, color="FFFFFF")
     header_cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
 
     # Project Info
-    info_start_row = 5
-    sheet[f'C{info_start_row}'] = "Room Name / Room Type"
-    sheet[f'E{info_start_row}'] = project_name
-    sheet[f'C{info_start_row+1}'] = "Floor"
-    sheet[f'C{info_start_row+2}'] = "Number of Seats"
-    sheet[f'C{info_start_row+3}'] = "Number of Rooms"
-    
+    project_info = [
+        ("Project:", project_name),
+        ("Client:", client_name),
+        ("Date:", datetime.now().strftime('%B %d, %Y')),
+    ]
+    row = 5
+    for label, value in project_info:
+        sheet[f'A{row}'] = label
+        sheet[f'A{row}'].font = Font(bold=True)
+        sheet[f'B{row}'] = value
+        row += 1
+
     # Table Headers
-    header_row = 10
+    row = 9
     headers = [
-        'Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 
-        'Qty.', 'Unit Rate (INR)', 'Total', 'SGST Rate', 'SGST Amt', 'CGST Rate', 
-        'CGST Amt', 'Total (TAX)', 'Remarks', 'Reference image'
+        'S.No.', 'Category', 'Brand', 'Product Name', 'Qty', 'Unit Price (₹)',
+        'Subtotal (₹)', 'GST %', 'GST Amt (₹)', 'Total (₹)', 'Justification'
     ]
     for col, header in enumerate(headers, 1):
-        cell = sheet.cell(row=header_row, column=col, value=header)
-        cell.font = Font(bold=True)
+        cell = sheet.cell(row=row, column=col, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Add Items
-    total_before_tax = 0
-    total_tax_amount = 0
-    current_row = header_row + 1
-
+    total_before_gst_hardware = 0
+    total_gst_hardware = 0
+    hardware_item_count = 0
     for idx, item in enumerate(items, 1):
+        hardware_item_count = idx
         unit_price_inr = convert_currency(item['price'], 'INR')
         subtotal = unit_price_inr * item['quantity']
         gst_rate = item.get('gst_rate', 18)
+        gst_amount = subtotal * (gst_rate / 100)
+        total_with_gst = subtotal + gst_amount
         
-        sgst_rate = gst_rate / 2
-        cgst_rate = gst_rate / 2
-        
-        sgst_amount = subtotal * (sgst_rate / 100)
-        cgst_amount = subtotal * (cgst_rate / 100)
-        tax_total = sgst_amount + cgst_amount
-        
-        total_before_tax += subtotal
-        total_tax_amount += tax_total
+        total_before_gst_hardware += subtotal
+        total_gst_hardware += gst_amount
         
         row_data = [
-            idx,
-            item.get('name', 'N/A'),
-            item.get('specifications', 'N/A'),
-            item.get('brand', 'N/A'),
-            item.get('model_no', 'N/A'),
-            item.get('quantity', 1),
-            unit_price_inr,
-            subtotal,
-            f"{sgst_rate}%",
-            sgst_amount,
-            f"{cgst_rate}%",
-            cgst_amount,
-            tax_total,
-            item.get('justification', ''),
-            "" # Placeholder for reference image
+            idx, item['category'], item['brand'], item['name'], item['quantity'],
+            unit_price_inr, subtotal, f"{gst_rate}%", gst_amount, total_with_gst,
+            item.get('justification', 'Component')
         ]
         sheet.append(row_data)
 
+    total_before_gst = total_before_gst_hardware
+    total_gst = total_gst_hardware
+
+    # Add Services
+    services = [
+        ("Installation & Commissioning", 0.15),
+        ("System Warranty (3 Years)", 0.05),
+        ("Project Management", 0.10)
+    ]
+    for service_name, percentage in services:
+        service_amount_inr = total_before_gst_hardware * percentage
+        service_gst = service_amount_inr * (gst_rates['Services'] / 100)
+        service_total = service_amount_inr + service_gst
+        
+        total_before_gst += service_amount_inr
+        total_gst += service_gst
+        
+        hardware_item_count += 1
+        sheet.append([
+            hardware_item_count, "Professional Services", "AllWave AV", service_name, 1,
+            service_amount_inr, service_amount_inr, f"{gst_rates['Services']}%",
+            service_gst, service_total, "Certified professional service for system deployment"
+        ])
+
     # Grand Total
-    total_row_idx = sheet.max_row + 2
-    grand_total = total_before_tax + total_tax_amount
-    sheet[f'G{total_row_idx}'] = "Grand Total (INR)"
-    sheet[f'G{total_row_idx}'].font = Font(size=12, bold=True)
-    sheet[f'G{total_row_idx}'].alignment = Alignment(horizontal='right')
+    row = sheet.max_row + 2
+    grand_total = total_before_gst + total_gst
+    sheet[f'G{row}'] = "GRAND TOTAL (₹)"
+    sheet[f'G{row}'].font = Font(size=14, bold=True)
+    sheet[f'G{row}'].alignment = Alignment(horizontal='right')
     
-    sheet[f'H{total_row_idx}'] = grand_total
-    sheet[f'H{total_row_idx}'].font = Font(size=12, bold=True, color="FFFFFF")
-    sheet[f'H{total_row_idx}'].fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
-    sheet[f'H{total_row_idx}'].number_format = '₹ #,##0'
+    sheet[f'J{row}'] = grand_total
+    sheet[f'J{row}'].font = Font(size=14, bold=True, color="FFFFFF")
+    sheet[f'J{row}'].fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
+    sheet[f'J{row}'].number_format = '₹ #,##0'
 
     # Formatting
-    column_widths = {'A': 8, 'B': 40, 'C': 40, 'D': 20, 'E': 20, 'F': 8, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 40, 'O': 20}
+    column_widths = {'A': 6, 'B': 18, 'C': 18, 'D': 45, 'E': 6, 'F': 15, 'G': 15, 'H': 8, 'I': 15, 'J': 18, 'K': 50}
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
-    
-    # Currency formatting for relevant columns
-    for row in range(header_row + 1, sheet.max_row + 1):
-        for col_letter in ['G', 'H', 'J', 'L', 'M']:
-            sheet[f'{col_letter}{row}'].number_format = '₹ #,##0'
-            
-    return total_before_tax, total_tax_amount, grand_total
+    for r in range(10, sheet.max_row + 1):
+        try:
+            sheet.row_dimensions[r].height = 30
+            for c in range(6, 11):
+                sheet.cell(row=r, column=c).number_format = '₹ #,##0'
+        except Exception:
+            pass # Skip formatting for merged total rows
+
+    return total_before_gst, total_gst, grand_total
+
 def generate_professional_excel(rooms_data=None):
     """Generate Excel file with Indian GST calculations and professional formatting."""
     
