@@ -920,7 +920,6 @@ def product_search_interface(product_df, currency):
                         st.success(f"Added {add_qty}x {product['name']}!")
                         st.rerun()
 
-# --- NEW: Excel Generation Functions ---
 def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
     """Helper function to populate a single Excel sheet with BOQ data."""
     # Header
@@ -959,13 +958,13 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
         cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-    # Add Items
-    row_num = row + 1
+    # Initialize variables to accumulate totals
     s_no = 1
     total_hardware_amount = 0
     total_services_amount = 0
+    total_hardware_gst = 0
+    total_services_gst = 0
     
-    # Separate hardware and services
     hardware_items = [item for item in items if 'service' not in item.get('system', '').lower()]
     service_items = [item for item in items if 'service' in item.get('system', '').lower()]
 
@@ -974,13 +973,14 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
         amount = unit_price_inr * item['quantity']
         gst_rate = item.get('gst_rate', gst_rates['Electronics'])
         gst_amount = amount * (gst_rate / 100)
-        total_with_gst = amount + gst_amount
+        
         total_hardware_amount += amount
+        total_hardware_gst += gst_amount
 
         row_data = [
             s_no, item.get('system'), item.get('brand'), item.get('model_no'),
             item.get('description'), item.get('quantity'), item.get('uom', 'Nos'),
-            unit_price_inr, amount, f"{gst_rate}%", gst_amount, total_with_gst
+            unit_price_inr, amount, f"{gst_rate}%", gst_amount, amount + gst_amount
         ]
         sheet.append(row_data)
         s_no += 1
@@ -997,9 +997,8 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
 
     # Add Services based on percentage of hardware cost
     if service_items:
-        sheet.append([]) # Blank row
+        sheet.append([])
         for item in service_items:
-             # Calculate service cost as a percentage of hardware if price is 0
             if item['price'] == 0:
                 percentage = 0.15 if 'install' in item['name'].lower() else \
                              0.05 if 'warrant' in item['name'].lower() else \
@@ -1011,13 +1010,14 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
             amount = unit_price_inr * item['quantity']
             gst_rate = gst_rates['Services']
             gst_amount = amount * (gst_rate / 100)
-            total_with_gst = amount + gst_amount
+            
             total_services_amount += amount
+            total_services_gst += gst_amount
 
             row_data = [
                 s_no, item.get('system'), item.get('brand'), item.get('model_no'),
                 item.get('description'), item.get('quantity'), item.get('uom', 'Lot'),
-                unit_price_inr, amount, f"{gst_rate}%", gst_amount, total_with_gst
+                unit_price_inr, amount, f"{gst_rate}%", gst_amount, amount + gst_amount
             ]
             sheet.append(row_data)
             s_no += 1
@@ -1032,15 +1032,14 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
     sheet[f'L{services_total_row}'].font = Font(bold=True)
     sheet[f'L{services_total_row}'].number_format = '₹ #,##0'
 
-
-    # Grand Total
+    # Grand Total (Excluding GST)
     grand_total_row = sheet.max_row + 2
-    grand_total = total_hardware_amount + total_services_amount # This is total before tax
+    total_subtotal = total_hardware_amount + total_services_amount
     sheet.merge_cells(f'H{grand_total_row}:I{grand_total_row}')
     sheet[f'H{grand_total_row}'] = "Grand Total (Excluding GST)"
     sheet[f'H{grand_total_row}'].font = Font(size=14, bold=True)
     sheet[f'H{grand_total_row}'].alignment = Alignment(horizontal='right')
-    sheet[f'L{grand_total_row}'] = grand_total
+    sheet[f'L{grand_total_row}'] = total_subtotal
     sheet[f'L{grand_total_row}'].font = Font(size=14, bold=True, color="FFFFFF")
     sheet[f'L{grand_total_row}'].fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     sheet[f'L{grand_total_row}'].number_format = '₹ #,##0'
@@ -1049,16 +1048,19 @@ def _populate_boq_sheet(sheet, items, gst_rates, project_name, client_name):
     column_widths = {'A': 8, 'B': 20, 'C': 20, 'D': 30, 'E': 50, 'F': 6, 'G': 8, 'H': 15, 'I': 15, 'J': 8, 'K': 15, 'L': 20}
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
-        
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-
     for r in range(row + 1, sheet.max_row + 1):
-        # Apply border and number formatting
         for c in range(1, 13):
             cell = sheet.cell(row=r, column=c)
             cell.border = thin_border
-            if c >= 8: # Currency columns
+            if c >= 8:
                  cell.number_format = '₹ #,##0'
+
+    # --- THIS IS THE FIX ---
+    # Calculate final totals and return them
+    total_gst = total_hardware_gst + total_services_gst
+    grand_total_with_gst = total_subtotal + total_gst
+    return total_subtotal, total_gst, grand_total_with_gst
 
 def generate_professional_excel(rooms_data=None):
     """Generate Excel file with Indian GST calculations and professional formatting."""
