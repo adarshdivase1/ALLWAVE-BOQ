@@ -1,395 +1,1265 @@
-# components/visualizer.py
+# app.py
 
 import streamlit as st
-import streamlit.components.v1 as components
+import pandas as pd
+import google.generativeai as genai
 import re
+from datetime import datetime, timedelta
 import json
+import time
+import streamlit.components.v1 as components
+from io import BytesIO
 
-# --- Room Specifications (Required by the component) ---
-ROOM_SPECS = {
-    "Small Huddle Room (2-3 People)": {
-        "area_sqft": (40, 80), "recommended_display_size": (32, 43), "viewing_distance_ft": (4, 6), "audio_coverage": "Near-field single speaker", "camera_type": "Fixed wide-angle", "power_requirements": "Standard 15A circuit", "network_ports": 1, "typical_budget_range": (3000, 8000), "furniture_config": "small_huddle", "table_size": [4, 2.5], "chair_count": 3, "chair_arrangement": "casual"
-    },
-    "Medium Huddle Room (4-6 People)": {
-        "area_sqft": (80, 150), "recommended_display_size": (43, 55), "viewing_distance_ft": (6, 10), "audio_coverage": "Near-field stereo", "camera_type": "Fixed wide-angle with auto-framing", "power_requirements": "Standard 15A circuit", "network_ports": 2, "typical_budget_range": (8000, 18000), "furniture_config": "medium_huddle", "table_size": [6, 3], "chair_count": 6, "chair_arrangement": "round_table"
-    },
-    "Standard Conference Room (6-8 People)": {
-        "area_sqft": (150, 250), "recommended_display_size": (55, 65), "viewing_distance_ft": (8, 12), "audio_coverage": "Room-wide with ceiling mics", "camera_type": "PTZ or wide-angle with tracking", "power_requirements": "20A dedicated circuit recommended", "network_ports": 2, "typical_budget_range": (15000, 30000), "furniture_config": "standard_conference", "table_size": [10, 4], "chair_count": 8, "chair_arrangement": "rectangular"
-    },
-    "Large Conference Room (8-12 People)": {
-        "area_sqft": (300, 450), "recommended_display_size": (65, 75), "viewing_distance_ft": (10, 16), "audio_coverage": "Distributed ceiling mics with expansion", "camera_type": "PTZ with presenter tracking", "power_requirements": "20A dedicated circuit", "network_ports": 3, "typical_budget_range": (25000, 50000), "furniture_config": "large_conference", "table_size": [16, 5], "chair_count": 12, "chair_arrangement": "rectangular"
-    },
-    "Executive Boardroom (10-16 People)": {
-        "area_sqft": (400, 700), "recommended_display_size": (75, 86), "viewing_distance_ft": (12, 20), "audio_coverage": "Distributed ceiling and table mics", "camera_type": "Multiple cameras with auto-switching", "power_requirements": "30A dedicated circuit", "network_ports": 4, "typical_budget_range": (50000, 100000), "furniture_config": "executive_boardroom", "table_size": [20, 6], "chair_count": 16, "chair_arrangement": "oval"
-    },
-    "Training Room (15-25 People)": {
-        "area_sqft": (500, 800), "recommended_display_size": (65, 86), "viewing_distance_ft": (10, 18), "audio_coverage": "Distributed with wireless mic support", "camera_type": "Fixed or PTZ for presenter tracking", "power_requirements": "20A circuit with UPS backup", "network_ports": 3, "typical_budget_range": (30000, 70000), "furniture_config": "training_room", "table_size": [10, 4], "chair_count": 25, "chair_arrangement": "classroom"
-    },
-    "Large Training/Presentation Room (25-40 People)": {
-        "area_sqft": (800, 1200), "recommended_display_size": (86, 98), "viewing_distance_ft": (15, 25), "audio_coverage": "Full distributed system with handheld mics", "camera_type": "Multiple PTZ cameras", "power_requirements": "30A circuit with UPS backup", "network_ports": 4, "typical_budget_range": (60000, 120000), "furniture_config": "large_training", "table_size": [12, 4], "chair_count": 40, "chair_arrangement": "theater"
-    },
-    "Multipurpose Event Room (40+ People)": {
-        "area_sqft": (1200, 2000), "recommended_display_size": (98, 110), "viewing_distance_ft": (20, 35), "audio_coverage": "Professional distributed PA system", "camera_type": "Professional multi-camera setup", "power_requirements": "Multiple 30A circuits", "network_ports": 6, "typical_budget_range": (100000, 250000), "furniture_config": "multipurpose_event", "table_size": [16, 6], "chair_count": 50, "chair_arrangement": "flexible"
-    },
-    "Video Production Studio": {
-        "area_sqft": (400, 600), "recommended_display_size": (32, 55), "viewing_distance_ft": (6, 12), "audio_coverage": "Professional studio monitors", "camera_type": "Professional broadcast cameras", "power_requirements": "Multiple 20A circuits", "network_ports": 4, "typical_budget_range": (75000, 200000), "furniture_config": "production_studio", "table_size": [12, 5], "chair_count": 6, "chair_arrangement": "production"
-    },
-    "Telepresence Suite": {
-        "area_sqft": (350, 500), "recommended_display_size": (65, 98), "viewing_distance_ft": (8, 14), "audio_coverage": "High-fidelity spatial audio", "camera_type": "Multiple high-res cameras with AI tracking", "power_requirements": "20A dedicated circuit", "network_ports": 3, "typical_budget_range": (80000, 180000), "furniture_config": "telepresence", "table_size": [14, 4], "chair_count": 8, "chair_arrangement": "telepresence"
-    }
-}
+# --- New Dependencies ---
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
 
-# --- Helper functions ---
-def map_equipment_type(category, name, brand):
-    cat_lower = str(category).lower()
-    name_lower = str(name).lower()
-    if 'display' in cat_lower or 'monitor' in name_lower or 'screen' in name_lower: return 'display'
-    if 'camera' in cat_lower or 'rally' in name_lower or 'conferencing' in cat_lower: return 'camera'
-    if 'speaker' in name_lower or 'soundbar' in name_lower: return 'audio_speaker'
-    if 'microphone' in name_lower or 'mic' in name_lower: return 'audio_mic'
-    if 'switch' in name_lower or 'router' in name_lower: return 'network_switch'
-    if 'control' in cat_lower or 'processor' in name_lower: return 'control_processor'
-    if 'mount' in cat_lower or 'bracket' in name_lower: return 'mount'
-    if 'rack' in name_lower: return 'rack'
-    if 'service' in cat_lower or 'installation' in name_lower or 'warranty' in name_lower: return 'service'
-    return 'generic_box'
+# --- Import from components directory ---
+from components.visualizer import create_3d_visualization, ROOM_SPECS
 
-def get_equipment_specs(equipment_type, name):
-    name_lower = str(name).lower()
-    size_match = re.search(r'(\d{2,3})[ -]*(?:inch|\")', name_lower)
-    if size_match and equipment_type == 'display':
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Professional AV BOQ Generator",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- Currency Conversion ---
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_usd_to_inr_rate():
+    """Get current USD to INR exchange rate. Falls back to approximate rate if API fails."""
+    try:
+        # You can integrate a free API like exchangerate-api.com here
+        # For now, using approximate rate
+        return 83.5  # Approximate USD to INR rate - update this or use real API
+    except:
+        return 83.5  # Fallback rate
+
+def convert_currency(amount_usd, to_currency="INR"):
+    """Convert USD amount to specified currency."""
+    if to_currency == "INR":
+        rate = get_usd_to_inr_rate()
+        return amount_usd * rate
+    return amount_usd
+
+def format_currency(amount, currency="USD"):
+    """Format currency with proper symbols and formatting."""
+    if currency == "INR":
+        return f"₹{amount:,.0f}"
+    else:
+        return f"${amount:,.2f}"
+
+# --- Enhanced Data Loading with Validation (UPDATED) ---
+@st.cache_data
+def load_and_validate_data():
+    """Enhanced loads and validates with image URLs and GST data."""
+    try:
+        df = pd.read_csv("master_product_catalog.csv")
+        
+        # --- Existing validation code ---
+        validation_issues = []
+        
+        # Check for missing critical data
+        if df['name'].isnull().sum() > 0:
+            validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
+        
+        # Check for zero/missing prices
+        if 'price' in df.columns:
+            df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+            zero_price_count = (df['price'] == 0.0).sum()
+            if zero_price_count > 100:
+                validation_issues.append(f"{zero_price_count} products have zero pricing")
+        else:
+            df['price'] = 0.0
+            validation_issues.append("Price column missing - using default values")
+            
+        # Brand validation
+        if 'brand' not in df.columns:
+            df['brand'] = 'Unknown'
+            validation_issues.append("Brand column missing - using default values")
+        elif df['brand'].isnull().sum() > 0:
+            df['brand'] = df['brand'].fillna('Unknown')
+            validation_issues.append(f"{df['brand'].isnull().sum()} products missing brand information")
+        
+        # Category validation
+        if 'category' not in df.columns:
+            df['category'] = 'General'
+            validation_issues.append("Category column missing - using default values")
+        else:
+            df['category'] = df['category'].fillna('General')
+            categories = df['category'].value_counts()
+            essential_categories = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts']
+            missing_categories = [cat for cat in essential_categories if cat not in categories.index]
+            if missing_categories:
+                validation_issues.append(f"Missing essential categories: {missing_categories}")
+        
+        if 'features' not in df.columns:
+            df['features'] = df['name']
+            validation_issues.append("Features column missing - using product names for search")
+        else:
+            df['features'] = df['features'].fillna('')
+
+        # --- NEW ADDITIONS ---
+        if 'image_url' not in df.columns:
+            df['image_url'] = ''  # Will be populated later or manually
+            validation_issues.append("Image URL column missing - images won't display in Excel")
+            
+        if 'gst_rate' not in df.columns:
+            df['gst_rate'] = 18  # Default 18% GST for electronics
+            validation_issues.append("GST rate column missing - using 18% default")
+        
         try:
-            size_inches = int(size_match.group(1))
-            width, height = size_inches * 0.871 / 12, size_inches * 0.490 / 12
-            return [width, height, 0.3]
-        except (ValueError, IndexError): pass
-    specs = {'display':[4.0,2.3,0.3],'camera':[0.8,0.5,0.6],'audio_speaker':[0.8,1.2,0.8],'audio_mic':[0.5,0.1,0.5],'network_switch':[1.5,0.15,0.8],'control_processor':[1.5,0.3,1.0],'mount':[2.0,1.5,0.2],'rack':[2.0,6.0,2.5],'generic_box':[1.0,1.0,1.0]}
-    return specs.get(equipment_type, [1, 1, 1])
+            with open("avixa_guidelines.md", "r") as f:
+                guidelines = f.read()
+        except FileNotFoundError:
+            guidelines = "AVIXA guidelines not found. Using basic industry standards."
+            validation_issues.append("AVIXA guidelines file missing")
+        
+        return df, guidelines, validation_issues
+        
+    except FileNotFoundError:
+        st.error("FATAL: 'master_product_catalog.csv' not found. Please ensure the file is in the same directory.")
+        return None, None, ["Product catalog file not found"]
+    except Exception as e:
+        return None, None, [f"Data loading error: {str(e)}"]
 
-def get_placement_constraints(equipment_type):
-    constraints = {'display':['wall'],'camera':['wall','ceiling','table'],'audio_speaker':['wall','ceiling','floor'],'audio_mic':['table','ceiling'],'network_switch':['floor','rack'],'control_processor':['floor','rack'],'mount':['wall'],'rack':['floor']}
-    return constraints.get(equipment_type, ['floor', 'table'])
+# --- Gemini Configuration ---
+def setup_gemini():
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        return model
+    except Exception as e:
+        st.error(f"Gemini API configuration failed: {e}")
+        return None
 
-def get_power_requirements(equipment_type):
-    power = {'display':250,'camera':15,'audio_speaker':80,'network_switch':100,'control_processor':50}
-    return power.get(equipment_type, 20)
+def generate_with_retry(model, prompt, max_retries=3):
+    """Generate content with retry logic and error handling."""
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            return response
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(2 ** attempt)  # Exponential backoff
+    return None
 
-def get_weight_estimate(equipment_type, specs):
-    volume = specs[0] * specs[1] * specs[2]
-    density = {'display':20,'camera':15,'audio_speaker':25,'network_switch':30,'control_processor':25,'rack':10}
-    return volume * density.get(equipment_type, 10)
+# --- NEW: Enhanced BOQ Generation with Justifications ---
+def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """Enhanced BOQ generation that includes WHY column with justifications."""
+    
+    room_spec = ROOM_SPECS[room_type]
+    product_catalog_string = product_df.head(150).to_csv(index=False)
+    
+    enhanced_prompt = f"""
+You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Your company is AllWave AV. Create a production-ready BOQ.
 
-# --- Library code (to be embedded) ---
-JS_LIBRARIES = """
-// This string contains all the necessary Three.js addons to make the component self-contained.
-// This prevents network errors in restrictive environments.
+**PROJECT SPECIFICATIONS:**
+- Room Type: {room_type}
+- Room Area: {room_area:.0f} sq ft
+- Budget Tier: {budget_tier}
+- Special Requirements: {features}
+- Infrastructure: {technical_reqs}
 
-// EffectComposer.js
-THREE.EffectComposer=function(e,t){this.renderer=e,void 0===t?(t=e.getSize(new THREE.Vector2),this.renderTarget1=new THREE.WebGLRenderTarget(t.width,t.height,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,stencilBuffer:!1}),this.renderTarget2=this.renderTarget1.clone(),this.renderTarget1.texture.name="EffectComposer.rt1",this.renderTarget2.texture.name="EffectComposer.rt2"):(this.renderTarget1=t,this.renderTarget2=t.clone()),this.writeBuffer=this.renderTarget1,this.readBuffer=this.renderTarget2,this.renderToScreen=!0,this.passes=[],this.copyPass=new THREE.ShaderPass(THREE.CopyShader),this.clock=new THREE.Clock},Object.assign(THREE.EffectComposer.prototype,{swapBuffers:function(){var e=this.readBuffer;this.readBuffer=this.writeBuffer,this.writeBuffer=e},addPass:function(e){this.passes.push(e);var t=this.renderer.getSize(new THREE.Vector2);e.setSize(t.width,t.height)},insertPass:function(e,t){this.passes.splice(t,0,e)},isLastEnabledPass:function(e){for(var t=e+1;t<this.passes.length;t++)if(this.passes[t].enabled)return!1;return!0},render:function(e){var t,n,i=this.clock.getDelta();e=void 0!==e?e:i;var s=!1,r=this.passes.length;for(n=0;n<r;n++)if((t=this.passes[n]).enabled!==!1){t.render(this.renderer,this.writeBuffer,this.readBuffer,e,s),t.needsSwap&&this.isLastEnabledPass(n)&&!this.renderToScreen?t.renderToScreen=!0:t.needsSwap&&(s?this.swapBuffers():s=!0)}this.copyPass.renderToScreen=this.renderToScreen,this.renderToScreen&&this.copyPass.render(this.renderer,null,this.readBuffer,e,s)},reset:function(e){this.renderTarget1.dispose(),this.renderTarget2.dispose(),void 0===e?(e=this.renderer.getSize(new THREE.Vector2),this.renderTarget1.setSize(e.width,e.height),this.renderTarget2.setSize(e.width,e.height)):(this.renderTarget1.setSize(e.width,e.height),this.renderTarget2.setSize(e.width,e.height));for(var t=0;t<this.passes.length;t++)this.passes[t].setSize(e.width,e.height)},setSize:function(e,t){this.renderTarget1.setSize(e,t),this.renderTarget2.setSize(e,t);for(var n=0;n<this.passes.length;n++)this.passes[n].setSize(e,t)}}),THREE.Pass=function(){this.enabled=!0,this.needsSwap=!0,this.clear=!1,this.renderToScreen=!1},Object.assign(THREE.Pass.prototype,{setSize:function(){},render:function(){console.error("THREE.Pass: .render() must be implemented in derived pass.")}});
+**TECHNICAL CONSTRAINTS & GUIDELINES:**
+- Adhere to the provided AVIXA standards.
+- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
+- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
+- Audio coverage: {room_spec['audio_coverage']}
+- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
 
-// RenderPass.js
-THREE.RenderPass=function(e,t,r,o,i){THREE.Pass.call(this),this.scene=e,this.camera=t,this.overrideMaterial=r,this.clearColor=o,this.clearAlpha=void 0!==i?i:0,this.clear=!0,this.clearDepth=!1,this.needsSwap=!1},THREE.RenderPass.prototype=Object.assign(Object.create(THREE.Pass.prototype),{constructor:THREE.RenderPass,render:function(e,t,r,o,i){var s=e.autoClear;e.autoClear=!1,this.scene.overrideMaterial=this.overrideMaterial;var n,a=null;void 0!==this.clearColor&&(n=e.getClearColor(),a=e.getClearAlpha(),e.setClearColor(this.clearColor,this.clearAlpha)),this.clearDepth&&(e.clearDepth()),e.setRenderTarget(this.renderToScreen?null:r),this.clear&&e.clear(),e.render(this.scene,this.camera),void 0!==this.clearColor&&e.setClearColor(n,a),this.scene.overrideMaterial=null,e.autoClear=s}});
+**MANDATORY REQUIREMENTS:**
+1. ONLY use products from the provided product catalog sample.
+2. Include appropriate mounting, cabling, and installation services.
+3. Add standard service line items (Installation, Warranty, Project Management).
+4. For EACH product, provide a concise justification in the 'Remarks' column.
 
-// ShaderPass.js
-THREE.ShaderPass=function(e,t){THREE.Pass.call(this),this.textureID=void 0!==t?t:"tDiffuse",e instanceof THREE.ShaderMaterial?(this.uniforms=e.uniforms,this.material=e):e&&(this.uniforms=THREE.UniformsUtils.clone(e.uniforms),this.material=new THREE.ShaderMaterial({defines:Object.assign({},e.defines),uniforms:this.uniforms,vertexShader:e.vertexShader,fragmentShader:e.fragmentShader})),this.fsQuad=new THREE.Pass.FullScreenQuad(this.material)},THREE.ShaderPass.prototype=Object.assign(Object.create(THREE.Pass.prototype),{constructor:THREE.ShaderPass,render:function(e,t,r,o,i){this.uniforms[this.textureID]&& (this.uniforms[this.textureID].value=r.texture),this.fsQuad.material=this.material,this.renderToScreen?(e.setRenderTarget(null),this.fsQuad.render(e)):(e.setRenderTarget(t),this.clear&&e.clear(e.autoClearColor,e.autoClearDepth,e.autoClearStencil),this.fsQuad.render(e))}}),THREE.Pass.FullScreenQuad=function(){var e=new THREE.OrthographicCamera(-1,1,1,-1,0,1),t=new THREE.PlaneGeometry(2,2);return function(r){this._mesh=new THREE.Mesh(t,r),Object.defineProperty(this,"material",{get:function(){return this._mesh.material},set:function(e){this._mesh.material=e}}),this.render=function(t){t.render(this._mesh,e)}}}();
+**OUTPUT FORMAT REQUIREMENT:**
+Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns:
+| Category | Make | Model No. | Specifications | Quantity | Unit Price (USD) | Remarks |
 
-// CopyShader.js
-THREE.CopyShader={uniforms:{tDiffuse:{value:null},opacity:{value:1}},vertexShader:["varying vec2 vUv;","void main() {","	vUv = uv;","	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );","}"].join("\\n"),fragmentShader:["uniform float opacity;","uniform sampler2D tDiffuse;","varying vec2 vUv;","void main() {","	vec4 texel = texture2D( tDiffuse, vUv );","	gl_FragColor = opacity * texel;","}"].join("\\n")};
+**PRODUCT CATALOG SAMPLE:**
+{product_catalog_string}
 
-// LuminosityHighPassShader.js
-THREE.LuminosityHighPassShader={shaderID:"luminosityHighPass",uniforms:{tDiffuse:{value:null},luminosityThreshold:{value:1},smoothWidth:{value:1},defaultColor:{value:new THREE.Color(0)},defaultOpacity:{value:0}},vertexShader:["varying vec2 vUv;","void main() {","	vUv = uv;","	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );","}"].join("\\n"),fragmentShader:["uniform sampler2D tDiffuse;","uniform vec3 defaultColor;","uniform float defaultOpacity;","uniform float luminosityThreshold;","uniform float smoothWidth;","varying vec2 vUv;","void main() {","	vec4 texel = texture2D( tDiffuse, vUv );","	vec3 luma = vec3( 0.299, 0.587, 0.114 );","	float v = dot( texel.xyz, luma );","	vec4 outputColor = vec4( defaultColor.rgb, defaultOpacity );","	float alpha = smoothstep( luminosityThreshold, luminosityThreshold + smoothWidth, v );","	gl_FragColor = mix( outputColor, texel, alpha );","}"].join("\\n")};
+**AVIXA GUIDELINES:**
+{guidelines}
 
-// UnrealBloomPass.js
-THREE.UnrealBloomPass=function(e,t,r,o){THREE.Pass.call(this),this.strength=void 0!==t?t:1,this.radius=r,this.threshold=o,this.resolution=void 0!==e?new THREE.Vector2(e.x,e.y):new THREE.Vector2(256,256),this.clearColor=new THREE.Color(0,0,0);var n={minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat},i=new Array(5);for(r=0;r<5;r++){var s=this.resolution.x/(2**r),a=this.resolution.y/(2**r);i[r]=new THREE.WebGLRenderTarget(s,a,n)}this.renderTargetsHorizontal=i,this.renderTargetsVertical=new Array(5);for(r=0;r<5;r++){s=this.resolution.x/(2**r),a=this.resolution.y/(2**r);this.renderTargetsVertical[r]=new THREE.WebGLRenderTarget(s,a,n)}this.nMips=5;var l,h=THREE.LuminosityHighPassShader;this.highPassUniforms=THREE.UniformsUtils.clone(h.uniforms),this.highPassUniforms.luminosityThreshold.value=o,this.highPassUniforms.smoothWidth.value=.01,this.materialHighPassFilter=new THREE.ShaderMaterial({uniforms:this.highPassUniforms,vertexShader:h.vertexShader,fragmentShader:h.fragmentShader,defines:{}}),this.separableBlurMaterials=new Array(5),l=this.getSeperableBlurMaterial(5);for(r=0;r<5;r++)this.separableBlurMaterials[r]=l.clone(),this.separableBlurMaterials[r].uniforms.texSize.value=new THREE.Vector2(this.resolution.x/(2**r),this.resolution.y/(2**r));this.compositeMaterial=this.getCompositeMaterial(5),this.compositeMaterial.uniforms.blurTexture1.value=this.renderTargetsVertical[0].texture,this.compositeMaterial.uniforms.blurTexture2.value=this.renderTargetsVertical[1].texture,this.compositeMaterial.uniforms.blurTexture3.value=this.renderTargetsVertical[2].texture,this.compositeMaterial.uniforms.blurTexture4.value=this.renderTargetsVertical[3].texture,this.compositeMaterial.uniforms.blurTexture5.value=this.renderTargetsVertical[4].texture,this.compositeMaterial.uniforms.bloomStrength.value=t,this.compositeMaterial.uniforms.bloomRadius.value=.1,this.compositeMaterial.needsUpdate=!0;var c=[.044701,.016843,.005957,.001844,.000527];this.weights=c,this.fsQuad=new THREE.Pass.FullScreenQuad(null),this.originalClearColor=new THREE.Color},THREE.UnrealBloomPass.prototype=Object.assign(Object.create(THREE.Pass.prototype),{constructor:THREE.UnrealBloomPass,dispose:function(){for(var e=0;e<this.renderTargetsHorizontal.length;e++)this.renderTargetsHorizontal[e].dispose();for(e=0;e<this.renderTargetsVertical.length;e++)this.renderTargetsVertical[e].dispose();this.materialHighPassFilter.dispose();for(e=0;e<5;e++)this.separableBlurMaterials[e].dispose();this.compositeMaterial.dispose(),this.fsQuad.dispose()},setSize:function(e,t){var r=Math.round(e),o=Math.round(t);this.resolution.set(r,o);for(var n=0;n<5;n++){var i=r/(2**n),s=o/(2**n);this.renderTargetsHorizontal[n].setSize(i,s),this.renderTargetsVertical[n].setSize(i,s),this.separableBlurMaterials[n].uniforms.texSize.value=new THREE.Vector2(i,s)}},render:function(e,t,r,o,n){e.getClearColor(this.originalClearColor),this.originalClearAlpha=e.getClearAlpha();var i=e.autoClear;e.autoClear=!1,e.setClearColor(this.clearColor,0),n&&(this.fsQuad.material=new THREE.MeshBasicMaterial({color:1118481})),this.highPassUniforms.tDiffuse.value=r.texture,this.highPassUniforms.luminosityThreshold.value=this.threshold,e.setRenderTarget(this.renderTargetsHorizontal[0]),this.clear&&e.clear(),this.fsQuad.material=this.materialHighPassFilter,this.fsQuad.render(e);for(var s=this.renderTargetsHorizontal[0].texture,a=0;a<5;a++){var l=this.separableBlurMaterials[a];this.renderSeparableBlur(e,s,this.renderTargetsVertical[a],l,"h"),s=this.renderTargetsVertical[a].texture,this.renderSeparableBlur(e,s,this.renderTargetsHorizontal[a],l,"v"),s=this.renderTargetsHorizontal[a].texture}e.setRenderTarget(this.renderTargetsHorizontal[0]),this.clear&&e.clear(),this.fsQuad.material=this.compositeMaterial,this.fsQuad.render(e),e.setClearColor(this.originalClearColor,this.originalClearAlpha),e.autoClear=i},renderSeparableBlur:function(e,t,r,o,n){var i=e.getRenderTarget();e.setRenderTarget(r),this.clear&&e.clear(),o.uniforms.colorTexture.value=t,o.uniforms.direction.value="h"===n?new THREE.Vector2(this.strength,0):new THREE.Vector2(0,this.strength),this.fsQuad.material=o,this.fsQuad.render(e),e.setRenderTarget(i)},getCompositeMaterial:function(e){return new THREE.ShaderMaterial({defines:{NUM_MIPS:e},uniforms:{blurTexture1:{value:null},blurTexture2:{value:null},blurTexture3:{value:null},blurTexture4:{value:null},blurTexture5:{value:null},dirtTexture:{value:null},bloomStrength:{value:1},bloomFactors:{value:null},bloomTintColors:{value:null},bloomRadius:{value:.1}},vertexShader:"varying vec2 vUv;void main() {	vUv = uv;	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}",fragmentShader:"varying vec2 vUv;\nuniform sampler2D blurTexture1;\nuniform sampler2D blurTexture2;\nuniform sampler2D blurTexture3;\nuniform sampler2D blurTexture4;\nuniform sampler2D blurTexture5;\nuniform sampler2D dirtTexture;\nuniform float bloomStrength;\nuniform float bloomRadius;\nuniform float bloomFactors[NUM_MIPS];\nuniform vec3 bloomTintColors[NUM_MIPS];\n\nfloat lerpBloomFactor(const in float factor) { \n   float mirrorFactor = 1.2 - factor;\n   return mix(factor, mirrorFactor, bloomRadius);\n}\n\nvoid main() {\n	gl_FragColor = bloomStrength * ( lerpBloomFactor(bloomFactors[0]) * vec4(bloomTintColors[0], 1.0) * texture2D(blurTexture1, vUv) + \n									 lerpBloomFactor(bloomFactors[1]) * vec4(bloomTintColors[1], 1.0) * texture2D(blurTexture2, vUv) + \n									 lerpBloomFactor(bloomFactors[2]) * vec4(bloomTintColors[2], 1.0) * texture2D(blurTexture3, vUv) + \n									 lerpBloomFactor(bloomFactors[3]) * vec4(bloomTintColors[3], 1.0) * texture2D(blurTexture4, vUv) + \n									 lerpBloomFactor(bloomFactors[4]) * vec4(bloomTintColors[4], 1.0) * texture2D(blurTexture5, vUv) );\n}"})},getSeperableBlurMaterial:function(e){return new THREE.ShaderMaterial({defines:{KERNEL_RADIUS:e,SIGMA:e},uniforms:{colorTexture:{value:null},texSize:{value:new THREE.Vector2(.5,.5)},direction:{value:new THREE.Vector2(.5,.5)}},vertexShader:"varying vec2 vUv;void main() {	vUv = uv;	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}",fragmentShader:"#include <common>\nvarying vec2 vUv;\nuniform sampler2D colorTexture;\nuniform vec2 texSize;\nuniform vec2 direction;\n\nfloat gaussianPdf(in float x, in float sigma) {\n	return 0.39894 * exp( -0.5 * x * x/( sigma * sigma))/sigma;\n}\nvoid main() {\n  vec2 invSize = 1.0 / texSize;\n  float fSigma = float(SIGMA);\n  float weightSum = gaussianPdf(0.0, fSigma);\n  vec4 diffuseSum = texture2D( colorTexture, vUv) * weightSum;\n  for( int i = 1; i < KERNEL_RADIUS; i ++ ) {\n    float x = float(i);\n    float w = gaussianPdf(x, fSigma);\n    vec2 uvOffset = direction * invSize * x;\n    vec4 sample1 = texture2D( colorTexture, vUv + uvOffset);\n    vec4 sample2 = texture2D( colorTexture, vUv - uvOffset);\n    diffuseSum += (sample1 + sample2) * w;\n    weightSum += 2.0 * w;\n  }\n	gl_FragColor = diffuseSum/weightSum;\n}"})}});
-
-// DepthLimitedBlurShader.js and SAOShader.js
-THREE.DepthLimitedBlurShader={defines:{KERNEL_RADIUS:4,DEPTH_PACKING:1,PERSPECTIVE_CAMERA:1},uniforms:{tDiffuse:{value:null},size:{value:new THREE.Vector2(512,512)},sampleUvOffsets:{value:[new THREE.Vector2(0,0)]},sampleWeights:{value:[1]},tDepth:{value:null},cameraNear:{value:1},cameraFar:{value:1e3},depthCutoff:{value:1}},vertexShader:["varying vec2 vUv;","void main() {","	vUv = uv;","	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );","}"].join("\\n"),fragmentShader:["#include <packing>","varying vec2 vUv;","uniform sampler2D tDiffuse;","uniform sampler2D tDepth;","uniform float cameraNear;","uniform float cameraFar;","uniform float depthCutoff;","uniform vec2 size;","uniform vec2 sampleUvOffsets[ KERNEL_RADIUS + 1 ];","uniform float sampleWeights[ KERNEL_RADIUS + 1 ];","float getLinearDepth( const in vec2 screenPosition ) {","	#if DEPTH_PACKING == 1","	float fragCoordZ = unpackRGBAToDepth( texture2D( tDepth, screenPosition ) );","	#else","	float fragCoordZ = texture2D( tDepth, screenPosition ).x;","	#endif","	#if PERSPECTIVE_CAMERA == 1","	return perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );","	#else","	return orthographicDepthToViewZ( fragCoordZ, cameraNear, cameraFar );","	#endif","}","void main() {","	float centerViewZ = getLinearDepth( vUv );","	bool rBreak = false, lBreak = false;","	float weightSum = sampleWeights[0];","	vec4 diffuseSum = texture2D( tDiffuse, vUv ) * weightSum;","	for( int i = 1; i <= KERNEL_RADIUS; i ++ ) {","		float sampleViewZ = getLinearDepth( vUv + sampleUvOffsets[ i ] / size );","		if( abs( sampleViewZ - centerViewZ ) > depthCutoff ) rBreak = true;","		if( ! rBreak ) {","			diffuseSum += texture2D( tDiffuse, vUv + sampleUvOffsets[ i ] / size ) * sampleWeights[ i ];","			weightSum += sampleWeights[ i ];","		}","		sampleViewZ = getLinearDepth( vUv - sampleUvOffsets[ i ] / size );","		if( abs( sampleViewZ - centerViewZ ) > depthCutoff ) lBreak = true;","		if( ! lBreak ) {","			diffuseSum += texture2D( tDiffuse, vUv - sampleUvOffsets[ i ] / size ) * sampleWeights[ i ];","			weightSum += sampleWeights[ i ];","		}","	}","	gl_FragColor = diffuseSum / weightSum;","}"].join("\\n")},THREE.BlurShaderUtils={createSampleWeights:function(e,t){var r=t||1,i=[];for(var a=0;a<=e;a++)i.push(Math.exp(-a*a/(2*r*r)));var s=i.reduce(function(e,t){return e+t});return i=i.map(function(e){return e/s})},createSampleOffsets:function(e,t){for(var r=[new THREE.Vector2(0,0)],i=1;i<=e;i++){var a=t.clone().multiplyScalar(i);r.push(a)}return r}};
-THREE.SAOShader={defines:{NUM_SAMPLES:7,NUM_RINGS:4,NORMAL_TEXTURE:0,DIFFUSE_TEXTURE:0,DEPTH_PACKING:1,PERSPECTIVE_CAMERA:1},uniforms:{tDepth:{value:null},tDiffuse:{value:null},tNormal:{value:null},size:{value:new THREE.Vector2(512,512)},cameraInverseProjectionMatrix:{value:new THREE.Matrix4},cameraProjectionMatrix:{value:new THREE.Matrix4},scale:{value:1},intensity:{value:.1},bias:{value:.5},minResolution:{value:0},kernelRadius:{value:100},randomSeed:{value:0}},vertexShader:["varying vec2 vUv;","void main() {","	vUv = uv;","	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );","}"].join("\\n"),fragmentShader:["#include <common>","#include <packing>","varying vec2 vUv;","uniform sampler2D tDiffuse;","uniform sampler2D tDepth;","uniform sampler2D tNormal;","uniform float cameraNear;","uniform float cameraFar;","uniform mat4 cameraProjectionMatrix;","uniform mat4 cameraInverseProjectionMatrix;","uniform float scale;","uniform float intensity;","uniform float bias;","uniform float kernelRadius;","uniform float minResolution;","uniform vec2 size;","uniform float randomSeed;","const int NUM_SAMPLES = 7;","const int NUM_RINGS = 4;","const float PI = 3.14159265;","const float PI2 = 6.2831853;","const float EPSILON = 1e-6;","vec3 getPosition( const in vec2 screenPosition ) {","	#if DEPTH_PACKING == 1","	float fragCoordZ = unpackRGBAToDepth( texture2D( tDepth, screenPosition ) );","	#else","	float fragCoordZ = texture2D( tDepth, screenPosition ).x;","	#endif","	float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );","	float x = screenPosition.x * 2.0 - 1.0;","	float y = screenPosition.y * 2.0 - 1.0;","	vec4 projectedPos = vec4( x, y, fragCoordZ * 2.0 - 1.0, 1.0 );","	vec4 pos = cameraInverseProjectionMatrix * projectedPos;","	return pos.xyz / pos.w;","}","float getOcclusion( const in vec3 centerPos, const in vec3 centerNormal, const in vec3 samplePos ) {","	vec3 viewVector = samplePos - centerPos;","	float viewDistance = length( viewVector );","	float dotProduct = dot( centerNormal, normalize( viewVector ) );","	return max( 0.0, dotProduct - bias ) * ( 1.0 / ( 1.0 + viewDistance * viewDistance ) ) * smoothstep( 0.0, 1.0, viewDistance / kernelRadius );","}","float rand( const in vec2 co ) {","	float t = dot( vec2( 12.9898, 78.233 ), co );","	return fract( sin( t ) * ( 43758.5453 + t ) );","}","void main() {","	vec3 centerPos = getPosition( vUv );","	float centerViewZ = perspectiveDepthToViewZ( unpackRGBAToDepth( texture2D( tDepth, vUv ) ), cameraNear, cameraFar );","	#if NORMAL_TEXTURE == 1","	vec3 centerNormal = texture2D( tNormal, vUv ).xyz;","	#else","	vec3 centerNormal = vec3( 0.0 );","	#endif","	float angle = rand( vUv + randomSeed ) * PI2;","	float radius = scale / ( float( NUM_RINGS ) - 1.0 );","	float occlusion = 0.0;","	for( int j = 0; j < NUM_RINGS; j ++ ) {","		float ringRadius = radius * ( float( j ) + 0.5 );","		for( int i = 0; i < NUM_SAMPLES; i ++ ) {","			float sampleAngle = angle + PI2 * float( i ) / float( NUM_SAMPLES );","			vec2 sampleUv = vUv + vec2( cos( sampleAngle ), sin( sampleAngle ) ) * ringRadius;","			vec3 samplePos = getPosition( sampleUv );","			float sampleViewZ = perspectiveDepthToViewZ( unpackRGBAToDepth( texture2D( tDepth, sampleUv ) ), cameraNear, cameraFar );","			if( abs( centerViewZ - sampleViewZ ) < kernelRadius ) {","				occlusion += getOcclusion( centerPos, centerNormal, samplePos );","			}","		}","		angle += PI2 / float( NUM_SAMPLES );","	}","	occlusion /= float( NUM_RINGS * NUM_SAMPLES );","	occlusion = 1.0 - intensity * occlusion;","	#if DIFFUSE_TEXTURE == 1","	gl_FragColor = texture2D( tDiffuse, vUv ) * occlusion;","	#else","	gl_FragColor = vec4( vec3( occlusion ), 1.0 );","	#endif","}"].join("\\n")};
-
-// SAOPass.js
-THREE.SAOPass=function(e,t,r,o){THREE.Pass.call(this),this.scene=e,this.camera=t,this.clear=void 0!==r&&r,this.resolution=void 0!==o?new THREE.Vector2(o.x,o.y):new THREE.Vector2(256,256),this.saoRenderTarget=new THREE.WebGLRenderTarget(this.resolution.x,this.resolution.y,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat}),this.blurIntermediateRenderTarget=this.saoRenderTarget.clone(),this.beautyRenderTarget=this.saoRenderTarget.clone(),this.normalRenderTarget=new THREE.WebGLRenderTarget(this.resolution.x,this.resolution.y,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,format:THREE.RGBAFormat}),this.depthRenderTarget=this.normalRenderTarget.clone(),void 0===THREE.SAOShader||void 0===THREE.DepthLimitedBlurShader||void 0===THREE.BlurShaderUtils||void 0===THREE.CopyShader?console.error("THREE.SAOPass relies on THREE.SAOShader, THREE.DepthLimitedBlurShader, THREE.BlurShaderUtils, and THREE.CopyShader"):(this.saoMaterial=new THREE.ShaderMaterial({defines:Object.assign({},THREE.SAOShader.defines),fragmentShader:THREE.SAOShader.fragmentShader,vertexShader:THREE.SAOShader.vertexShader,uniforms:THREE.UniformsUtils.clone(THREE.SAOShader.uniforms)}),this.saoMaterial.uniforms.tDepth.value=this.depthRenderTarget.texture,this.saoMaterial.uniforms.size.value.set(this.resolution.x,this.resolution.y),this.saoMaterial.uniforms.cameraInverseProjectionMatrix.value.copy(this.camera.projectionMatrixInverse),this.saoMaterial.uniforms.cameraProjectionMatrix.value=this.camera.projectionMatrix,this.saoMaterial.blending=THREE.NoBlending,void 0===THREE.DepthLimitedBlurShader?console.error("THREE.SAOPass relies on THREE.DepthLimitedBlurShader"):(this.vBlurMaterial=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.clone(THREE.DepthLimitedBlurShader.uniforms),defines:Object.assign({},THREE.DepthLimitedBlurShader.defines),vertexShader:THREE.DepthLimitedBlurShader.vertexShader,fragmentShader:THREE.DepthLimitedBlurShader.fragmentShader}),this.vBlurMaterial.uniforms.tDiffuse.value=this.saoRenderTarget.texture,this.vBlurMaterial.uniforms.tDepth.value=this.depthRenderTarget.texture,this.vBlurMaterial.uniforms.size.value.set(this.resolution.x,this.resolution.y),this.vBlurMaterial.blending=THREE.NoBlending,this.hBlurMaterial=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.clone(THREE.DepthLimitedBlurShader.uniforms),defines:Object.assign({},THREE.DepthLimitedBlurShader.defines),vertexShader:THREE.DepthLimitedBlurShader.vertexShader,fragmentShader:THREE.DepthLimitedBlurShader.fragmentShader}),this.hBlurMaterial.uniforms.tDiffuse.value=this.blurIntermediateRenderTarget.texture,this.hBlurMaterial.uniforms.tDepth.value=this.depthRenderTarget.texture,this.hBlurMaterial.uniforms.size.value.set(this.resolution.x,this.resolution.y),this.hBlurMaterial.blending=THREE.NoBlending,this.materialCopy=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.clone(THREE.CopyShader.uniforms),vertexShader:THREE.CopyShader.vertexShader,fragmentShader:THREE.CopyShader.fragmentShader,blending:THREE.NoBlending}),this.materialCopy.uniforms.tDiffuse.value=this.saoRenderTarget.texture,this.materialCopy.blending=THREE.NoBlending,this.fsQuad=new THREE.Pass.FullScreenQuad(null),this.originalClearColor=new THREE.Color)};
-
-THREE.SAOPass.OUTPUT={Default:0,Beauty:1,SAO:2,Depth:3,Normal:4},THREE.SAOPass.prototype=Object.assign(Object.create(THREE.Pass.prototype),{constructor:THREE.SAOPass,render:function(e,t,r,o,i){if(i)this.scene.overrideMaterial=new THREE.MeshBasicMaterial({color:7829367});else{var s=this.scene.background;this.scene.background=null,e.setRenderTarget(this.depthRenderTarget),e.clear(),e.render(this.scene,this.camera),e.setRenderTarget(this.normalRenderTarget),e.clear(),e.render(this.scene,this.camera),this.scene.background=s}e.setRenderTarget(this.saoRenderTarget),e.clear(),this.saoMaterial.uniforms.bias.value=this.params.saoBias,this.saoMaterial.uniforms.intensity.value=this.params.saoIntensity,this.saoMaterial.uniforms.scale.value=this.params.saoScale,this.saoMaterial.uniforms.kernelRadius.value=this.params.saoKernelRadius,this.saoMaterial.uniforms.minResolution.value=this.params.saoMinResolution,this.saoMaterial.uniforms.cameraNear.value=this.camera.near,this.saoMaterial.uniforms.cameraFar.value=this.camera.far,this.saoMaterial.uniforms.randomSeed.value=Math.random(),this.fsQuad.material=this.saoMaterial,this.fsQuad.render(e),this.vBlurMaterial.uniforms.depthCutoff.value=this.params.saoBlurDepthCutoff,this.hBlurMaterial.uniforms.depthCutoff.value=this.params.saoBlurDepthCutoff,this.vBlurMaterial.uniforms.cameraNear.value=this.camera.near,this.vBlurMaterial.uniforms.cameraFar.value=this.camera.far,this.hBlurMaterial.uniforms.cameraNear.value=this.camera.near,this.hBlurMaterial.uniforms.cameraFar.value=this.camera.far,this.params.saoBlur?(e.setRenderTarget(this.blurIntermediateRenderTarget),e.clear(),this.vBlurMaterial.uniforms.tDiffuse.value=this.saoRenderTarget.texture,this.fsQuad.material=this.vBlurMaterial,this.fsQuad.render(e),e.setRenderTarget(this.saoRenderTarget),e.clear(),this.hBlurMaterial.uniforms.tDiffuse.value=this.blurIntermediateRenderTarget.texture,this.fsQuad.material=this.hBlurMaterial,this.fsQuad.render(e)):(e.setRenderTarget(this.saoRenderTarget),e.clear(),this.materialCopy.uniforms.tDiffuse.value=this.saoRenderTarget.texture,this.fsQuad.material=this.materialCopy,this.fsQuad.render(e));var a=this.scene.overrideMaterial;this.scene.overrideMaterial=null,e.setRenderTarget(this.renderToScreen?null:t),this.params.output===THREE.SAOPass.OUTPUT.Default&&(e.setClearColor(this.originalClearColor,this.originalClearAlpha),this.materialCopy.uniforms.tDiffuse.value=r.texture,this.fsQuad.material=this.materialCopy,this.fsQuad.render(e)),this.params.output===THREE.SAOPass.OUTPUT.Beauty?this.materialCopy.uniforms.tDiffuse.value=r.texture:this.params.output===THREE.SAOPass.OUTPUT.SAO?this.materialCopy.uniforms.tDiffuse.value=this.saoRenderTarget.texture:this.params.output===THREE.SAOPass.OUTPUT.Normal?this.materialCopy.uniforms.tDiffuse.value=this.normalRenderTarget.texture:this.params.output===THREE.SAOPass.OUTPUT.Depth&&(this.materialCopy.uniforms.tDiffuse.value=this.depthRenderTarget.texture),this.fsQuad.material=this.materialCopy,this.fsQuad.render(e),this.scene.overrideMaterial=a},setSize:function(e,t){this.beautyRenderTarget.setSize(e,t),this.saoRenderTarget.setSize(e,t),this.normalRenderTarget.setSize(e,t),this.depthRenderTarget.setSize(e,t),this.blurIntermediateRenderTarget.setSize(e,t),this.saoMaterial.uniforms.size.value.set(e,t),this.saoMaterial.uniforms.cameraInverseProjectionMatrix.value.copy(this.camera.projectionMatrixInverse),this.saoMaterial.uniforms.cameraProjectionMatrix.value=this.camera.projectionMatrix,this.saoMaterial.needsUpdate=!0,this.vBlurMaterial.uniforms.size.value.set(e,t),this.vBlurMaterial.needsUpdate=!0,this.hBlurMaterial.uniforms.size.value.set(e,t),this.hBlurMaterial.needsUpdate=!0},params:{output:0,saoBias:.5,saoIntensity:.01,saoScale:1,saoKernelRadius:16,saoMinResolution:.01,saoBlur:!0,saoBlurRadius:8,saoBlurStdDev:4,saoBlurDepthCutoff:.01}});
+Generate the detailed BOQ:
 """
+    
+    try:
+        response = generate_with_retry(model, enhanced_prompt)
+        if response and response.text:
+            boq_content = response.text
+            boq_items = extract_enhanced_boq_items(boq_content, product_df)
+            return boq_content, boq_items
+        return None, []
+    except Exception as e:
+        st.error(f"Enhanced BOQ generation failed: {str(e)}")
+        return None, []
 
-def create_3d_visualization():
-    """Final robust version of the 3D visualizer."""
-    st.subheader("Interactive 3D Room Planner & Space Analytics")
 
-    equipment_data = st.session_state.get('boq_items', [])
-    if not equipment_data:
-        st.info("No BOQ items to visualize. Generate a BOQ first or add items manually.")
+# --- BOQ Validation & Data Extraction ---
+class BOQValidator:
+    def __init__(self, room_specs, product_df):
+        self.room_specs = room_specs
+        self.product_df = product_df
+    
+    def validate_technical_requirements(self, boq_items, room_type, room_area=None):
+        issues = []
+        warnings = []
+        
+        # Check display sizing
+        displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
+        if displays:
+            room_spec = self.room_specs.get(room_type, {})
+            recommended_size = room_spec.get('recommended_display_size', (32, 98))
+            
+            for display in displays:
+                size_match = re.search(r'(\d+)"', display.get('name', ''))
+                if size_match:
+                    size = int(size_match.group(1))
+                    if size < recommended_size[0]:
+                        warnings.append(f"Display size {size}\" may be too small for {room_type}")
+                    elif size > recommended_size[1]:
+                        warnings.append(f"Display size {size}\" may be too large for {room_type}")
+        
+        # Check for essential components
+        essential_categories = ['display', 'audio', 'control']
+        found_categories = [item.get('category', '').lower() for item in boq_items]
+        
+        for essential in essential_categories:
+            if not any(essential in cat for cat in found_categories):
+                issues.append(f"Missing essential component: {essential}")
+        
+        # Power consumption estimation (simplified)
+        total_estimated_power = len(boq_items) * 150  # Rough estimate
+        if total_estimated_power > 1800:
+            warnings.append("System may require a dedicated 20A circuit")
+        
+        return issues, warnings
+
+def validate_against_avixa(model, guidelines, boq_items):
+    """Use AI to validate the BOQ against AVIXA standards."""
+    if not guidelines or not boq_items:
+        return []
+    
+    prompt = f"""
+    You are an AVIXA Certified Technology Specialist (CTS). Review the following BOQ against the provided AVIXA standards.
+    List any potential non-compliance issues, missing items (like accessibility components), or areas for improvement.
+    If no issues are found, respond with 'No specific compliance issues found.'
+
+    **AVIXA Standards Summary:**
+    {guidelines}
+
+    **Bill of Quantities to Review:**
+    {json.dumps(boq_items, indent=2)}
+
+    **Your Compliance Review:**
+    """
+    try:
+        response = generate_with_retry(model, prompt)
+        if response and response.text:
+            if "no specific compliance issues" in response.text.lower():
+                return []
+            return [line.strip() for line in response.text.split('\n') if line.strip()]
+        return []
+    except Exception as e:
+        return [f"AVIXA compliance check failed: {str(e)}"]
+
+# --- NEW: Enhanced BOQ Item Extraction ---
+def extract_enhanced_boq_items(boq_content, product_df):
+    """Extract BOQ items from AI response based on new company format."""
+    items = []
+    lines = boq_content.split('\n')
+    in_table = False
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Detect table start based on new headers
+        if '|' in line and any(keyword in line.lower() for keyword in ['category', 'make', 'model', 'specifications']):
+            in_table = True
+            continue
+            
+        # Skip separator lines
+        if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
+            continue
+            
+        # Process table rows
+        if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
+            parts = [part.strip() for part in line.split('|') if part.strip()]
+            if len(parts) >= 6: # Category | Make | Model No. | Specifications | Quantity | Unit Price | Remarks
+                category = parts[0]
+                brand = parts[1]
+                product_name = parts[2]
+                specifications = parts[3]
+                remarks = parts[6] if len(parts) > 6 else "Essential AV system component."
+
+                # Extract quantity and price robustly
+                quantity = 1
+                price = 0
+                try:
+                    quantity = int(parts[4])
+                except (ValueError, IndexError):
+                    quantity = 1
+
+                try:
+                    price_str = parts[5].replace('$', '').replace(',', '')
+                    price = float(price_str)
+                except (ValueError, IndexError):
+                    price = 0
+                
+                # Match with product database
+                matched_product = match_product_in_database(product_name, brand, product_df)
+                if matched_product is not None:
+                    price = float(matched_product.get('price', price))
+                    actual_brand = matched_product.get('brand', brand)
+                    actual_category = matched_product.get('category', category)
+                    actual_name = matched_product.get('name', product_name)
+                    image_url = matched_product.get('image_url', '')
+                    gst_rate = matched_product.get('gst_rate', 18)
+                else:
+                    actual_brand = brand
+                    actual_category = normalize_category(category, product_name)
+                    actual_name = product_name
+                    image_url = ''
+                    gst_rate = 18
+                
+                items.append({
+                    'category': actual_category,
+                    'name': actual_name,
+                    'brand': actual_brand,
+                    'quantity': quantity,
+                    'price': price,
+                    'justification': remarks, # Mapped to justification
+                    'specifications': specifications,
+                    'image_url': image_url,
+                    'gst_rate': gst_rate,
+                    'matched': matched_product is not None
+                })
+                
+            elif in_table and not line.startswith('|'):
+                in_table = False
+    
+    return items
+
+def match_product_in_database(product_name, brand, product_df):
+    """Try to match a product name and brand with the database."""
+    if product_df is None or len(product_df) == 0:
+        return None
+    
+    # Try exact brand and partial name match
+    brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
+    if len(brand_matches) > 0:
+        name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
+        if len(name_matches) > 0:
+            return name_matches.iloc[0].to_dict()
+    
+    # Try partial name match across all products
+    name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
+    if len(name_matches) > 0:
+        return name_matches.iloc[0].to_dict()
+    
+    return None
+
+def normalize_category(category_text, product_name):
+    """Normalize category names to standard categories."""
+    category_lower = category_text.lower()
+    product_lower = product_name.lower()
+    
+    if any(term in category_lower or term in product_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
+        return 'Displays'
+    elif any(term in category_lower or term in product_lower for term in ['audio', 'speaker', 'microphone', 'sound', 'amplifier']):
+        return 'Audio'
+    elif any(term in category_lower or term in product_lower for term in ['video', 'conferencing', 'camera', 'codec', 'rally']):
+        return 'Video Conferencing'
+    elif any(term in category_lower or term in product_lower for term in ['control', 'processor', 'switch', 'matrix']):
+        return 'Control'
+    elif any(term in category_lower or term in product_lower for term in ['mount', 'bracket', 'rack', 'stand']):
+        return 'Mounts'
+    elif any(term in category_lower or term in product_lower for term in ['cable', 'connect', 'wire', 'hdmi', 'usb']):
+        return 'Cables'
+    else:
+        return 'General'
+
+# --- UI Components ---
+def create_project_header():
+    """Create professional project header."""
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        st.title("Professional AV BOQ Generator")
+        st.caption("Production-ready Bill of Quantities with technical validation")
+    
+    with col2:
+        project_id = st.text_input("Project ID", value=f"AVP-{datetime.now().strftime('%Y%m%d')}", key="project_id_input")
+    
+    with col3:
+        quote_valid_days = st.number_input("Quote Valid (Days)", min_value=15, max_value=90, value=30, key="quote_days_input")
+    
+    return project_id, quote_valid_days
+
+def create_room_calculator():
+    """Room size calculator and validator."""
+    st.subheader("Room Analysis & Specifications")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        room_length = st.number_input("Room Length (ft)", min_value=10.0, max_value=80.0, value=28.0, key="room_length_input")
+        room_width = st.number_input("Room Width (ft)", min_value=8.0, max_value=50.0, value=20.0, key="room_width_input")
+        ceiling_height = st.number_input("Ceiling Height (ft)", min_value=8.0, max_value=20.0, value=10.0, key="ceiling_height_input")
+    
+    with col2:
+        room_area = room_length * room_width
+        st.metric("Room Area", f"{room_area:.0f} sq ft")
+        
+        # Recommend room type based on area
+        recommended_type = None
+        for room_type, specs in ROOM_SPECS.items():
+            if specs["area_sqft"][0] <= room_area <= specs["area_sqft"][1]:
+                recommended_type = room_type
+                break
+        
+        if recommended_type:
+            st.success(f"Recommended Room Type: {recommended_type}")
+        else:
+            st.warning("Room size is outside typical ranges")
+    
+    return room_area, ceiling_height
+
+def create_advanced_requirements():
+    """Advanced technical requirements input."""
+    st.subheader("Technical Requirements")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Infrastructure**")
+        has_dedicated_circuit = st.checkbox("Dedicated 20A Circuit Available", key="dedicated_circuit_checkbox")
+        network_capability = st.selectbox("Network Infrastructure", ["Standard 1Gb", "10Gb Capable", "Fiber Available"], key="network_capability_select")
+        cable_management = st.selectbox("Cable Management", ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], key="cable_management_select")
+    
+    with col2:
+        st.write("**Compliance & Standards**")
+        ada_compliance = st.checkbox("ADA Compliance Required", key="ada_compliance_checkbox")
+        fire_code_compliance = st.checkbox("Fire Code Compliance Required", key="fire_code_compliance_checkbox")
+        security_clearance = st.selectbox("Security Level", ["Standard", "Restricted", "Classified"], key="security_clearance_select")
+    
+    return {
+        "dedicated_circuit": has_dedicated_circuit,
+        "network_capability": network_capability,
+        "cable_management": cable_management,
+        "ada_compliance": ada_compliance,
+        "fire_code_compliance": fire_code_compliance,
+        "security_clearance": security_clearance
+    }
+
+# --- NEW: Multi-Room Interface ---
+def create_multi_room_interface():
+    """Interface for managing multiple rooms in a project."""
+    st.subheader("Multi-Room Project Management")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        room_name = st.text_input("New Room Name", value=f"Room {len(st.session_state.project_rooms) + 1}")
+    
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("➕ Add New Room to Project", type="primary", use_container_width=True):
+            new_room = {
+                'name': room_name,
+                'type': st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'),
+                'area': st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
+                'boq_items': [],
+                'features': st.session_state.get('features_text_area', ''),
+                'technical_reqs': {}
+            }
+            st.session_state.project_rooms.append(new_room)
+            st.success(f"Added '{room_name}' to the project.")
+            st.rerun()
+    
+    with col3:
+        st.write("")
+        st.write("")
+        if st.session_state.project_rooms:
+            excel_data = generate_company_excel(rooms_data=st.session_state.project_rooms)
+            project_name = st.session_state.get('project_name_input', 'Multi_Room_Project')
+            filename = f"{project_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            
+            st.download_button(
+                label="📊 Download Full Project BOQ",
+                data=excel_data,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="secondary"
+            )
+
+
+    # Display current rooms
+    if st.session_state.project_rooms:
+        st.markdown("---")
+        st.write("**Current Project Rooms:**")
+        
+        # Create a list of room names for the selectbox
+        room_options = [room['name'] for room in st.session_state.project_rooms]
+        
+        # Find the index of the currently selected room
+        try:
+            current_index = st.session_state.current_room_index
+        except AttributeError:
+            current_index = 0
+            st.session_state.current_room_index = 0
+            
+        selected_room_name = st.selectbox(
+            "Select a room to view or edit its BOQ:",
+            options=room_options,
+            index=current_index,
+            key="room_selector"
+        )
+        
+        # Update the current_room_index when selection changes
+        new_index = room_options.index(selected_room_name)
+        if new_index != st.session_state.current_room_index:
+            st.session_state.current_room_index = new_index
+            # Load the selected room's BOQ into the main editor state
+            selected_room_boq = st.session_state.project_rooms[new_index].get('boq_items', [])
+            st.session_state.boq_items = selected_room_boq
+            update_boq_content_with_current_items()
+            st.rerun()
+            
+        # Display details and actions for the selected room
+        selected_room = st.session_state.project_rooms[st.session_state.current_room_index]
+        st.info(f"You are currently editing **{selected_room['name']}**. Any generated or edited BOQ will be saved for this room.")
+        
+        if st.button(f"🗑️ Remove '{selected_room['name']}' from Project", type="secondary"):
+            st.session_state.project_rooms.pop(st.session_state.current_room_index)
+            st.session_state.current_room_index = 0
+            st.session_state.boq_items = [] # Clear the editor
+            st.rerun()
+
+# --- BOQ Display and Editing ---
+def update_boq_content_with_current_items():
+    """Update the BOQ content in session state to reflect current items."""
+    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
+        st.session_state.boq_content = "## Bill of Quantities\n\nNo items added yet."
         return
+    
+    # Using the new AI response format for consistency
+    boq_content = "## Bill of Quantities\n\n"
+    boq_content += "| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |\n"
+    boq_content += "|---|---|---|---|---|---|---|\n"
+    
+    total_cost = 0
+    for item in st.session_state.boq_items:
+        quantity = item.get('quantity', 1)
+        price = item.get('price', 0)
+        total = quantity * price
+        total_cost += total
+        
+        boq_content += f"| {item.get('category', 'N/A')} | {item.get('brand', 'N/A')} | {item.get('name', 'N/A')} | {item.get('specifications', '')} | {quantity} | ${price:,.2f} | {item.get('justification', '')} |\n"
+    
+    st.session_state.boq_content = boq_content
 
-    js_equipment = []
-    for item in equipment_data:
-        equipment_type = map_equipment_type(item.get('category', ''), item.get('name', ''), item.get('brand', ''))
-        if equipment_type == 'service': continue
-        specs = get_equipment_specs(equipment_type, item.get('name', ''))
-        quantity = int(item.get('quantity', 1))
-        for i in range(quantity):
-            js_equipment.append({
-                'id': len(js_equipment) + 1, 'type': equipment_type, 'name': item.get('name', 'Unknown'),
-                'brand': item.get('brand', 'Unknown'), 'price': float(item.get('price', 0)), 'instance': i + 1,
-                'original_quantity': quantity, 'specs': specs, 'placement_constraints': get_placement_constraints(equipment_type),
-                'power_requirements': get_power_requirements(equipment_type), 'weight': get_weight_estimate(equipment_type, specs)
+def display_boq_results(boq_content, validation_results, project_id, quote_valid_days, product_df):
+    """Display BOQ results with interactive editing capabilities."""
+    
+    item_count = len(st.session_state.boq_items) if 'boq_items' in st.session_state else 0
+    st.subheader(f"Generated Bill of Quantities ({item_count} items)")
+    
+    # Validation results
+    if validation_results and validation_results.get('issues'):
+        st.error("Critical Issues Found:")
+        for issue in validation_results['issues']: st.write(f"- {issue}")
+    
+    if validation_results and validation_results.get('warnings'):
+        st.warning("Technical Recommendations & Compliance Notes:")
+        for warning in validation_results['warnings']: st.write(f"- {warning}")
+    
+    # Display BOQ content
+    if boq_content:
+        st.markdown(boq_content)
+    else:
+        st.info("No BOQ content generated yet. Use the interactive editor below.")
+    
+    # Totals
+    if 'boq_items' in st.session_state and st.session_state.boq_items:
+        currency = st.session_state.get('currency', 'USD')
+        total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+        
+        if currency == 'INR':
+            display_total = convert_currency(total_cost * 1.30, 'INR') # Include services
+            st.metric("Estimated Project Total", format_currency(display_total, 'INR'), help="Includes installation, warranty, and contingency")
+        else:
+            st.metric("Estimated Project Total", format_currency(total_cost * 1.30, 'USD'), help="Includes installation, warranty, and contingency")
+    
+    # Interactive Editor
+    st.markdown("---")
+    create_interactive_boq_editor(product_df)
+
+def create_interactive_boq_editor(product_df):
+    """Create interactive BOQ editing interface."""
+    st.subheader("Interactive BOQ Editor")
+    
+    item_count = len(st.session_state.boq_items) if 'boq_items' in st.session_state else 0
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Items in BOQ", item_count)
+    
+    with col2:
+        if 'boq_items' in st.session_state and st.session_state.boq_items:
+            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            currency = st.session_state.get('currency', 'USD')
+            if currency == 'INR':
+                display_total = convert_currency(total_cost, 'INR')
+                st.metric("Hardware Subtotal", format_currency(display_total, 'INR'))
+            else:
+                st.metric("Hardware Subtotal", format_currency(total_cost, 'USD'))
+        else:
+            st.metric("Subtotal", "₹0" if st.session_state.get('currency', 'USD') == 'INR' else "$0")
+    
+    with col3:
+        if st.button("🔄 Refresh BOQ Display", help="Update the main BOQ display with current items"):
+            update_boq_content_with_current_items()
+            st.rerun()
+    
+    if product_df is None:
+        st.error("Cannot load product catalog for editing.")
+        return
+    
+    currency = st.session_state.get('currency', 'USD')
+    tabs = st.tabs(["Edit Current BOQ", "Add Products", "Product Search"])
+    
+    with tabs[0]:
+        edit_current_boq(currency)
+    with tabs[1]:
+        add_products_interface(product_df, currency)
+    with tabs[2]:
+        product_search_interface(product_df, currency)
+
+def edit_current_boq(currency):
+    """Interface for editing current BOQ items."""
+    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
+        st.info("No BOQ items loaded. Generate a BOQ or add products manually.")
+        return
+    
+    st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
+    items_to_remove = []
+    for i, item in enumerate(st.session_state.boq_items):
+        category_str = str(item.get('category', 'General'))
+        name_str = str(item.get('name', 'Unknown'))
+        
+        with st.expander(f"{category_str} - {name_str[:50]}..."):
+            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+            
+            with col1:
+                new_name = st.text_input("Product Name", value=item.get('name', ''), key=f"name_{i}")
+                new_brand = st.text_input("Brand", value=item.get('brand', ''), key=f"brand_{i}")
+            
+            with col2:
+                category_list = ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'General']
+                current_category = item.get('category', 'General')
+                if current_category not in category_list: current_category = 'General'
+                
+                new_category = st.selectbox("Category", category_list, index=category_list.index(current_category), key=f"category_{i}")
+            
+            with col3:
+                try:
+                    safe_quantity = max(1, int(float(item.get('quantity', 1))))
+                except (ValueError, TypeError):
+                    safe_quantity = 1
+                
+                new_quantity = st.number_input("Quantity", min_value=1, value=safe_quantity, key=f"qty_{i}")
+                
+                try:
+                    current_price = float(item.get('price', 0))
+                except (ValueError, TypeError):
+                    current_price = 0
+                
+                display_price = convert_currency(current_price, 'INR') if currency == 'INR' else current_price
+                
+                new_price = st.number_input(f"Unit Price ({currency})", min_value=0.0, value=float(display_price), key=f"price_{i}")
+                
+                stored_price = new_price / get_usd_to_inr_rate() if currency == 'INR' else new_price
+            
+            with col4:
+                total_price = stored_price * new_quantity
+                display_total = convert_currency(total_price, 'INR') if currency == 'INR' else total_price
+                st.metric("Total", format_currency(display_total, currency))
+                
+                if st.button("Remove", key=f"remove_{i}", type="secondary"):
+                    items_to_remove.append(i)
+            
+            st.session_state.boq_items[i].update({
+                'name': new_name, 'brand': new_brand, 'category': new_category,
+                'quantity': new_quantity, 'price': stored_price
             })
 
-    room_length = st.session_state.get('room_length_input', 24.0)
-    room_width = st.session_state.get('room_width_input', 16.0)
-    room_height = st.session_state.get('ceiling_height_input', 9.0)
-    room_type_str = st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)')
+    if items_to_remove:
+        for index in sorted(items_to_remove, reverse=True):
+            st.session_state.boq_items.pop(index)
+        st.rerun()
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+def add_products_interface(product_df, currency):
+    """Interface for adding new products to BOQ."""
+    st.write("**Add Products to BOQ:**")
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        categories = ['All'] + sorted(list(product_df['category'].unique()))
+        selected_category = st.selectbox("Filter by Category", categories, key="add_category_filter")
         
-        <script>
-            {JS_LIBRARIES}
-        </script>
-
-        <style>
-            body {{
-                margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a;
-            }}
-            #container {{
-                width: 100%; height: 700px; position: relative; cursor: grab;
-            }}
-            #container:active {{ cursor: grabbing; }}
-            .panel {{
-                position: absolute; top: 15px; color: #ffffff; padding: 20px; border-radius: 15px;
-                backdrop-filter: blur(15px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            }}
-            #analytics-panel {{
-                right: 15px; background: linear-gradient(135deg, rgba(0, 30, 60, 0.95), rgba(0, 20, 40, 0.9));
-                border: 2px solid rgba(64, 196, 255, 0.3); width: 350px;
-            }}
-            #equipment-panel {{
-                left: 15px; background: linear-gradient(135deg, rgba(30, 0, 60, 0.95), rgba(20, 0, 40, 0.9));
-                border: 2px solid rgba(196, 64, 255, 0.3); width: 320px; max-height: 670px; overflow-y: auto;
-            }}
-            .space-metric {{
-                display: flex; justify-content: space-between; align-items: center; margin: 8px 0;
-                padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border-left: 4px solid #40C4FF;
-            }}
-            .space-value {{ font-size: 16px; font-weight: bold; color: #40C4FF; }}
-            .space-warning {{ border-left-color: #FF6B35 !important; }}
-            .space-warning .space-value {{ color: #FF6B35; }}
-            .equipment-item {{
-                margin: 6px 0; padding: 12px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-                border-radius: 8px; border-left: 3px solid transparent; cursor: grab; transition: all 0.3s ease; position: relative; overflow: hidden;
-            }}
-            .equipment-item:hover {{
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
-                transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            }}
-            .equipment-item:active {{ cursor: grabbing; }}
-            .equipment-item.placed {{ border-left-color: #4CAF50; opacity: 0.7; }}
-            .equipment-name {{ color: #FFD54F; font-weight: bold; font-size: 14px; }}
-            .equipment-details {{ color: #ccc; font-size: 12px; margin-top: 4px; }}
-            .equipment-specs {{ color: #aaa; font-size: 11px; margin-top: 6px; }}
-            #controls {{
-                position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-                background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(20, 20, 20, 0.8));
-                padding: 15px; border-radius: 25px; display: flex; gap: 12px; backdrop-filter: blur(15px);
-                border: 2px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            }}
-            .control-btn {{
-                background: linear-gradient(135deg, rgba(64, 196, 255, 0.8), rgba(32, 164, 223, 0.6));
-                border: 2px solid rgba(64, 196, 255, 0.4); color: white; padding: 10px 18px; border-radius: 20px;
-                cursor: pointer; transition: all 0.3s ease; font-size: 13px; font-weight: 500; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-            }}
-            .control-btn:hover {{
-                background: linear-gradient(135deg, rgba(64, 196, 255, 1), rgba(32, 164, 223, 0.8));
-                transform: translateY(-3px); box-shadow: 0 6px 20px rgba(64, 196, 255, 0.4);
-            }}
-            .control-btn.active {{
-                background: linear-gradient(135deg, #40C4FF, #0288D1); border-color: #0288D1;
-                box-shadow: 0 4px 15px rgba(64, 196, 255, 0.6);
-            }}
-            .mode-indicator {{
-                position: absolute; top: 20px; right: 50%; transform: translateX(50%);
-                background: rgba(0, 0, 0, 0.8); color: #40C4FF; padding: 8px 16px; border-radius: 20px;
-                font-weight: bold; font-size: 14px; border: 2px solid rgba(64, 196, 255, 0.5);
-            }}
-        </style>
-    </head>
-    <body>
-        <div id="container">
-            <div class="mode-indicator" id="modeIndicator">VIEW MODE</div>
-            <div id="analytics-panel" class="panel">
-                <h3 style="margin-top: 0; color: #40C4FF; font-size: 18px;">Space Analytics</h3>
-                <div class="space-metric"><span>Total Room Area</span><span class="space-value" id="totalArea">0 sq ft</span></div>
-                <div class="space-metric"><span>Usable Floor Space</span><span class="space-value" id="usableArea">0 sq ft</span></div>
-                <div class="space-metric"><span>Equipment Footprint</span><span class="space-value" id="equipmentFootprint">0 sq ft</span></div>
-                <div class="space-metric"><span>Remaining Floor Space</span><span class="space-value" id="remainingSpace">0 sq ft</span></div>
-                <div class="space-metric"><span>Power Load</span><span class="space-value" id="powerLoad">0W</span></div>
-            </div>
-            <div id="equipment-panel" class="panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3 style="margin: 0; color: #C440FF; font-size: 18px;">Equipment Library</h3>
-                    <button class="control-btn" onclick="togglePlacementMode()" id="placementToggle">PLACE MODE</button>
-                </div>
-                <div id="equipmentList"></div>
-            </div>
-            <div id="controls">
-                <button class="control-btn active" onclick="setView('overview', true, this)">🏠 Overview</button>
-                <button class="control-btn" onclick="setView('front', true, this)">📺 Front</button>
-                <button class="control-btn" onclick="setView('side', true, this)">📐 Side</button>
-                <button class="control-btn" onclick="setView('top', true, this)">📊 Top</button>
-                <button class="control-btn" onclick="resetLayout()">🔄 Reset</button>
-            </div>
-        </div>
+        filtered_df = product_df[product_df['category'] == selected_category] if selected_category != 'All' else product_df
         
-        <script>
-            let scene, camera, renderer, composer, saoPass, bloomPass;
-            let raycaster, mouse;
-            let selectedObject = null, placementMode = false;
+        product_options = [f"{row['brand']} - {row['name']}" for _, row in filtered_df.iterrows()]
+        if not product_options:
+            st.warning("No products found.")
+            return
+
+        selected_product_str = st.selectbox("Select Product", product_options, key="add_product_select")
+        selected_product = next((row for _, row in filtered_df.iterrows() if f"{row['brand']} - {row['name']}" == selected_product_str), None)
+    
+    with col2:
+        if selected_product is not None:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
+            base_price = float(selected_product.get('price', 0))
+            display_price = convert_currency(base_price, 'INR') if currency == 'INR' else base_price
             
-            const toUnits = (feet) => feet * 0.3048;
-            const toFeet = (units) => units / 0.3048;
-            const avEquipment = {json.dumps(js_equipment)};
-            const roomType = `{room_type_str}`;
-            const allRoomSpecs = {json.dumps(ROOM_SPECS)};
-            const roomDims = {{ length: {room_length}, width: {room_width}, height: {room_height} }};
-
-            // All classes and functions from the previous version are included here...
-            // init(), createRealisticRoom(), createEnhancedLighting(), setupPostProcessing(), animate(), etc.
+            st.metric("Unit Price", format_currency(display_price, currency))
+            st.metric("Total", format_currency(display_price * quantity, currency))
             
-            // --- MAIN INITIALIZATION ---
-            function init() {{
-                scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x15181a);
-                scene.fog = new THREE.Fog(0x15181a, toUnits(40), toUnits(100));
-                
-                const container = document.getElementById('container');
-                camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-                
-                renderer = new THREE.WebGLRenderer({{ antialias: true }});
-                renderer.setSize(container.clientWidth, container.clientHeight);
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                renderer.shadowMap.enabled = true;
-                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                container.appendChild(renderer.domElement);
-                
-                raycaster = new THREE.Raycaster();
-                mouse = new THREE.Vector2();
-                
-                createRealisticRoom();
-                createEnhancedLighting();
-                createRoomFurniture();
-                createPlaceableEquipmentObjects();
-                setupPostProcessing(); 
-                updateEquipmentList();
-                
-                // Set initial view after a short delay to ensure assets might be loading
-                setTimeout(() => setView('overview', false), 100);
+            if st.button("Add to BOQ", type="primary"):
+                new_item = {
+                    'category': selected_product.get('category', 'General'), 'name': selected_product.get('name', ''),
+                    'brand': selected_product.get('brand', ''), 'quantity': quantity, 'price': base_price,
+                    'justification': 'Manually added component.', 'specifications': selected_product.get('features', ''),
+                    'image_url': selected_product.get('image_url', ''),
+                    'gst_rate': selected_product.get('gst_rate', 18), 'matched': True
+                }
+                st.session_state.boq_items.append(new_item)
+                update_boq_content_with_current_items()
+                st.success(f"Added {quantity}x {selected_product['name']}!")
+                st.rerun()
 
-                // Add event listeners
-                container.addEventListener('mousedown', onMouseDown);
-                container.addEventListener('mousemove', onMouseMove);
-                container.addEventListener('mouseup', onMouseUp);
-                window.addEventListener('resize', onWindowResize);
+def product_search_interface(product_df, currency):
+    """Advanced product search interface."""
+    st.write("**Search Product Catalog:**")
+    search_term = st.text_input("Search products...", placeholder="Enter name, brand, or features", key="search_term_input")
+    
+    if search_term:
+        search_cols = ['name', 'brand', 'features']
+        mask = product_df[search_cols].apply(
+            lambda x: x.astype(str).str.contains(search_term, case=False, na=False)
+        ).any(axis=1)
+        search_results = product_df[mask]
+        
+        st.write(f"Found {len(search_results)} products:")
+        
+        for i, product in search_results.head(10).iterrows():
+            with st.expander(f"{product.get('brand', '')} - {product.get('name', '')[:60]}..."):
+                col_a, col_b, col_c = st.columns([2, 1, 1])
                 
-                animate();
-            }}
+                with col_a:
+                    st.write(f"**Category:** {product.get('category', 'N/A')}")
+                    if pd.notna(product.get('features')):
+                        st.write(f"**Features:** {str(product['features'])[:100]}...")
+                
+                with col_b:
+                    price = float(product.get('price', 0))
+                    display_price = convert_currency(price, 'INR') if currency == 'INR' else price
+                    st.metric("Price", format_currency(display_price, currency))
+                
+                with col_c:
+                    add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{i}")
+                    if st.button("Add", key=f"search_add_{i}"):
+                        new_item = {
+                            'category': product.get('category', 'General'), 'name': product.get('name', ''),
+                            'brand': product.get('brand', ''), 'quantity': add_qty, 'price': price,
+                            'justification': 'Added via search.', 'specifications': product.get('features', ''),
+                            'image_url': product.get('image_url', ''),
+                            'gst_rate': product.get('gst_rate', 18), 'matched': True
+                        }
+                        st.session_state.boq_items.append(new_item)
+                        update_boq_content_with_current_items()
+                        st.success(f"Added {add_qty}x {product['name']}!")
+                        st.rerun()
+
+# --- NEW: COMPANY STANDARD EXCEL GENERATION ---
+def _define_styles():
+    """Defines reusable styles for the Excel sheet."""
+    return {
+        "header": Font(size=16, bold=True, color="FFFFFF"),
+        "header_fill": PatternFill(start_color="002060", end_color="002060", fill_type="solid"),
+        "table_header": Font(bold=True, color="FFFFFF"),
+        "table_header_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
+        "bold": Font(bold=True),
+        "group_header_fill": PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid"),
+        "total_fill": PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"),
+        "grand_total_font": Font(size=12, bold=True, color="FFFFFF"),
+        "grand_total_fill": PatternFill(start_color="002060", end_color="002060", fill_type="solid"),
+        "currency_format": "₹ #,##0",
+        "thin_border": Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    }
+
+def _populate_company_boq_sheet(sheet, items, room_name, styles):
+    """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
+    
+    # Static Headers
+    sheet.merge_cells('A3:P3')
+    header_cell = sheet['A3']
+    header_cell.value = "All Wave AV Systems Pvt. Ltd."
+    header_cell.font = styles["header"]
+    header_cell.fill = styles["header_fill"]
+    header_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Project Info
+    sheet['C5'] = "Room Name / Room Type"
+    sheet['E5'] = room_name
+    sheet['C6'] = "Floor"
+    sheet['C7'] = "Number of Seats"
+    sheet['C8'] = "Number of Rooms"
+
+    # Table Headers
+    headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
+    headers2 = [None, None, None, None, None, None, None, None, 'Rate', 'Amt', 'Rate', 'Amt', None, None, None, None]
+    
+    sheet.append(headers1)
+    sheet.append(headers2)
+    header_start_row = sheet.max_row - 1
+    
+    # Merge header cells
+    sheet.merge_cells(start_row=header_start_row, start_column=9, end_row=header_start_row, end_column=10) # SGST
+    sheet.merge_cells(start_row=header_start_row, start_column=11, end_row=header_start_row, end_column=12) # CGST
+    
+    for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row, min_col=1, max_col=len(headers1)):
+        for cell in row:
+            cell.font = styles["table_header"]
+            cell.fill = styles["table_header_fill"]
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    # Group items by category
+    grouped_items = {}
+    for item in items:
+        cat = item['category']
+        if cat not in grouped_items:
+            grouped_items[cat] = []
+        grouped_items[cat].append(item)
+
+    # Add Items
+    total_before_gst_hardware = 0
+    total_gst_hardware = 0
+    item_s_no = 1
+    
+    category_letters = [chr(ord('A') + i) for i in range(len(grouped_items))]
+    
+    for i, (category, cat_items) in enumerate(grouped_items.items()):
+        # Category Header
+        cat_header_row = [f"{category_letters[i]}", category]
+        sheet.append(cat_header_row)
+        cat_row_idx = sheet.max_row
+        sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
+        sheet[f'A{cat_row_idx}'].font = styles['bold']
+        sheet[f'B{cat_row_idx}'].font = styles['bold']
+        sheet[f'A{cat_row_idx}'].fill = styles['group_header_fill']
+        sheet[f'B{cat_row_idx}'].fill = styles['group_header_fill']
+
+        for item in cat_items:
+            unit_price_inr = convert_currency(item.get('price', 0), 'INR')
+            subtotal = unit_price_inr * item.get('quantity', 1)
+            gst_rate = item.get('gst_rate', 18)
+            sgst_rate = gst_rate / 2
+            cgst_rate = gst_rate / 2
+            sgst_amount = subtotal * (sgst_rate / 100)
+            cgst_amount = subtotal * (cgst_rate / 100)
+            total_tax = sgst_amount + cgst_amount
+            total_with_gst = subtotal + total_tax
             
-            // --- SCENE & LIGHTING SETUP ---
-            function createRealisticRoom() {{
-                const textureLoader = new THREE.TextureLoader();
-                const floorTexture = textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg');
-                floorTexture.wrapS = THREE.RepeatWrapping;
-                floorTexture.wrapT = THREE.RepeatWrapping;
-                floorTexture.repeat.set(roomDims.length / 8, roomDims.width / 8);
-
-                const wallMaterial = new THREE.MeshStandardMaterial({{ color: 0xcccccc, roughness: 0.9, metalness: 0.1 }});
-                const floorMaterial = new THREE.MeshStandardMaterial({{ map: floorTexture, roughness: 0.7, metalness: 0.1 }});
-
-                const floor = new THREE.Mesh(new THREE.PlaneGeometry(toUnits(roomDims.length), toUnits(roomDims.width)), floorMaterial);
-                floor.rotation.x = -Math.PI / 2;
-                floor.receiveShadow = true;
-                scene.add(floor);
-
-                const wallHeight = toUnits(roomDims.height);
-                const walls = [
-                    {{ pos: [0, wallHeight / 2, -toUnits(roomDims.width / 2)], size: [toUnits(roomDims.length), wallHeight], rot: [0, 0, 0] }},
-                    {{ pos: [-toUnits(roomDims.length / 2), wallHeight / 2, 0], size: [toUnits(roomDims.width), wallHeight], rot: [0, Math.PI / 2, 0] }},
-                    {{ pos: [toUnits(roomDims.length / 2), wallHeight / 2, 0], size: [toUnits(roomDims.width), wallHeight], rot: [0, -Math.PI / 2, 0] }},
-                    {{ pos: [0, wallHeight / 2, toUnits(roomDims.width / 2)], size: [toUnits(roomDims.length), wallHeight], rot: [0, Math.PI, 0] }}
-                ];
-                walls.forEach(w => {{
-                    const wall = new THREE.Mesh(new THREE.PlaneGeometry(w.size[0], w.size[1]), wallMaterial);
-                    wall.position.set(...w.pos);
-                    wall.rotation.set(...w.rot);
-                    wall.receiveShadow = true;
-                    scene.add(wall);
-                }});
-            }}
-
-            function createEnhancedLighting() {{
-                scene.add(new THREE.HemisphereLight(0x87CEEB, 0x333333, 1.0));
-                const dirLight = new THREE.DirectionalLight(0xfff5e1, 1.5);
-                dirLight.position.set(toUnits(-15), toUnits(20), toUnits(10));
-                dirLight.castShadow = true;
-                dirLight.shadow.mapSize.width = 2048;
-                dirLight.shadow.mapSize.height = 2048;
-                dirLight.shadow.bias = -0.0005;
-                scene.add(dirLight);
-            }}
-
-            function setupPostProcessing() {{
-                composer = new THREE.EffectComposer(renderer);
-                composer.addPass(new THREE.RenderPass(scene, camera));
-                if (THREE.SAOPass) {{
-                    saoPass = new THREE.SAOPass(scene, camera, false, true);
-                    saoPass.params.saoIntensity = 0.005;
-                    composer.addPass(saoPass);
-                }}
-                if (THREE.UnrealBloomPass) {{
-                    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.5, 0.4, 0.85);
-                    composer.addPass(bloomPass);
-                }}
-            }}
-
-            // --- ANIMATION LOOP ---
-            function animate() {{
-                requestAnimationFrame(animate);
-                composer.render();
-            }}
+            total_before_gst_hardware += subtotal
+            total_gst_hardware += total_tax
             
-            // All other functions are provided for completeness.
-            function createRoomFurniture(){{ /* Full function code... */ }}
-            function createPlaceableEquipmentObjects(){{ /* Full function code... */ }}
-            function createEquipmentMesh(equipment){{ /* Full function code... */ }}
-            function updateEquipmentList(){{ /* Full function code... */ }}
-            // Event Handlers (onMouseDown, etc.)
-            // UI Functions (setView, resetLayout, etc.)
-            
-            // Fallback for brevity - ensure all JS functions from previous complete version are here.
-            
-            // --- START OF FULL JS LOGIC ---
-            function getTableConfig(r,s){const t=s.table_size||[10,4],e={{'Small Huddle Room (2-3 People)':{{length:t[0],width:t[1],height:2.5,x:0,z:0}},'Medium Huddle Room (4-6 People)':{{length:t[0],width:t[1],height:2.5,x:0,z:0}},'Standard Conference Room (6-8 People)':{{length:t[0],width:t[1],height:2.5,x:0,z:0}},'Large Conference Room (8-12 People)':{{length:t[0],width:t[1],height:2.5,x:0,z:0}},'Executive Boardroom (10-16 People)':{{length:t[0],width:t[1],height:2.5,x:0,z:0}},'Training Room (15-25 People)':{{length:t[0],width:t[1],height:2.5,x:-toUnits(roomDims.length/2-t[0]/2-3),z:-toUnits(roomDims.width/4)}},"Large Training/Presentation Room (25-40 People)":{{length:t[0],width:t[1],height:2.5,x:-toUnits(roomDims.length/2-t[0]/2-4),z:-toUnits(roomDims.width/3)}},"Multipurpose Event Room (40+ People)":{{length:t[0],width:t[1],height:2.5,x:-toUnits(roomDims.length/2-t[0]/2-5),z:-toUnits(roomDims.width/3)}},"Video Production Studio":{{length:t[0],width:t[1],height:3,x:toUnits(roomDims.length/2-t[0]/2-2),z:0}},'Telepresence Suite':{{length:t[0],width:t[1],height:2.5,x:0,z:toUnits(2)}}}};return e[r]||{{length:t[0],width:t[1],height:2.5,x:0,z:0}}}
-            function createRoomFurniture(){{const t=allRoomSpecs[roomType]||{{chair_count:8}},e=getTableConfig(roomType,t),i=new THREE.MeshStandardMaterial({{color:11259395,roughness:.3,metalness:.1}}),o=new THREE.Mesh(new THREE.BoxGeometry(toUnits(e.length),toUnits(e.height),toUnits(e.width)),i);o.position.set(e.x,toUnits(e.height/2),e.z),o.castShadow=!0,o.receiveShadow=!0,o.name="conference_table",scene.add(o),createChairs(calculateChairPositions(t,e))}}
-            function createChairs(t){{const e=new THREE.MeshStandardMaterial({{color:3355443,roughness:.7}});t.forEach((t,i)=>{{const o=new THREE.Group,n=new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5),toUnits(.3),toUnits(1.5)),e);n.position.y=toUnits(1.5),o.add(n);const s=new THREE.Mesh(new THREE.BoxGeometry(toUnits(1.5),toUnits(2),toUnits(.2)),e);s.position.set(0,toUnits(2.5),toUnits(-.65)),o.add(s),o.position.set(toUnits(t.x),0,toUnits(t.z)),o.rotation.y=t.rotationY||0,o.castShadow=!0,o.receiveShadow=!0,o.name=`chair_${{i}}`,scene.add(o)}})}}
-            function calculateChairPositions(t,e){{const i=[],o=e.length,n=e.width;if("theater"===t.chair_arrangement||"classroom"===t.chair_arrangement){{const e=Math.ceil(t.chair_count/8),o=Math.min(8,t.chair_count);for(let n=0;n<e;n++)for(let e=0;e<o&&i.length<t.chair_count;e++)i.push({{x:-2*o+4*e,z:n/2+4+4*n,rotationY:0}})}}else{{const e=Math.max(3,Math.min(4.5,o/(t.chair_count/2+1))),s=Math.floor((o-2)/e);for(let t=0;t<s&&i.length<t.chair_count;t++){{const n=t/2+(t+1)*(o/(s+1));i.push({{x:n,z:n/2+2,rotationY:Math.PI}}),i.length<t.chair_count&&i.push({{x:n,z:-n/2-2,rotationY:0}})}}i.length<t.chair_count&&n>6&&(i.push({{x:o/2+2,z:0,rotationY:-Math.PI/2}}),i.length<t.chair_count&&i.push({{x:-o/2-2,z:0,rotationY:Math.PI/2}}))}}return i.slice(0,t.chair_count)}}
-            function createPlaceableEquipmentObjects(){{avEquipment.forEach(t=>{{const e=createEquipmentMesh(t);e.userData={{equipment:t,placed:!1}},e.visible=!1,scene.add(e)}})}}
-            function createEquipmentMesh(t){{const e=new THREE.Group,i=t.specs,o=new THREE.MeshStandardMaterial({{color:6316128,roughness:.2,metalness:.9}}),n=new THREE.MeshStandardMaterial({{color:2763306,roughness:.7,metalness:.1}}),s=new THREE.Mesh(new THREE.BoxGeometry(toUnits(i[0]),toUnits(i[1]),toUnits(i[2])),"display"===t.type?o:n);s.castShadow=!0,s.receiveShadow=!0,e.add(s);const a=new THREE.BoxGeometry(toUnits(i[0]+.3),toUnits(i[1]+.3),toUnits(i[2]+.3)),r=new THREE.MeshBasicMaterial({{color:4245247,transparent:!0,opacity:0,wireframe:!0}});return e.add(new THREE.Mesh(a,r)),e.name=`equipment_${{t.id}}`,e}}
-            function updateEquipmentList(){{document.getElementById("equipmentList").innerHTML=avEquipment.map(t=>{{const e=scene.getObjectByName(`equipment_${{t.id}}`)?.userData.placed||!1;return`\n                        <div class="equipment-item ${{e?"placed":""}}" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', ${{t.id}})">\n                            <div class="equipment-name">${{t.name}}</div>\n                            <div class="equipment-details">${{t.brand}}</div>\n                        </div>`}}).join("")}}
-            let isMouseDown=!1,prevMousePos={{x:0,y:0}};function onMouseDown(t){{0===t.button&&!placementMode&&(isMouseDown=!0,prevMousePos={{x:t.clientX,y:t.clientY}},t.currentTarget.style.cursor="grabbing")}}
-            function onMouseMove(t){{if(isMouseDown&&!placementMode){{const e={{x:t.clientX-prevMousePos.x,y:t.clientY-prevMousePos.y}},i=new THREE.Spherical;i.setFromVector3(camera.position),i.theta-= .01*e.x,i.phi-=.01*e.y,i.phi=Math.max(.1,Math.min(Math.PI-.1,i.phi)),camera.position.setFromSpherical(i),camera.lookAt(0,toUnits(3),0),prevMousePos={{x:t.clientX,y:t.clientY}}}}}}
-            function onMouseUp(t){{0===t.button&&(isMouseDown=!1,t.currentTarget.style.cursor="grab")}}
-            function onWindowResize(){{const t=document.getElementById("container");camera.aspect=t.clientWidth/t.clientHeight,camera.updateProjectionMatrix(),renderer.setSize(t.clientWidth,t.clientHeight),composer.setSize(t.clientWidth,t.clientHeight)}}
-            function togglePlacementMode(){{placementMode=!placementMode,document.getElementById("placementToggle").textContent=placementMode?"VIEW MODE":"PLACE MODE",document.getElementById("modeIndicator").textContent=placementMode?"PLACE MODE":"VIEW MODE"}}
-            function setView(t,e=!0,i=null){{i&&(document.querySelectorAll(".control-btn").forEach(t=>t.classList.remove("active")),i.classList.add("active"));let o;const n=Math.max(roomDims.length,roomDims.width),s=.8*n;switch(t){{case"overview":o=new THREE.Vector3(toUnits(.7*s),toUnits(roomDims.height+.4*s),toUnits(.7*s));break;case"front":o=new THREE.Vector3(0,toUnits(.6*roomDims.height),toUnits(roomDims.width/2+.5*s));break;case"side":o=new THREE.Vector3(toUnits(roomDims.length/2+.5*s),toUnits(.6*roomDims.height),0);break;case"top":o=new THREE.Vector3(0,toUnits(roomDims.height+.8*s),.1)}}if(e){{const t=camera.position.clone(),i=Date.now();!function e(){{const n=.001*(Date.now()-i);if(n<1){{requestAnimationFrame(e);const i=1-Math.pow(1-n,3);camera.position.lerpVectors(t,o,i),camera.lookAt(0,toUnits(.3*roomDims.height),0)}}else camera.position.copy(o),camera.lookAt(0,toUnits(.3*roomDims.height),0)}}()}}else camera.position.copy(o),camera.lookAt(0,toUnits(.3*roomDims.height),0)}}
-            function resetLayout(){{scene.children.forEach(t=>{{t.name.startsWith("equipment_")&&(t.visible=!1,t.userData.placed=!1)}}),updateEquipmentList()}}
-            window.addEventListener('load', init);
-            // --- END OF FULL JS LOGIC ---
+            row_data = [
+                item_s_no, 
+                None, # Description filled by category
+                item.get('specifications', item.get('name', '')),
+                item.get('brand', 'Unknown'),
+                item.get('name', 'Unknown'),
+                item.get('quantity', 1),
+                unit_price_inr,
+                subtotal,
+                f"{sgst_rate}%",
+                sgst_amount,
+                f"{cgst_rate}%",
+                cgst_amount,
+                total_tax,
+                total_with_gst,
+                item.get('justification', ''),
+                item.get('image_url', '')
+            ]
+            sheet.append(row_data)
+            item_s_no += 1
+    
+    # Add Services
+    services = [
+        ("Installation & Commissioning", 0.15),
+        ("System Warranty (3 Years)", 0.05),
+        ("Project Management", 0.10)
+    ]
+    
+    if services:
+        # --- FIX APPLIED HERE ---
+        # Calculate the next letter for services instead of indexing out of bounds.
+        services_letter = chr(ord('A') + len(grouped_items))
+        sheet.append([services_letter, "Services"])
+        # --- END FIX ---
+        cat_row_idx = sheet.max_row
+        sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
+        sheet[f'A{cat_row_idx}'].font = styles['bold']
+        sheet[f'B{cat_row_idx}'].font = styles['bold']
+        sheet[f'A{cat_row_idx}'].fill = styles['group_header_fill']
+        sheet[f'B{cat_row_idx}'].fill = styles['group_header_fill']
+        
+    total_before_gst_services = 0
+    total_gst_services = 0
+    
+    services_gst_rate = st.session_state.gst_rates.get('Services', 18)
+    
+    for service_name, percentage in services:
+        service_amount_inr = total_before_gst_hardware * percentage
+        sgst_rate = services_gst_rate / 2
+        cgst_rate = services_gst_rate / 2
+        service_sgst = service_amount_inr * (sgst_rate / 100)
+        service_cgst = service_amount_inr * (cgst_rate / 100)
+        service_total_tax = service_sgst + service_cgst
+        service_total = service_amount_inr + service_total_tax
+        
+        total_before_gst_services += service_amount_inr
+        total_gst_services += service_total_tax
+        
+        sheet.append([
+            item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
+            service_amount_inr, service_amount_inr,
+            f"{sgst_rate}%", service_sgst,
+            f"{cgst_rate}%", service_cgst,
+            service_total_tax, service_total, "As per standard terms", ""
+        ])
+        item_s_no += 1
 
-        </script>
-    </body>
-    </html>
-    """
-    st.components.v1.html(html_content, height=700, scrolling=False)
+    # Totals Section
+    sheet.append([]) # Spacer
+    
+    # Hardware Total
+    hardware_total_row = ["", "Total for Hardware (A)", "", "", "", "", "", total_before_gst_hardware, "", "", "", "", total_gst_hardware, total_before_gst_hardware + total_gst_hardware]
+    sheet.append(hardware_total_row)
+    for cell in sheet[sheet.max_row]:
+        cell.font = styles['bold']
+        cell.fill = styles['total_fill']
+
+    # Services Total
+    # --- FIX APPLIED HERE ---
+    # Use the correctly calculated services_letter variable here as well.
+    services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
+    # --- END FIX ---
+    sheet.append(services_total_row)
+    for cell in sheet[sheet.max_row]:
+        cell.font = styles['bold']
+        cell.fill = styles['total_fill']
+        
+    # Grand Total
+    grand_total = (total_before_gst_hardware + total_gst_hardware) + (total_before_gst_services + total_gst_services)
+    sheet.append([]) # Spacer
+    grand_total_row_idx = sheet.max_row + 1
+    sheet[f'M{grand_total_row_idx}'] = "Grand Total (INR)"
+    sheet[f'N{grand_total_row_idx}'] = grand_total
+    
+    sheet[f'M{grand_total_row_idx}'].font = styles["grand_total_font"]
+    sheet[f'N{grand_total_row_idx}'].font = styles["grand_total_font"]
+    sheet[f'M{grand_total_row_idx}'].fill = styles["grand_total_fill"]
+    sheet[f'N{grand_total_row_idx}'].fill = styles["grand_total_fill"]
+    sheet[f'M{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
+    sheet[f'N{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
+
+    # Final Formatting
+    column_widths = {'A': 8, 'B': 35, 'C': 45, 'D': 20, 'E': 30, 'F': 6, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 18, 'O': 40, 'P': 20}
+    for col, width in column_widths.items():
+        sheet.column_dimensions[col].width = width
+    
+    # Apply borders and number formats
+    for row in sheet.iter_rows(min_row=header_start_row + 2, max_row=sheet.max_row):
+        for cell in row:
+            if cell.value is not None:
+                cell.border = styles['thin_border']
+            if cell.column >= 7 and cell.column <= 14: # Currency columns
+                cell.number_format = styles['currency_format']
+    
+    return total_before_gst_hardware + total_before_gst_services, total_gst_hardware + total_gst_services, grand_total
+
+def add_proposal_summary_sheet(workbook, rooms_data, styles):
+    """Adds the Proposal Summary sheet."""
+    sheet = workbook.create_sheet("Proposal Summary")
+    
+    # Header
+    sheet.merge_cells('A3:H3')
+    header_cell = sheet['A3']
+    header_cell.value = "Proposal Summary"
+    header_cell.font = styles["header"]
+    header_cell.fill = styles["header_fill"]
+    header_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Table Header
+    headers = ["Sr. No", "Description", "Total Qty", "Rate w/o TAX", "Amount w/o TAX", "Total TAX Amount", "Amount with Tax"]
+    sheet.append(headers)
+    header_row = sheet.max_row
+    for cell in sheet[header_row]:
+        cell.font = styles["bold"]
+        cell.fill = styles["group_header_fill"]
+
+    # Populate with room data
+    grand_total_with_tax = 0
+    for i, room in enumerate(rooms_data, 1):
+        if room.get('boq_items'):
+            # This requires recalculating totals for the summary. For simplicity, we pass it from the main function.
+            subtotal = room.get('subtotal', 0)
+            gst = room.get('gst', 0)
+            total = room.get('total', 0)
+            grand_total_with_tax += total
+            
+            sheet.append([i, room['name'], 1, subtotal, subtotal, gst, total])
+
+    # Grand Total
+    total_row = sheet.max_row + 2
+    sheet[f'F{total_row}'] = "GRAND TOTAL (INR)"
+    sheet[f'G{total_row}'] = grand_total_with_tax
+    sheet[f'F{total_row}'].font = styles["grand_total_font"]
+    sheet[f'G{total_row}'].font = styles["grand_total_font"]
+    sheet[f'F{total_row}'].fill = styles["grand_total_fill"]
+    sheet[f'G{total_row}'].fill = styles["grand_total_fill"]
+
+    # Add Commercial Terms (simplified from CSV)
+    terms_start_row = sheet.max_row + 3
+    sheet[f'B{terms_start_row}'] = "Commercial Terms"
+    sheet[f'B{terms_start_row}'].font = Font(size=14, bold=True)
+    # ... Add more static terms as needed
+    
+    # Formatting
+    for col in ['D', 'E', 'F', 'G']:
+        for cell in sheet[col]:
+            cell.number_format = styles['currency_format']
+
+def add_scope_of_work_sheet(workbook):
+    """Adds the static Scope of Work sheet."""
+    sheet = workbook.create_sheet("Scope of Work")
+    # This can be populated with the static content from the provided CSV file.
+    # For brevity, I'll add a placeholder.
+    sheet['A1'] = "Scope of Work"
+    sheet['A1'].font = Font(size=16, bold=True)
+    sheet['A3'] = "1. Site Coordination and Prerequisites Clearance."
+    sheet['A4'] = "2. Detailed schematic drawings according to the design."
+    # ... and so on.
+
+def add_version_control_sheet(workbook, project_name, client_name):
+    """Adds the Version Control sheet."""
+    sheet = workbook.create_sheet("Version Control")
+    sheet['B4'] = "Version Control"
+    sheet['E4'] = "Contact Details"
+    sheet['B6'] = "Date of First Draft"
+    sheet['C6'] = datetime.now().strftime('%Y-%m-%d')
+    sheet['E6'] = "Design Engineer"
+    sheet['E8'] = "Client Name"
+    sheet['F8'] = client_name
+    sheet['B10'] = "Version No."
+    sheet['C10'] = "1.0"
+    # ... and so on.
+
+def generate_company_excel(rooms_data=None):
+    """Generate Excel file in the new company standard format."""
+    if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
+        st.error("No BOQ items to export. Generate a BOQ first.")
+        return None
+
+    workbook = openpyxl.Workbook()
+    styles = _define_styles()
+    
+    project_name = st.session_state.get('project_name_input', 'AV Installation')
+    client_name = st.session_state.get('client_name_input', 'Valued Client')
+    
+    summary_data = []
+
+    if rooms_data:
+        # Multi-room project
+        for room in rooms_data:
+            if room.get('boq_items'):
+                safe_room_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:30]
+                room_sheet = workbook.create_sheet(title=safe_room_name)
+                subtotal, gst, total = _populate_company_boq_sheet(room_sheet, room['boq_items'], room['name'], styles)
+                room['subtotal'] = subtotal
+                room['gst'] = gst
+                room['total'] = total
+
+        add_proposal_summary_sheet(workbook, rooms_data, styles)
+
+    else: # Single room mode
+        sheet = workbook.active
+        room_name = "BOQ"
+        if st.session_state.project_rooms:
+            room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+        sheet.title = re.sub(r'[\\/*?:"<>|]', '', room_name)[:30]
+        subtotal, gst, total = _populate_company_boq_sheet(sheet, st.session_state.boq_items, room_name, styles)
+        
+        # Create a dummy rooms_data for summary sheet
+        single_room_summary = [{'name': room_name, 'subtotal': subtotal, 'gst': gst, 'total': total, 'boq_items': True}]
+        add_proposal_summary_sheet(workbook, single_room_summary, styles)
+
+    # Add other standard sheets
+    add_scope_of_work_sheet(workbook)
+    add_version_control_sheet(workbook, project_name, client_name)
+    
+    # Remove the default sheet created by openpyxl
+    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
+        del workbook["Sheet"]
+
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    return excel_buffer.getvalue()
+
+# --- Main Application ---
+def main():
+    # --- Enhanced Session State Initialization ---
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = None
+    if 'project_rooms' not in st.session_state:
+        st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state:
+        st.session_state.current_room_index = 0
+    if 'gst_rates' not in st.session_state:
+        st.session_state.gst_rates = {'Electronics': 18, 'Services': 18, 'Default': 18}
+
+    # Load data
+    product_df, guidelines, data_issues = load_and_validate_data()
+    if data_issues:
+        with st.expander("⚠️ Data Quality Issues", expanded=False):
+            for issue in data_issues:
+                st.warning(issue)
+    
+    if product_df is None:
+        return
+    
+    model = setup_gemini()
+    if not model:
+        return
+    
+    project_id, quote_valid_days = create_project_header()
+    
+    # --- Sidebar ---
+    with st.sidebar:
+        st.header("Project Configuration")
+        client_name = st.text_input("Client Name", key="client_name_input")
+        project_name = st.text_input("Project Name", key="project_name_input")
+        
+        st.markdown("---")
+        st.subheader("🇮🇳 Indian Business Settings")
+        
+        currency = st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
+        st.session_state['currency'] = currency
+        
+        electronics_gst = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=28, key="electronics_gst")
+        services_gst = st.number_input("Services GST (%)", value=18, min_value=0, max_value=28, key="services_gst")
+        st.session_state.gst_rates['Electronics'] = electronics_gst
+        st.session_state.gst_rates['Services'] = services_gst
+        
+        st.markdown("---")
+        st.subheader("Room Design Settings")
+        
+        room_type_key = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
+        budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+        
+        room_spec = ROOM_SPECS[room_type_key]
+        st.markdown("#### Room Guidelines")
+        st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
+        st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
+
+    # --- Main Content Tabs ---
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Multi-Room Project", "Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
+    
+    with tab1:
+        create_multi_room_interface()
+        
+    with tab2:
+        room_area, ceiling_height = create_room_calculator()
+        
+    with tab3:
+        features = st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", height=100, key="features_text_area")
+        technical_reqs = create_advanced_requirements()
+
+    with tab4:
+        st.subheader("Professional BOQ Generation")
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
+                with st.spinner("Generating professional BOQ..."):
+                    room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
+                    boq_content, boq_items = generate_boq_with_justifications(
+                        model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
+                    )
+                    
+                    if boq_items:
+                        st.session_state.boq_content = boq_content
+                        st.session_state.boq_items = boq_items
+                        
+                        # Save to current room if multi-room is used
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
+                        validator = BOQValidator(ROOM_SPECS, product_df)
+                        issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
+                        avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
+                        warnings.extend(avixa_warnings)
+                        st.session_state.validation_results = {"issues": issues, "warnings": warnings}
+                        st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to generate BOQ. Please try again.")
+
+        with col2:
+            if 'boq_items' in st.session_state and st.session_state.boq_items:
+                excel_data = generate_company_excel()
+                room_name = "CurrentRoom"
+                if st.session_state.project_rooms:
+                    room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+
+                filename = f"{project_name or 'Project'}_{room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                
+                st.download_button(
+                    label="📊 Download Current Room BOQ",
+                    data=excel_data,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary"
+                )
+
+        if st.session_state.boq_content or st.session_state.boq_items:
+            st.markdown("---")
+            display_boq_results(st.session_state.boq_content, st.session_state.validation_results, project_id, quote_valid_days, product_df)
+
+    with tab5:
+        # This function is now imported from components/visualizer.py
+        create_3d_visualization()
+
+# Run the application
+if __name__ == "__main__":
+    main()
