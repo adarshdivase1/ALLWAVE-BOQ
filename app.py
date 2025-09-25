@@ -2968,8 +2968,8 @@ with st.sidebar:
     st.text_input("Location", key="location_input", value="Mumbai")
     st.text_input("Architect/PMC", key="architect_input", value="N/A")
         
-        st.markdown("---")
-        st.subheader("🇮🇳 Indian Business Settings")
+    st.markdown("---")
+    st.subheader("🇮🇳 Indian Business Settings")
         
         currency = st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
         st.session_state['currency'] = currency
