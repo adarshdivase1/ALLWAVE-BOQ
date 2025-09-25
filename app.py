@@ -1143,12 +1143,18 @@ def get_equipment_specs(equipment_type, name):
     name_lower = str(name).lower()
     
     # Check for specific size in name (e.g., 65")
-    size_match = re.search(r'(\d{2})[ -]*inch|\"', name_lower)
+    # FIX: Corrected regex to ensure the digit group is always captured.
+    size_match = re.search(r'(\d{2,3})[ -]*(?:inch|\")', name_lower)
     if size_match and equipment_type == 'display':
-        size_inches = int(size_match.group(1))
-        width = size_inches * 0.87 / 12
-        height = size_inches * 0.49 / 12
-        return [width, height, 0.3]
+        try:
+            size_inches = int(size_match.group(1))
+            # Aspect ratio 16:9 conversion to feet
+            width = size_inches * 0.871 / 12 
+            height = size_inches * 0.490 / 12
+            return [width, height, 0.3] # W, H, D in feet
+        except (ValueError, IndexError):
+            # If conversion fails for any reason, fall through to default size
+            pass
 
     # Default sizes in feet
     specs = {
