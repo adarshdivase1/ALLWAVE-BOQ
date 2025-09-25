@@ -461,14 +461,17 @@ def match_product_in_database(product_name, brand, product_df):
         return None
     
     # First try exact brand and partial name match
-    brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
+    # FIX: Added regex=False to prevent errors with special characters like '('
+    brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False, regex=False)]
     if len(brand_matches) > 0:
-        name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
+        # FIX: Added regex=False
+        name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False, regex=False)]
         if len(name_matches) > 0:
             return name_matches.iloc[0].to_dict()
     
     # Try partial name match across all products
-    name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
+    # FIX: Added regex=False
+    name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False, regex=False)]
     if len(name_matches) > 0:
         return name_matches.iloc[0].to_dict()
     
