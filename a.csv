@@ -1,36 +1,36 @@
 Header,Definition
 SKU,"A unique code for each product (like a car's VIN)."
-ProductName,The full name of the product.
+ProductName,"The full name of the product."
 Brand,"Who makes the product (e.g., Samsung, Poly)."
-Category,The main group it belongs to (e.g., ""Displays"", ""Audio"").
+Category,"The main group it belongs to (e.g., ""Displays"", ""Audio"")."
 Sub_Category,"A more specific group (e.g., ""Video Bar"", ""Ceiling Speaker"")."
-Short_Description,A brief, one-sentence summary of what the product does.
+Short_Description,"A brief, one-sentence summary of what the product does."
 Product_Status,"The product's current status (e.g., ""Active"", ""End-of-Life"")."
-MSRP_USD,The official price in US dollars.
-Cost_Price_USD,Your confidential cost for the item, used for calculating profit.
-Warranty_Years,How long the product is covered against defects.
-Image_URL,A web link to a picture of the product.
-Datasheet_URL,A link to the official technical document (PDF).
+MSRP_USD,"The official price in US dollars."
+Cost_Price_USD,"Your confidential cost for the item, used for calculating profit."
+Warranty_Years,"How long the product is covered against defects."
+Image_URL,"A web link to a picture of the product."
+Datasheet_URL,"A link to the official technical document (PDF)."
 Use_Case_Tags,"Keywords for where the product is typically used (e.g., ""huddle_room"", ""boardroom"")."
 Dimensions_WHD_mm,"The product's size: Width, Height, and Depth in millimeters."
-Weight_kg,How heavy the product is in kilograms.
-Power_Consumption_Watts,How much electricity the product uses when running.
+Weight_kg,"How heavy the product is in kilograms."
+Power_Consumption_Watts,"How much electricity the product uses when running."
 Power_Type,"How the product gets power (e.g., ""AC"" for wall outlet, ""PoE"" for network cable)."
 Connectivity_Ports,"The types of plugs it has (e.g., ""HDMI"", ""USB"", ""RJ45"")."
 Certifications,"Official approvals from companies like Microsoft Teams or Zoom."
 Resolution,"For screens, how sharp the picture is (e.g., ""1920x1080"", ""4K"")."
-Diagonal_Size_Inches,The screen size measured from corner to corner.
-Brightness_Nits,How bright the screen is.
-Contrast_Ratio,The difference between the brightest white and the darkest black.
-Field_of_View_Degrees,For cameras, how wide a view it can see.
+Diagonal_Size_Inches,"The screen size measured from corner to corner."
+Brightness_Nits,"How bright the screen is."
+Contrast_Ratio,"The difference between the brightest white and the darkest black."
+Field_of_View_Degrees,"For cameras, how wide a view it can see."
 Zoom_Type,"The type and power of the camera's zoom (e.g., ""5x Optical"")."
 Audio_Connectivity,"Audio-specific plugs (e.g., ""XLR"", ""Dante"")."
 Coverage_Pattern,"The shape of the area a microphone hears or a speaker covers (e.g., ""Cardioid"")."
-Pickup_Range_Meters,For microphones, how far away it can clearly hear sound.
-Frequency_Response,The range of sound tones a device can produce or capture.
+Pickup_Range_Meters,"For microphones, how far away it can clearly hear sound."
+Frequency_Response,"The range of sound tones a device can produce or capture."
 VESA_Pattern,"For screens, the screw hole pattern on the back for matching with a wall mount."
 Rack_Units,"For rack equipment, its height measured in ""U"" units."
 Installation_Complexity,"A rating of how difficult it is to install (e.g., 1 for easy, 5 for expert)."
-Estimated_Install_Hours,About how many hours it takes to install one unit.
+Estimated_Install_Hours,"About how many hours it takes to install one unit."
 Required_Accessories_SKUs,"A list of other product codes that you MUST buy for this one to work."
-Compatible_Products_SKUs,A list of other product codes that work well with this one.
+Compatible_Products_SKUs,"A list of other product codes that work well with this one."
