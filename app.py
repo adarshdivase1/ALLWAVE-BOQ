@@ -150,7 +150,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -166,10 +166,10 @@ def generate_with_retry(model, prompt, max_retries=3):
         try:
             # --- NEW: Add safety settings to prevent blocking ---
             safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
             ]
             response = model.generate_content(prompt, safety_settings=safety_settings)
             return response
@@ -443,33 +443,47 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
 
     # --- NEW, COLLABORATIVE PROMPT ---
     enhanced_prompt = f"""
-As an expert AV Systems Engineer, your task is to create a logical and complete Bill of Quantities (BOQ). Please follow these guidelines to ensure a high-quality result.
+You are an AV systems engineer creating a Bill of Quantities for a professional installation.
 
-**Guiding Principles for a Successful BOQ:**
-1.  **Create a Complete System:** The most important goal is a fully functional system. Please ensure the BOQ includes all essential components, especially a primary display, an audio solution, and a control system.
-2.  **Select Logical Components:** Choose products that are designed to work together. For instance, please avoid redundant items like two different video bars for one room and ensure any selected mount is appropriate for the chosen display.
-3.  **Respect the Budget:** The client's indicated budget is '{budget_tier}'. Aim to select cost-effective options from the catalog that align with this.
-4.  **Adhere to the Catalog:** Please select products only from the provided list.
-5.  **Strict Formatting:** For the output to be processed correctly, it's essential that your entire response consists ONLY of the Markdown table. Please begin the response with "| Category |" and do not include any text, summaries, or explanations before or after the table.
-
-**Project Requirements:**
+**Project Details:**
 - Room Type: {room_type}
-- Budget: {budget_tier}
-- Required Display Size: Approximately {equipment_reqs['displays']['size_inches']} inches
+- Budget Tier: {budget_tier}
+- Required Display Size: Around {equipment_reqs['displays']['size_inches']} inches
+- Room Area: {room_area} sq ft
 
-**Product Catalog (select from this list only):**
+**Available Products:**
 {product_catalog_string}
 
-Please generate the BOQ now based on these guidelines.
+**Instructions:**
+1. Select products ONLY from the catalog above
+2. Create a complete functional AV system
+3. Include at minimum: 1 display, audio solution, and basic control
+4. Format your response as a markdown table starting immediately with the header row
+5. Use this exact format:
+
+| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |
+|---|---|---|---|---|---|---|
+| Displays | Samsung | QM55R | 55" 4K Display | 1 | 1200.00 | Primary presentation display |
+
+Generate the BOQ table now:
 """
     
     try:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
-            boq_content = response.text
-            # Clean up potential text before the markdown table
-            if '|' in boq_content:
-                boq_content = boq_content[boq_content.find('|'):]
+            boq_content = response.text.strip()
+            
+            # More robust table detection
+            lines = boq_content.split('\n')
+            table_start = -1
+            
+            for i, line in enumerate(lines):
+                if '| Category |' in line or ('|' in line and 'category' in line.lower()):
+                    table_start = i
+                    break
+            
+            if table_start >= 0:
+                boq_content = '\n'.join(lines[table_start:])
             
             boq_items = extract_enhanced_boq_items(boq_content, product_df)
             return boq_content, boq_items, avixa_calcs, equipment_reqs
@@ -478,6 +492,48 @@ Please generate the BOQ now based on these guidelines.
         st.error(f"Enhanced BOQ generation failed: {str(e)}")
         return None, [], None, None
 
+def create_fallback_boq(product_df, room_type, equipment_reqs):
+    """Create a basic fallback BOQ if AI generation fails."""
+    fallback_items = []
+    
+    try:
+        # Get a basic display
+        displays = product_df[product_df['category'].str.contains('Display', case=False, na=False)]
+        if len(displays) > 0:
+            display = displays.iloc[0]
+            fallback_items.append({
+                'category': 'Displays',
+                'name': display.get('name', 'Standard Display'),
+                'brand': display.get('brand', 'Unknown'),
+                'quantity': 1,
+                'price': float(display.get('price', 1000)),
+                'justification': 'Primary presentation display',
+                'specifications': display.get('features', ''),
+                'image_url': display.get('image_url', ''),
+                'gst_rate': display.get('gst_rate', 18),
+                'matched': True
+            })
+        
+        # Get basic audio
+        audio = product_df[product_df['category'].str.contains('Audio', case=False, na=False)]
+        if len(audio) > 0:
+            audio_item = audio.iloc[0]
+            fallback_items.append({
+                'category': 'Audio',
+                'name': audio_item.get('name', 'Audio System'),
+                'brand': audio_item.get('brand', 'Unknown'),
+                'quantity': 1,
+                'price': float(audio_item.get('price', 500)),
+                'justification': 'Room audio system',
+                'specifications': audio_item.get('features', ''),
+                'image_url': audio_item.get('image_url', ''),
+                'gst_rate': audio_item.get('gst_rate', 18),
+                'matched': True
+            })
+        
+        return fallback_items
+    except:
+        return []
 
 # --- BOQ Validation & Data Extraction ---
 class BOQValidator:
@@ -729,25 +785,44 @@ def match_product_in_database(product_name, brand, product_df):
     if product_df is None or len(product_df) == 0:
         return None
     
-    # Clean up the search string to avoid errors
-    safe_product_name = str(product_name).strip()
-    safe_brand = str(brand).strip()
-
-    # Try exact brand and partial name match
-    # FIX: Added regex=False to prevent errors with special characters
-    brand_matches = product_df[product_df['brand'].str.contains(safe_brand, case=False, na=False, regex=False)]
-    if len(brand_matches) > 0:
-        # Match using the first 20 characters of the model number
-        name_matches = brand_matches[brand_matches['name'].str.contains(safe_product_name[:20], case=False, na=False, regex=False)]
-        if len(name_matches) > 0:
-            return name_matches.iloc[0].to_dict()
-    
-    # Try partial name match across all products as a fallback
-    name_matches = product_df[product_df['name'].str.contains(safe_product_name[:15], case=False, na=False, regex=False)]
-    if len(name_matches) > 0:
-        return name_matches.iloc[0].to_dict()
-    
-    return None
+    try:
+        # Clean up the search strings
+        safe_product_name = str(product_name).strip() if product_name else ""
+        safe_brand = str(brand).strip() if brand else ""
+        
+        if not safe_product_name and not safe_brand:
+            return None
+        
+        # Try exact brand match first
+        if safe_brand:
+            brand_mask = product_df['brand'].astype(str).str.contains(
+                re.escape(safe_brand), case=False, na=False, regex=True
+            )
+            brand_matches = product_df[brand_mask]
+            
+            if len(brand_matches) > 0 and safe_product_name:
+                # Try to match product name within brand matches
+                name_mask = brand_matches['name'].astype(str).str.contains(
+                    re.escape(safe_product_name[:20]), case=False, na=False, regex=True
+                )
+                name_matches = brand_matches[name_mask]
+                if len(name_matches) > 0:
+                    return name_matches.iloc[0].to_dict()
+        
+        # Fallback: try product name match across all products
+        if safe_product_name:
+            name_mask = product_df['name'].astype(str).str.contains(
+                re.escape(safe_product_name[:15]), case=False, na=False, regex=True
+            )
+            name_matches = product_df[name_mask]
+            if len(name_matches) > 0:
+                return name_matches.iloc[0].to_dict()
+        
+        return None
+        
+    except Exception as e:
+        # If matching fails, return None rather than crashing
+        return None
 
 def normalize_category(category_text, product_name):
     """Normalize category names to standard categories."""
@@ -1755,7 +1830,11 @@ def main():
                             model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
                         )
                         
-                        # --- MODIFIED: More specific error checking ---
+                        # Add fallback logic
+                        if not boq_items:
+                            st.warning("AI generation failed, creating basic BOQ...")
+                            boq_items = create_fallback_boq(product_df, room_type_key, equipment_reqs)
+                        
                         if boq_items:
                             st.session_state.boq_items = boq_items
                             update_boq_content_with_current_items()
@@ -1781,7 +1860,7 @@ def main():
                             st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
                             st.rerun()
                         else:
-                            st.error("Failed to generate BOQ. The AI model did not return a valid list of items. This can be due to safety settings or an overly restrictive prompt. Please try again or adjust the room requirements.")
+                            st.error("Failed to generate BOQ. The AI model did not return a valid list of items and the fallback also failed. Please check the product catalog.")
 
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
