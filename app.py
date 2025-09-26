@@ -9,22 +9,20 @@ import json
 import time
 import streamlit.components.v1 as components
 from io import BytesIO
+import io # Required for image handling
 
 # --- New Dependencies ---
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as ExcelImage
+import requests
+from PIL import Image as PILImage
 
 # --- Import from components directory ---
 from components.visualizer import create_3d_visualization, ROOM_SPECS
 
-# --- Page Configuration ---
-st.set_page_config(
-    page_title="Professional AV BOQ Generator",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# --- Page Configuration (Moved to login) ---
 
 # --- Currency Conversion ---
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -120,8 +118,17 @@ def load_and_validate_data():
         return df, guidelines, validation_issues
         
     except FileNotFoundError:
-        st.error("FATAL: 'master_product_catalog.csv' not found. Please ensure the file is in the same directory.")
-        return None, None, ["Product catalog file not found"]
+        st.warning("Master product catalog not found. Using sample data for testing.")
+        sample_data = get_sample_product_data()
+        df = pd.DataFrame(sample_data)
+        
+        try:
+            with open("avixa_guidelines.md", "r") as f:
+                guidelines = f.read()
+        except FileNotFoundError:
+            guidelines = "AVIXA guidelines not found. Using basic industry standards."
+            
+        return df, guidelines, ["Using sample product catalog for testing"]
     except Exception as e:
         return None, None, [f"Data loading error: {str(e)}"]
 
@@ -147,12 +154,55 @@ def generate_with_retry(model, prompt, max_retries=3):
             time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
+# --- NEW: Enhanced AVIXA Calculations ---
+def calculate_avixa_recommendations(room_length, room_width, room_height, room_type):
+    """Calculate specific AVIXA recommendations for the room."""
+    
+    room_area = room_length * room_width
+    room_volume = room_area * room_height
+    
+    # AVIXA Display Sizing Formula: Screen height = Viewing distance / 6
+    max_viewing_distance = min(room_length * 0.8, room_width * 0.9)
+    recommended_screen_height_ft = max_viewing_distance / 6
+    recommended_screen_size_inches = recommended_screen_height_ft * 12 / 0.49  # 16:9 aspect ratio
+    
+    # Audio Coverage (AVIXA recommendations)
+    audio_power_needed = room_volume * 0.5  # 0.5W per cubic foot baseline
+    if 'training' in room_type.lower() or 'presentation' in room_type.lower():
+        audio_power_needed *= 1.5
+        
+    # Lighting Requirements (AVIXA standards)
+    ambient_light_target = 200 if 'conference' in room_type.lower() else 300  # Lux
+    presentation_light_target = 500
+    
+    # Network Requirements
+    bandwidth_per_person = 2  # Mbps per person for video conferencing
+    estimated_people = min(room_area // 25, 50)
+    recommended_bandwidth = bandwidth_per_person * estimated_people
+    
+    return {
+        'recommended_display_size': int(recommended_screen_size_inches),
+        'max_viewing_distance': max_viewing_distance,
+        'audio_power_needed': int(audio_power_needed),
+        'ambient_lighting_lux': ambient_light_target,
+        'presentation_lighting_lux': presentation_light_target,
+        'recommended_bandwidth_mbps': recommended_bandwidth,
+        'estimated_occupancy': estimated_people
+    }
+
 # --- NEW: Enhanced BOQ Generation with Justifications ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
     room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
+    
+    avixa_calcs = calculate_avixa_recommendations(
+        room_area**0.5,  # Approximate length from area
+        room_area/(room_area**0.5),  # Approximate width
+        10,  # Default height
+        room_type
+    )
     
     enhanced_prompt = f"""
 You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Your company is AllWave AV. Create a production-ready BOQ.
@@ -167,15 +217,23 @@ You are a Professional AV Systems Engineer with 15+ years of experience in the I
 **TECHNICAL CONSTRAINTS & GUIDELINES:**
 - Adhere to the provided AVIXA standards.
 - Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
-- Viewing distance: {room_spec['viewing_distance_ft'][0]}-{room_spec['viewing_distance_ft'][1]} ft
-- Audio coverage: {room_spec['audio_coverage']}
+- AVIXA Calculated Display Size: {avixa_calcs['recommended_display_size']}" (based on {avixa_calcs['max_viewing_distance']:.1f}ft viewing distance)
+- Audio Power Required: {avixa_calcs['audio_power_needed']}W minimum
+- Estimated Occupancy: {avixa_calcs['estimated_occupancy']} people
 - Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
 
 **MANDATORY REQUIREMENTS:**
 1. ONLY use products from the provided product catalog sample.
 2. Include appropriate mounting, cabling, and installation services.
 3. Add standard service line items (Installation, Warranty, Project Management).
-4. For EACH product, provide a concise justification in the 'Remarks' column.
+4. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
+
+**REMARKS COLUMN GUIDELINES:**
+- Reason 1: Technical specification that makes this product suitable (e.g., "1) 65" display optimal for 12ft viewing distance per AVIXA standards")
+- Reason 2: Business/operational benefit (e.g., "2) Reduces maintenance costs with 5-year warranty")
+- Reason 3: End-user experience benefit (e.g., "3) One-touch meeting start improves user adoption")
+- Keep each reason under 15 words
+- Make reasons specific to the room type and user needs
 
 **OUTPUT FORMAT REQUIREMENT:**
 Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns:
@@ -809,6 +867,32 @@ def _define_styles():
         "thin_border": Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     }
 
+def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
+    """Add product image to Excel cell if URL is valid."""
+    if not image_url or image_url.strip() == '':
+        return
+    
+    try:
+        response = requests.get(image_url, timeout=10)
+        if response.status_code == 200:
+            pil_image = PILImage.open(io.BytesIO(response.content))
+            pil_image.thumbnail((100, 100), PILImage.Resampling.LANCZOS)
+            
+            img_buffer = io.BytesIO()
+            pil_image.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            excel_img = ExcelImage(img_buffer)
+            excel_img.width = 80
+            excel_img.height = 80
+            
+            sheet.add_image(excel_img, f'{column}{row_num}')
+            sheet.row_dimensions[row_num].height = 60
+            
+    except Exception as e:
+        print(f"Failed to add image {image_url}: {e}")
+        sheet[f'{column}{row_num}'] = "Image unavailable"
+
 def _populate_company_boq_sheet(sheet, items, room_name, styles):
     """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
     
@@ -901,9 +985,11 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
                 total_tax,
                 total_with_gst,
                 item.get('justification', ''),
-                item.get('image_url', '')
+                None # Placeholder for image
             ]
             sheet.append(row_data)
+            current_row = sheet.max_row
+            _add_product_image_to_excel(sheet, current_row, item.get('image_url', ''), 'P')
             item_s_no += 1
     
     # Add Services
@@ -1078,6 +1164,69 @@ def add_version_control_sheet(workbook, project_name, client_name):
     sheet['C10'] = "1.0"
     # ... and so on.
 
+def add_terms_conditions_sheet(workbook):
+    """Add Terms & Conditions sheet with standard clauses."""
+    sheet = workbook.create_sheet("Terms & Conditions")
+    
+    terms_content = [
+        ("COMMERCIAL TERMS & CONDITIONS", "header"),
+        ("", ""),
+        ("1. VALIDITY", "section"),
+        ("This quotation is valid for 30 days from the date of issue.", "text"),
+        ("", ""),
+        ("2. PAYMENT TERMS", "section"),
+        ("• 30% advance payment with purchase order", "text"),
+        ("• 40% payment on material delivery at site", "text"), 
+        ("• 30% payment on completion of installation & commissioning", "text"),
+        ("", ""),
+        ("3. DELIVERY & INSTALLATION", "section"),
+        ("• Delivery: 4-6 weeks from receipt of advance payment", "text"),
+        ("• Installation will be completed within 2 weeks of delivery", "text"),
+        ("• Site readiness as per AllWave AV specifications required", "text"),
+        ("", ""),
+        ("4. WARRANTY", "section"),
+        ("• 3 years comprehensive warranty on all equipment", "text"),
+        ("• On-site support within 24-48 hours", "text"),
+        ("• Remote support available 24x7", "text"),
+        ("", ""),
+        ("5. SCOPE INCLUSIONS", "section"),
+        ("• Supply of all listed equipment", "text"),
+        ("• Professional installation & commissioning", "text"),
+        ("• User training (up to 4 hours)", "text"),
+        ("• System documentation & as-built drawings", "text"),
+        ("", ""),
+        ("6. SCOPE EXCLUSIONS", "section"),
+        ("• Civil work, false ceiling, electrical work", "text"),
+        ("• Furniture & interior modifications", "text"),
+        ("• Network infrastructure beyond AV requirements", "text"),
+        ("• Permits & approvals from authorities", "text"),
+        ("", ""),
+        ("7. ADDITIONAL TERMS", "section"),
+        ("• Prices are ex-works and exclude transportation", "text"),
+        ("• All taxes as applicable will be charged extra", "text"),
+        ("• Any changes to scope will be charged separately", "text"),
+        ("• Force majeure conditions applicable", "text"),
+    ]
+    
+    styles = _define_styles()
+    
+    for i, (content, style_type) in enumerate(terms_content, 1):
+        cell = sheet[f'A{i}']
+        cell.value = content
+        
+        if style_type == "header":
+            cell.font = Font(size=16, bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
+            cell.alignment = Alignment(horizontal='center')
+        elif style_type == "section":
+            cell.font = Font(size=12, bold=True, color="002060")
+        elif style_type == "text":
+            cell.font = Font(size=11)
+            
+        cell.alignment = Alignment(wrap_text=True, vertical='top')
+    
+    sheet.column_dimensions['A'].width = 80
+
 def generate_company_excel(rooms_data=None):
     """Generate Excel file in the new company standard format."""
     if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
@@ -1120,6 +1269,7 @@ def generate_company_excel(rooms_data=None):
     # Add other standard sheets
     add_scope_of_work_sheet(workbook)
     add_version_control_sheet(workbook, project_name, client_name)
+    add_terms_conditions_sheet(workbook)
     
     # Remove the default sheet created by openpyxl
     if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
@@ -1132,7 +1282,84 @@ def generate_company_excel(rooms_data=None):
     return excel_buffer.getvalue()
 
 # --- Main Application ---
+def get_sample_product_data():
+    """Provide sample products with images for testing."""
+    return [
+        {
+            'name': 'Samsung 65" 4K Display BU8000',
+            'brand': 'Samsung',
+            'category': 'Displays',
+            'price': 850, # USD
+            'features': '65" 4K UHD, HDR10+, Smart Features, Commercial Grade',
+            'image_url': 'https://images.samsung.com/is/image/samsung/assets/in/2201/pim/feature/bu8000_feature_05_crystal_processor_4k_pc.jpg',
+            'gst_rate': 18
+        },
+        {
+            'name': 'Logitech Rally Bar',
+            'brand': 'Logitech', 
+            'category': 'Video Conferencing',
+            'price': 4500, # USD
+            'features': 'All-in-one video bar, 4K camera, AI-powered framing, Built-in speakers',
+            'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/rally-bar/gallery/rally-bar-gallery-1-graphite.png',
+            'gst_rate': 18
+        },
+        {
+            'name': 'Bose Professional EdgeMax EM180',
+            'brand': 'Bose',
+            'category': 'Audio',
+            'price': 550, # USD
+            'features': 'Ceiling-mount loudspeaker, 180° coverage, Commercial grade',
+            'image_url': 'https://assets.bose.com/content/dam/Bose_DAM/Web/pro/global/products/loudspeakers/EdgeMax_EM180/em180_1.png/jcr:content/renditions/cq5dam.web.320.320.png',
+            'gst_rate': 18
+        }
+    ]
+
+def show_login_page():
+    """Simple login page for internal users."""
+    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="⚡")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.title("🏢 AllWave AV")
+        st.subheader("Design & Estimation Portal")
+        st.markdown("---")
+        
+        with st.form("login_form"):
+            email = st.text_input("Email ID", placeholder="yourname@allwaveav.com")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
+            submit = st.form_submit_button("Login", type="primary", use_container_width=True)
+            
+            if submit:
+                # Simple validation for Phase 1
+                if email.endswith("@allwaveav.com") and len(password) > 3:
+                    st.session_state.authenticated = True
+                    st.session_state.user_email = email
+                    st.success("Login successful!")
+                    st.rerun()
+                else:
+                    st.error("Please use your AllWave AV email and valid password")
+        
+        st.markdown("---")
+        st.info("Phase 1 Internal Tool - Contact IT for access issues")
+
 def main():
+    # Simple authentication for Phase 1
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+        
+    if not st.session_state.authenticated:
+        show_login_page()
+        return
+    
+    # Page config for main app
+    st.set_page_config(
+        page_title="Professional AV BOQ Generator",
+        page_icon="⚡",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
     # --- Enhanced Session State Initialization ---
     if 'boq_items' not in st.session_state:
         st.session_state.boq_items = []
@@ -1165,6 +1392,11 @@ def main():
     
     # --- Sidebar ---
     with st.sidebar:
+        st.markdown(f"👤 **Logged in as:** {st.session_state.get('user_email', 'Unknown')}")
+        if st.button("Logout", type="secondary"):
+            st.session_state.authenticated = False
+            st.rerun()
+        st.markdown("---")
         st.header("Project Configuration")
         client_name = st.text_input("Client Name", key="client_name_input")
         project_name = st.text_input("Project Name", key="project_name_input")
