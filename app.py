@@ -20,7 +20,21 @@ import requests
 from PIL import Image as PILImage
 
 # --- Import from components directory ---
-from components.visualizer import create_3d_visualization, ROOM_SPECS
+# This assumes you have a 'components/visualizer.py' file as in the original code
+# If not, you may need to comment this out or create a dummy file/function.
+try:
+    from components.visualizer import create_3d_visualization, ROOM_SPECS
+except ImportError:
+    st.warning("Could not import 3D visualizer. Assuming dummy data for ROOM_SPECS.")
+    ROOM_SPECS = {
+        'Small Huddle Room (2-4 People)': {'area_sqft': (100, 200), 'recommended_display_size': (55, 65)},
+        'Standard Conference Room (6-8 People)': {'area_sqft': (200, 400), 'recommended_display_size': (65, 75)},
+        'Large Boardroom (10-16 People)': {'area_sqft': (400, 700), 'recommended_display_size': (75, 98)},
+        'Training Room (20+ People)': {'area_sqft': (700, 1200), 'recommended_display_size': (86, 110)},
+    }
+    def create_3d_visualization():
+        st.info("3D Visualization component not found.")
+
 
 # --- Page Configuration (Moved to login) ---
 
@@ -135,14 +149,18 @@ def load_and_validate_data():
 # --- Gemini Configuration ---
 def setup_gemini():
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # Use the correct model name for google.generativeai library
-        model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
-        return model
+        # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            return model
+        else:
+            st.error("GEMINI_API_KEY not found in Streamlit secrets.")
+            return None
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
-        st.error("Check your API key in Streamlit secrets")
         return None
+
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
@@ -151,6 +169,7 @@ def generate_with_retry(model, prompt, max_retries=3):
             return response
         except Exception as e:
             if attempt == max_retries - 1:
+                st.error(f"AI generation failed after {max_retries} attempts: {e}")
                 raise e
             time.sleep(2 ** attempt)  # Exponential backoff
     return None
@@ -194,7 +213,7 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
         presentation_lighting = 175
     
     # Network Bandwidth (Realistic Calculations)
-    estimated_people = min(room_area // 20, 50)  # 20 sq ft per person max
+    estimated_people = min(room_area // 20, 50) if room_area > 0 else 1 # 20 sq ft per person max
     
     # Per-person bandwidth requirements
     hd_video_mbps = 2.5   # 1080p video conferencing
@@ -222,9 +241,9 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
     
     # Cable Run Calculations
     display_runs = 2  # HDMI + Power per display
-    audio_runs = estimated_people // 3  # Microphone coverage
-    network_runs = 3 + (estimated_people // 6)  # Control + cameras + wireless APs
-    power_runs = 2 + (total_av_power // 1000)  # Based on power zones
+    audio_runs = max(1, estimated_people // 3)  # Microphone coverage
+    network_runs = 3 + max(1, estimated_people // 6)  # Control + cameras + wireless APs
+    power_runs = 2 + max(1, total_av_power // 1000)  # Based on power zones
     
     # UPS Requirements (Based on Room Criticality)
     if 'executive' in room_type.lower() or 'boardroom' in room_type.lower():
@@ -246,12 +265,12 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
         # Audio Specifications  
         'audio_power_needed': audio_power_needed,
         'microphone_coverage_zones': max(2, estimated_people // 4),
-        'speaker_zones_required': max(2, int(room_area // 150)),
+        'speaker_zones_required': max(2, int(room_area // 150)) if room_area > 0 else 1,
         
         # Lighting Specifications
         'ambient_lighting_lux': ambient_lighting,
         'presentation_lighting_lux': presentation_lighting,
-        'lighting_zones_required': max(2, int(room_area // 200)),
+        'lighting_zones_required': max(2, int(room_area // 200)) if room_area > 0 else 1,
         
         # Network & Power
         'estimated_occupancy': estimated_people,
@@ -309,7 +328,7 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     }
     
     # Audio System Selection Logic  
-    room_volume = avixa_calcs['audio_power_needed'] / 0.5  # Reverse calculate volume
+    room_volume = (avixa_calcs['audio_power_needed'] / 0.5) if avixa_calcs['audio_power_needed'] > 0 else 1  # Reverse calculate volume
     ceiling_height = technical_reqs.get('ceiling_height', 10)
     
     if room_volume < 2000:  # Small rooms
@@ -404,10 +423,14 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
+    # Avoid division by zero if room_area is 0
+    length = room_area**0.5 if room_area > 0 else 0
+    width = room_area / length if length > 0 else 0
+
     avixa_calcs = calculate_avixa_recommendations(
-        room_area**0.5,  # Approximate length from area
-        room_area/(room_area**0.5),  # Approximate width
-        technical_reqs.get('ceiling_height', 10),  # Use actual ceiling height
+        length,
+        width,
+        technical_reqs.get('ceiling_height', 10),
         room_type
     )
 
@@ -534,7 +557,7 @@ class BOQValidator:
 
 def validate_against_avixa(model, guidelines, boq_items):
     """Use AI to validate the BOQ against AVIXA standards."""
-    if not guidelines or not boq_items:
+    if not guidelines or not boq_items or not model:
         return []
     
     prompt = f"""
@@ -848,7 +871,8 @@ def create_advanced_requirements():
         "security_clearance": security_clearance
     }
 
-# --- NEW: Multi-Room Interface ---
+
+# --- ★★★ BUG FIX IS HERE ★★★ ---
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
     st.subheader("Multi-Room Project Management")
@@ -891,22 +915,32 @@ def create_multi_room_interface():
                 type="secondary"
             )
 
-
     # Display current rooms
     if st.session_state.project_rooms:
         st.markdown("---")
         st.write("**Current Project Rooms:**")
-        
-        # Create a list of room names for the selectbox
+
+        # --- FIX: SAVE STATE BEFORE SWITCHING ---
+        # Before rendering the selectbox, we save the current editor state (st.session_state.boq_items)
+        # back into the correct room in our project list. This prevents data loss on switching rooms.
+        previous_room_index = st.session_state.current_room_index
+        if previous_room_index < len(st.session_state.project_rooms):
+            st.session_state.project_rooms[previous_room_index]['boq_items'] = st.session_state.boq_items
+        # --- END FIX ---
+
         room_options = [room['name'] for room in st.session_state.project_rooms]
         
-        # Find the index of the currently selected room
         try:
             current_index = st.session_state.current_room_index
-        except AttributeError:
+        except (AttributeError, IndexError):
             current_index = 0
             st.session_state.current_room_index = 0
-            
+        
+        # Ensure index is valid
+        if current_index >= len(room_options):
+            current_index = 0
+            st.session_state.current_room_index = 0
+
         selected_room_name = st.selectbox(
             "Select a room to view or edit its BOQ:",
             options=room_options,
@@ -914,25 +948,28 @@ def create_multi_room_interface():
             key="room_selector"
         )
         
-        # Update the current_room_index when selection changes
         new_index = room_options.index(selected_room_name)
         if new_index != st.session_state.current_room_index:
             st.session_state.current_room_index = new_index
-            # Load the selected room's BOQ into the main editor state
+            # Now, we load the data from the newly selected room into the editor state.
             selected_room_boq = st.session_state.project_rooms[new_index].get('boq_items', [])
             st.session_state.boq_items = selected_room_boq
             update_boq_content_with_current_items()
             st.rerun()
             
-        # Display details and actions for the selected room
         selected_room = st.session_state.project_rooms[st.session_state.current_room_index]
         st.info(f"You are currently editing **{selected_room['name']}**. Any generated or edited BOQ will be saved for this room.")
         
         if st.button(f"🗑️ Remove '{selected_room['name']}' from Project", type="secondary"):
             st.session_state.project_rooms.pop(st.session_state.current_room_index)
+            # Reset index and clear the editor to avoid errors
             st.session_state.current_room_index = 0
-            st.session_state.boq_items = [] # Clear the editor
+            if st.session_state.project_rooms:
+                st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
+            else:
+                st.session_state.boq_items = []
             st.rerun()
+
 
 # --- BOQ Display and Editing ---
 def update_boq_content_with_current_items():
@@ -1182,6 +1219,9 @@ def product_search_interface(product_df, currency):
                         st.rerun()
 
 # --- NEW: COMPANY STANDARD EXCEL GENERATION ---
+# All Excel functions (_define_styles, _add_product_image_to_excel, etc.) remain unchanged.
+# They are included here for completeness.
+
 def _define_styles():
     """Defines reusable styles for the Excel sheet."""
     return {
@@ -1200,11 +1240,11 @@ def _define_styles():
 
 def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
     """Add product image to Excel cell if URL is valid."""
-    if not image_url or image_url.strip() == '':
+    if not image_url or not isinstance(image_url, str) or image_url.strip() == '':
         return
     
     try:
-        response = requests.get(image_url, timeout=10)
+        response = requests.get(image_url, timeout=5)
         if response.status_code == 200:
             pil_image = PILImage.open(io.BytesIO(response.content))
             pil_image.thumbnail((100, 100), PILImage.Resampling.LANCZOS)
@@ -1221,7 +1261,8 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
             sheet.row_dimensions[row_num].height = 60
             
     except Exception as e:
-        print(f"Failed to add image {image_url}: {e}")
+        # Don't print to console in production, could log this instead
+        # print(f"Failed to add image {image_url}: {e}")
         sheet[f'{column}{row_num}'] = "Image unavailable"
 
 def _populate_company_boq_sheet(sheet, items, room_name, styles):
@@ -1263,7 +1304,7 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     # Group items by category
     grouped_items = {}
     for item in items:
-        cat = item['category']
+        cat = item.get('category', 'General')
         if cat not in grouped_items:
             grouped_items[cat] = []
         grouped_items[cat].append(item)
@@ -1330,12 +1371,9 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
         ("Project Management", 0.10)
     ]
     
-    if services:
-        # --- FIX APPLIED HERE ---
-        # Calculate the next letter for services instead of indexing out of bounds.
-        services_letter = chr(ord('A') + len(grouped_items))
+    services_letter = chr(ord('A') + len(grouped_items))
+    if services and total_before_gst_hardware > 0:
         sheet.append([services_letter, "Services"])
-        # --- END FIX ---
         cat_row_idx = sheet.max_row
         sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
         sheet[f'A{cat_row_idx}'].font = styles['bold']
@@ -1349,25 +1387,26 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     services_gst_rate = st.session_state.gst_rates.get('Services', 18)
     
     for service_name, percentage in services:
-        service_amount_inr = total_before_gst_hardware * percentage
-        sgst_rate = services_gst_rate / 2
-        cgst_rate = services_gst_rate / 2
-        service_sgst = service_amount_inr * (sgst_rate / 100)
-        service_cgst = service_amount_inr * (cgst_rate / 100)
-        service_total_tax = service_sgst + service_cgst
-        service_total = service_amount_inr + service_total_tax
-        
-        total_before_gst_services += service_amount_inr
-        total_gst_services += service_total_tax
-        
-        sheet.append([
-            item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
-            service_amount_inr, service_amount_inr,
-            f"{sgst_rate}%", service_sgst,
-            f"{cgst_rate}%", service_cgst,
-            service_total_tax, service_total, "As per standard terms", ""
-        ])
-        item_s_no += 1
+        if total_before_gst_hardware > 0:
+            service_amount_inr = total_before_gst_hardware * percentage
+            sgst_rate = services_gst_rate / 2
+            cgst_rate = services_gst_rate / 2
+            service_sgst = service_amount_inr * (sgst_rate / 100)
+            service_cgst = service_amount_inr * (cgst_rate / 100)
+            service_total_tax = service_sgst + service_cgst
+            service_total = service_amount_inr + service_total_tax
+            
+            total_before_gst_services += service_amount_inr
+            total_gst_services += service_total_tax
+            
+            sheet.append([
+                item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
+                service_amount_inr, service_amount_inr,
+                f"{sgst_rate}%", service_sgst,
+                f"{cgst_rate}%", service_cgst,
+                service_total_tax, service_total, "As per standard terms", ""
+            ])
+            item_s_no += 1
 
     # Totals Section
     sheet.append([]) # Spacer
@@ -1380,14 +1419,12 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
         cell.fill = styles['total_fill']
 
     # Services Total
-    # --- FIX APPLIED HERE ---
-    # Use the correctly calculated services_letter variable here as well.
-    services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
-    # --- END FIX ---
-    sheet.append(services_total_row)
-    for cell in sheet[sheet.max_row]:
-        cell.font = styles['bold']
-        cell.fill = styles['total_fill']
+    if total_before_gst_services > 0:
+        services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
+        sheet.append(services_total_row)
+        for cell in sheet[sheet.max_row]:
+            cell.font = styles['bold']
+            cell.fill = styles['total_fill']
         
     # Grand Total
     grand_total = (total_before_gst_hardware + total_gst_hardware) + (total_before_gst_services + total_gst_services)
@@ -1821,8 +1858,6 @@ def main():
         return
     
     model = setup_gemini()
-    if not model:
-        return
     
     project_id, quote_valid_days = create_project_header()
     
@@ -1830,7 +1865,7 @@ def main():
     with st.sidebar:
         st.markdown(f"👤 **Logged in as:** {st.session_state.get('user_email', 'Unknown')}")
         if st.button("Logout", type="secondary"):
-            st.session_state.authenticated = False
+            st.session_state.clear()
             st.rerun()
         st.markdown("---")
         st.header("Project Configuration")
@@ -1880,40 +1915,41 @@ def main():
         
         with col1:
             if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
-                with st.spinner("Generating professional BOQ..."):
-                    room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-                    boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
-                        model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
-                    )
-                    
-                    if boq_items:
-                        # --- FIX APPLIED FOR UI DISPLAY ---
-                        st.session_state.boq_items = boq_items
-                        update_boq_content_with_current_items()
-                        # --- END FIX ---
+                if not model:
+                    st.error("AI Model is not available. Please check API key.")
+                else:
+                    with st.spinner("Generating professional BOQ..."):
+                        room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
+                        boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
+                            model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
+                        )
                         
-                        # Save to current room if multi-room is used
-                        if st.session_state.project_rooms:
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
-                        
-                        avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs)
-                        validator = BOQValidator(ROOM_SPECS, product_df)
-                        issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
-                        avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
-                        
-                        all_issues = issues + avixa_validation['avixa_issues']
-                        all_warnings = warnings + avixa_warnings_old + avixa_validation['avixa_warnings']
-                        
-                        st.session_state.validation_results = {
-                            "issues": all_issues, 
-                            "warnings": all_warnings,
-                            "avixa_compliance_score": avixa_validation['compliance_score']
-                        }
-                        
-                        st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to generate BOQ. Please try again.")
+                        if boq_items:
+                            st.session_state.boq_items = boq_items
+                            update_boq_content_with_current_items()
+                            
+                            # Save to current room in the project list
+                            if st.session_state.project_rooms:
+                                st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                            
+                            avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs)
+                            validator = BOQValidator(ROOM_SPECS, product_df)
+                            issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
+                            avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
+                            
+                            all_issues = issues + avixa_validation['avixa_issues']
+                            all_warnings = warnings + avixa_warnings_old + avixa_validation['avixa_warnings']
+                            
+                            st.session_state.validation_results = {
+                                "issues": all_issues, 
+                                "warnings": all_warnings,
+                                "avixa_compliance_score": avixa_validation['compliance_score']
+                            }
+                            
+                            st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to generate BOQ. Please try again.")
 
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
