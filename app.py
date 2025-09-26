@@ -136,15 +136,10 @@ def load_and_validate_data():
 def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # Use the correct model name
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        
-        # Test the model with a simple call
-        test_response = model.generate_content("Hello")
+        model = genai.GenerativeModel('gemini-1.5-flash')
         return model
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
-        st.error("Please check your API key and model access permissions")
         return None
 
 def generate_with_retry(model, prompt, max_retries=3):
