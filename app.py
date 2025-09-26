@@ -22,18 +22,16 @@ from PIL import Image as PILImage
 # --- Import from components directory ---
 from components.visualizer import create_3d_visualization, ROOM_SPECS
 
-# --- Page Configuration (Moved to login) ---
-
 # --- Currency Conversion ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data(ttl=3600) # Cache for 1 hour
 def get_usd_to_inr_rate():
     """Get current USD to INR exchange rate. Falls back to approximate rate if API fails."""
     try:
         # You can integrate a free API like exchangerate-api.com here
         # For now, using approximate rate
-        return 83.5  # Approximate USD to INR rate - update this or use real API
+        return 83.5 # Approximate USD to INR rate - update this or use real API
     except:
-        return 83.5  # Fallback rate
+        return 83.5 # Fallback rate
 
 def convert_currency(amount_usd, to_currency="INR"):
     """Convert USD amount to specified currency."""
@@ -101,11 +99,11 @@ def load_and_validate_data():
 
         # --- NEW ADDITIONS ---
         if 'image_url' not in df.columns:
-            df['image_url'] = ''  # Will be populated later or manually
+            df['image_url'] = '' # Will be populated later or manually
             validation_issues.append("Image URL column missing - images won't display in Excel")
             
         if 'gst_rate' not in df.columns:
-            df['gst_rate'] = 18  # Default 18% GST for electronics
+            df['gst_rate'] = 18 # Default 18% GST for electronics
             validation_issues.append("GST rate column missing - using 18% default")
         
         try:
@@ -137,12 +135,13 @@ def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         # Use the correct model name for google.generativeai library
-        model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         return model
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
         st.error("Check your API key in Streamlit secrets")
         return None
+
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
@@ -152,10 +151,10 @@ def generate_with_retry(model, prompt, max_retries=3):
         except Exception as e:
             if attempt == max_retries - 1:
                 raise e
-            time.sleep(2 ** attempt)  # Exponential backoff
+            time.sleep(2 ** attempt) # Exponential backoff
     return None
 
-# --- NEW: Enhanced AVIXA Calculations ---
+# --- [FIXED & ENHANCED] AVIXA Standards Implementation ---
 def calculate_avixa_recommendations(room_length, room_width, room_height, room_type):
     """Calculate comprehensive AVIXA recommendations with proper formulas."""
     
@@ -163,18 +162,19 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
     room_volume = room_area * room_height
     
     # AVIXA DISCAS Display Sizing - Proper Implementation
-    max_viewing_distance = min(room_length * 0.85, room_width * 0.9)
+    max_viewing_distance = room_length * 0.9 # Furthest viewer is typically 90% of room length
     
-    # For detailed viewing (text/presentations): Screen height = viewing distance / 6
+    # For detailed viewing (presentations, text): Screen height = viewing distance / 6
     detailed_screen_height_ft = max_viewing_distance / 6
-    detailed_screen_size = detailed_screen_height_ft * 12 / 0.49  # 16:9 conversion
+    # Convert height to diagonal size for a 16:9 aspect ratio (Diagonal = Height / 0.49)
+    detailed_screen_size = detailed_screen_height_ft * 12 / 0.49 
     
     # For basic viewing (video): Screen height = viewing distance / 4  
     basic_screen_height_ft = max_viewing_distance / 4
     basic_screen_size = basic_screen_height_ft * 12 / 0.49
     
     # Audio Power Requirements (Enhanced)
-    base_power_per_cubic_ft = 0.5
+    base_power_per_cubic_ft = 0.5 # Watts per cubic foot for general speech
     if 'training' in room_type.lower() or 'presentation' in room_type.lower():
         base_power_per_cubic_ft = 0.75  # Higher for presentation spaces
     elif 'executive' in room_type.lower() or 'boardroom' in room_type.lower():
@@ -194,17 +194,16 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
         presentation_lighting = 175
     
     # Network Bandwidth (Realistic Calculations)
-    estimated_people = min(room_area // 20, 50)  # 20 sq ft per person max
+    estimated_people = min(int(room_area // 20), 50)  # 20 sq ft per person max
     
     # Per-person bandwidth requirements
     hd_video_mbps = 2.5   # 1080p video conferencing
-    uhd_video_mbps = 8.0   # 4K video conferencing  
     content_sharing_mbps = 5.0  # Wireless presentation
     
     recommended_bandwidth = int((hd_video_mbps * estimated_people) + content_sharing_mbps + 10)  # 10Mbps buffer
     
-    # Power Load Calculations
-    display_power = 250 if detailed_screen_size < 75 else 400  # Watts per display
+    # Power Load Calculations (in Watts)
+    display_power = 250 if detailed_screen_size < 75 else 400
     audio_system_power = 150 + (audio_power_needed * 0.3)  # Amplifiers + processing
     camera_power = 25
     network_power = 100  # Switches and codecs
@@ -222,14 +221,14 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
     
     # Cable Run Calculations
     display_runs = 2  # HDMI + Power per display
-    audio_runs = estimated_people // 3  # Microphone coverage
+    audio_runs = max(1, estimated_people // 4)  # Microphone coverage
     network_runs = 3 + (estimated_people // 6)  # Control + cameras + wireless APs
     power_runs = 2 + (total_av_power // 1000)  # Based on power zones
     
     # UPS Requirements (Based on Room Criticality)
     if 'executive' in room_type.lower() or 'boardroom' in room_type.lower():
         ups_runtime_minutes = 30
-    elif 'training' in room_type.lower() or 'conference' in room_type.lower():
+    elif 'training' in room_type.lower():
         ups_runtime_minutes = 15
     else:
         ups_runtime_minutes = 10
@@ -237,39 +236,28 @@ def calculate_avixa_recommendations(room_length, room_width, room_height, room_t
     ups_va_required = int(total_av_power * 1.4)  # 40% overhead for UPS sizing
     
     return {
-        # Display Specifications
         'detailed_viewing_display_size': int(detailed_screen_size),
         'basic_viewing_display_size': int(basic_screen_size),
         'max_viewing_distance': max_viewing_distance,
         'recommended_display_count': 2 if room_area > 300 else 1,
-        
-        # Audio Specifications  
         'audio_power_needed': audio_power_needed,
         'microphone_coverage_zones': max(2, estimated_people // 4),
         'speaker_zones_required': max(2, int(room_area // 150)),
-        
-        # Lighting Specifications
         'ambient_lighting_lux': ambient_lighting,
         'presentation_lighting_lux': presentation_lighting,
         'lighting_zones_required': max(2, int(room_area // 200)),
-        
-        # Network & Power
         'estimated_occupancy': estimated_people,
         'recommended_bandwidth_mbps': recommended_bandwidth,
         'total_power_load_watts': total_av_power,
         'circuit_requirement': circuit_requirement,
         'ups_va_required': ups_va_required,
         'ups_runtime_minutes': ups_runtime_minutes,
-        
-        # Infrastructure
         'cable_runs': {
             'cat6a_network': network_runs,
             'hdmi_video': display_runs, 
             'xlr_audio': audio_runs,
             'power_circuits': power_runs
         },
-        
-        # Compliance Flags
         'requires_ada_compliance': estimated_people > 15,
         'requires_hearing_loop': estimated_people > 50,
         'requires_assistive_listening': estimated_people > 25
@@ -279,135 +267,79 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     """Determine specific equipment based on AVIXA calculations and room requirements."""
     
     requirements = {
-        'displays': [],
-        'audio_system': {},
-        'video_system': {},
-        'control_system': {},
-        'infrastructure': {},
-        'compliance': []
+        'displays': [], 'audio_system': {}, 'video_system': {},
+        'control_system': {}, 'infrastructure': {}, 'compliance': []
     }
     
-    # Display Selection Logic
     display_size = avixa_calcs['detailed_viewing_display_size']
     display_count = avixa_calcs['recommended_display_count']
-    
-    if display_size <= 55:
-        display_type = "Commercial LED Display"
-    elif display_size <= 75:
-        display_type = "Large Format Display"  
-    elif display_size <= 86:
-        display_type = "Professional Large Format Display"
-    else:
-        display_type = "Video Wall or Laser Projector"
+    display_type = "Professional Large Format Display" if display_size <= 75 else "Video Wall or Laser Projector"
     
     requirements['displays'] = {
-        'type': display_type,
-        'size_inches': display_size,
-        'quantity': display_count,
-        'resolution': '4K' if display_size > 43 else '1080p',
-        'mounting': 'Wall Mount' if display_size < 75 else 'Heavy Duty Wall Mount'
+        'type': display_type, 'size_inches': display_size, 'quantity': display_count,
+        'resolution': '4K', 'mounting': 'Heavy Duty Wall Mount'
     }
     
-    # Audio System Selection Logic  
-    room_volume = avixa_calcs['audio_power_needed'] / 0.5  # Reverse calculate volume
+    room_volume = avixa_calcs['audio_power_needed'] / (0.5 if 'general' in room_type.lower() else 0.75)
     ceiling_height = technical_reqs.get('ceiling_height', 10)
     
-    if room_volume < 2000:  # Small rooms
+    if room_volume < 4000:
+        mic_solution = 'Ceiling Microphone Array' if ceiling_height > 9 else 'Tabletop Microphones'
         requirements['audio_system'] = {
-            'type': 'All-in-One Video Bar',
-            'microphones': 'Integrated Beamforming Array',
-            'speakers': 'Integrated Speakers',
-            'dsp_required': False
-        }
-    elif room_volume < 5000:  # Medium rooms
-        if ceiling_height < 9:
-            mic_solution = 'Tabletop Microphones'
-        else:
-            mic_solution = 'Ceiling Microphone Array'
-            
-        requirements['audio_system'] = {
-            'type': 'Distributed Audio System',
-            'microphones': mic_solution,
+            'type': 'Distributed Audio System', 'microphones': mic_solution,
             'microphone_count': avixa_calcs['microphone_coverage_zones'],
-            'speakers': 'Ceiling Speakers',
-            'speaker_count': avixa_calcs['speaker_zones_required'],
-            'amplifier': 'Multi-Channel Amplifier',
-            'dsp_required': True,
-            'dsp_type': 'Basic DSP with AEC'
+            'speakers': 'Ceiling Speakers', 'speaker_count': avixa_calcs['speaker_zones_required'],
+            'amplifier': 'Multi-Channel Amplifier', 'dsp_required': True, 'dsp_type': 'Basic DSP with AEC'
         }
-    else:  # Large rooms
+    else:
         requirements['audio_system'] = {
-            'type': 'Professional Audio System',
-            'microphones': 'Steerable Ceiling Array',
+            'type': 'Professional Audio System', 'microphones': 'Steerable Ceiling Array',
             'microphone_count': avixa_calcs['microphone_coverage_zones'],
-            'speakers': 'Distributed Ceiling System', 
-            'speaker_count': avixa_calcs['speaker_zones_required'],
-            'amplifier': 'Networked Amplifier System',
-            'dsp_required': True,
-            'dsp_type': 'Advanced DSP with Dante/AVB',
+            'speakers': 'Distributed Ceiling System', 'speaker_count': avixa_calcs['speaker_zones_required'],
+            'amplifier': 'Networked Amplifier System', 'dsp_required': True, 'dsp_type': 'Advanced DSP with Dante/AVB',
             'voice_lift': room_volume > 8000
         }
     
-    # Camera System Selection
-    if avixa_calcs['estimated_occupancy'] <= 6:
-        camera_type = 'Fixed Wide-Angle Camera'
-    elif avixa_calcs['estimated_occupancy'] <= 12:
-        camera_type = 'PTZ Camera with Auto-Framing'
-    else:
-        camera_type = 'Multi-Camera System with Tracking'
-        
+    camera_type = 'PTZ Camera with Auto-Framing' if avixa_calcs['estimated_occupancy'] <= 12 else 'Multi-Camera System with Tracking'
     requirements['video_system'] = {
-        'camera_type': camera_type,
-        'camera_count': 1 if avixa_calcs['estimated_occupancy'] <= 12 else 2,
-        '4k_required': avixa_calcs['estimated_occupancy'] > 8
+        'camera_type': camera_type, 'camera_count': 1 if avixa_calcs['estimated_occupancy'] <= 12 else 2
     }
     
-    # Control System Selection
-    if room_volume < 2000:
-        control_type = 'Native Room System Control'
-    elif room_volume < 5000:
-        control_type = 'Touch Panel Control'
-    else:
-        control_type = 'Advanced Programmable Control System'
-        
+    control_type = 'Touch Panel Control' if room_volume < 5000 else 'Advanced Programmable Control System'
     requirements['control_system'] = {
-        'type': control_type,
-        'touch_panel_size': '7-inch' if room_volume < 3000 else '10-inch',
-        'integration_required': room_volume > 5000
+        'type': control_type, 'touch_panel_size': '7-inch' if room_volume < 3000 else '10-inch'
     }
     
-    # Infrastructure Requirements
     requirements['infrastructure'] = {
         'equipment_rack': 'Wall-Mount' if room_volume < 3000 else 'Floor-Standing',
-        'rack_size': '6U' if room_volume < 3000 else '12U' if room_volume < 8000 else '24U',
+        'rack_size': '12U' if room_volume < 8000 else '24U',
         'cooling_required': avixa_calcs['total_power_load_watts'] > 1500,
-        'ups_required': True,
-        'cable_management': 'Standard' if room_volume < 5000 else 'Professional'
+        'ups_required': True
     }
     
-    # Compliance Requirements
     if avixa_calcs['requires_ada_compliance']:
         requirements['compliance'].append('ADA Compliant Touch Panels (15-48" height)')
-        requirements['compliance'].append('Visual Notification System')
-        
     if avixa_calcs['requires_hearing_loop']:
         requirements['compliance'].append('Hearing Loop System')
-        
     if avixa_calcs['requires_assistive_listening']:
         requirements['compliance'].append('FM/IR Assistive Listening (4% of capacity)')
-    
+        
     return requirements
 
-# --- NEW: Enhanced BOQ Generation with Justifications ---
+# --- [ENHANCED] BOQ Generation with Justifications ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
+    # Use actual room dimensions if available, otherwise approximate from area
+    room_length = technical_reqs.get('room_length', room_area**0.5)
+    room_width = technical_reqs.get('room_width', room_area / (room_area**0.5) if room_area**0.5 > 0 else 1)
+    
     avixa_calcs = calculate_avixa_recommendations(
-        room_area**0.5,  # Approximate length from area
-        room_area/(room_area**0.5),  # Approximate width
-        technical_reqs.get('ceiling_height', 10),  # Use actual ceiling height
+        room_length,
+        room_width,
+        technical_reqs.get('ceiling_height', 10),
         room_type
     )
 
@@ -418,7 +350,7 @@ You are a Professional AV Systems Engineer with AVIXA CTS certification and 15+ 
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
-- Room Area: {room_area:.0f} sq ft  
+- Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
 - Special Requirements: {features}
 - Infrastructure: {technical_reqs}
@@ -526,7 +458,7 @@ class BOQValidator:
                 issues.append(f"Missing essential component: {essential}")
         
         # Power consumption estimation (simplified)
-        total_estimated_power = len(boq_items) * 150  # Rough estimate
+        total_estimated_power = len(boq_items) * 150 # Rough estimate
         if total_estimated_power > 1800:
             warnings.append("System may require a dedicated 20A circuit")
         
@@ -597,10 +529,8 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
         issues.append("CRITICAL: UPS system required but not found in BOQ")
     
     # Cable Infrastructure Check
-    required_cables = avixa_calcs['cable_runs']
-    cable_categories = ['cable', 'wire', 'connect']
     has_adequate_cables = any(
-        any(cable_cat in item.get('category', '').lower() for cable_cat in cable_categories)
+        any(cable_cat in item.get('category', '').lower() for cable_cat in ['cable', 'wire', 'connect'])
         for item in boq_items
     )
     
@@ -656,7 +586,7 @@ def estimate_power_draw(category, name):
     elif 'control' in category_lower:
         return 75
     else:
-        return 25  # Default for misc items
+        return 25 # Default for misc items
 
 # --- NEW: Enhanced BOQ Item Extraction ---
 def extract_enhanced_boq_items(boq_content, product_df):
@@ -668,16 +598,13 @@ def extract_enhanced_boq_items(boq_content, product_df):
     for line in lines:
         line = line.strip()
         
-        # Detect table start based on new headers
         if '|' in line and any(keyword in line.lower() for keyword in ['category', 'make', 'model', 'specifications']):
             in_table = True
             continue
             
-        # Skip separator lines
         if in_table and line.startswith('|') and all(c in '|-: ' for c in line):
             continue
             
-        # Process table rows
         if in_table and line.startswith('|') and 'TOTAL' not in line.upper():
             parts = [part.strip() for part in line.split('|') if part.strip()]
             if len(parts) >= 6: # Category | Make | Model No. | Specifications | Quantity | Unit Price | Remarks
@@ -687,9 +614,6 @@ def extract_enhanced_boq_items(boq_content, product_df):
                 specifications = parts[3]
                 remarks = parts[6] if len(parts) > 6 else "Essential AV system component."
 
-                # Extract quantity and price robustly
-                quantity = 1
-                price = 0
                 try:
                     quantity = int(parts[4])
                 except (ValueError, IndexError):
@@ -701,7 +625,6 @@ def extract_enhanced_boq_items(boq_content, product_df):
                 except (ValueError, IndexError):
                     price = 0
                 
-                # Match with product database
                 matched_product = match_product_in_database(product_name, brand, product_df)
                 if matched_product is not None:
                     price = float(matched_product.get('price', price))
@@ -723,7 +646,7 @@ def extract_enhanced_boq_items(boq_content, product_df):
                     'brand': actual_brand,
                     'quantity': quantity,
                     'price': price,
-                    'justification': remarks, # Mapped to justification
+                    'justification': remarks,
                     'specifications': specifications,
                     'image_url': image_url,
                     'gst_rate': gst_rate,
@@ -741,14 +664,12 @@ def match_product_in_database(product_name, brand, product_df):
     if product_df is None or len(product_df) == 0:
         return None
     
-    # Try exact brand and partial name match
     brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
     if len(brand_matches) > 0:
         name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
         if len(name_matches) > 0:
             return name_matches.iloc[0].to_dict()
     
-    # Try partial name match across all products
     name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
     if len(name_matches) > 0:
         return name_matches.iloc[0].to_dict()
@@ -807,7 +728,6 @@ def create_room_calculator():
         room_area = room_length * room_width
         st.metric("Room Area", f"{room_area:.0f} sq ft")
         
-        # Recommend room type based on area
         recommended_type = None
         for room_type, specs in ROOM_SPECS.items():
             if specs["area_sqft"][0] <= room_area <= specs["area_sqft"][1]:
@@ -819,7 +739,7 @@ def create_room_calculator():
         else:
             st.warning("Room size is outside typical ranges")
     
-    return room_area, ceiling_height
+    return room_area, ceiling_height, room_length, room_width
 
 def create_advanced_requirements():
     """Advanced technical requirements input."""
@@ -892,15 +812,12 @@ def create_multi_room_interface():
             )
 
 
-    # Display current rooms
     if st.session_state.project_rooms:
         st.markdown("---")
         st.write("**Current Project Rooms:**")
         
-        # Create a list of room names for the selectbox
         room_options = [room['name'] for room in st.session_state.project_rooms]
         
-        # Find the index of the currently selected room
         try:
             current_index = st.session_state.current_room_index
         except AttributeError:
@@ -914,17 +831,14 @@ def create_multi_room_interface():
             key="room_selector"
         )
         
-        # Update the current_room_index when selection changes
         new_index = room_options.index(selected_room_name)
         if new_index != st.session_state.current_room_index:
             st.session_state.current_room_index = new_index
-            # Load the selected room's BOQ into the main editor state
             selected_room_boq = st.session_state.project_rooms[new_index].get('boq_items', [])
             st.session_state.boq_items = selected_room_boq
             update_boq_content_with_current_items()
             st.rerun()
             
-        # Display details and actions for the selected room
         selected_room = st.session_state.project_rooms[st.session_state.current_room_index]
         st.info(f"You are currently editing **{selected_room['name']}**. Any generated or edited BOQ will be saved for this room.")
         
@@ -941,18 +855,13 @@ def update_boq_content_with_current_items():
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items added yet."
         return
     
-    # Using the new AI response format for consistency
     boq_content = "## Bill of Quantities\n\n"
     boq_content += "| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |\n"
     boq_content += "|---|---|---|---|---|---|---|\n"
     
-    total_cost = 0
     for item in st.session_state.boq_items:
         quantity = item.get('quantity', 1)
         price = item.get('price', 0)
-        total = quantity * price
-        total_cost += total
-        
         boq_content += f"| {item.get('category', 'N/A')} | {item.get('brand', 'N/A')} | {item.get('name', 'N/A')} | {item.get('specifications', '')} | {quantity} | ${price:,.2f} | {item.get('justification', '')} |\n"
     
     st.session_state.boq_content = boq_content
@@ -963,7 +872,6 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
     item_count = len(st.session_state.boq_items) if 'boq_items' in st.session_state else 0
     st.subheader(f"Generated Bill of Quantities ({item_count} items)")
     
-    # Validation results
     if validation_results and validation_results.get('issues'):
         st.error("Critical Issues Found:")
         for issue in validation_results['issues']: st.write(f"- {issue}")
@@ -972,13 +880,11 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         st.warning("Technical Recommendations & Compliance Notes:")
         for warning in validation_results['warnings']: st.write(f"- {warning}")
     
-    # Display BOQ content
     if boq_content:
         st.markdown(boq_content)
     else:
         st.info("No BOQ content generated yet. Use the interactive editor below.")
     
-    # Totals
     if 'boq_items' in st.session_state and st.session_state.boq_items:
         currency = st.session_state.get('currency', 'USD')
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
@@ -989,7 +895,6 @@ def display_boq_results(boq_content, validation_results, project_id, quote_valid
         else:
             st.metric("Estimated Project Total", format_currency(total_cost * 1.30, 'USD'), help="Includes installation, warranty, and contingency")
     
-    # Interactive Editor
     st.markdown("---")
     create_interactive_boq_editor(product_df)
 
@@ -1181,7 +1086,7 @@ def product_search_interface(product_df, currency):
                         st.success(f"Added {add_qty}x {product['name']}!")
                         st.rerun()
 
-# --- NEW: COMPANY STANDARD EXCEL GENERATION ---
+# --- [FIXED & ENHANCED] COMPANY STANDARD EXCEL GENERATION ---
 def _define_styles():
     """Defines reusable styles for the Excel sheet."""
     return {
@@ -1200,7 +1105,8 @@ def _define_styles():
 
 def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
     """Add product image to Excel cell if URL is valid."""
-    if not image_url or image_url.strip() == '':
+    # --- FIX APPLIED HERE ---
+    if not image_url or not isinstance(image_url, str) or image_url.strip() == '':
         return
     
     try:
@@ -1225,9 +1131,8 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
         sheet[f'{column}{row_num}'] = "Image unavailable"
 
 def _populate_company_boq_sheet(sheet, items, room_name, styles):
-    """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
+    """Helper function to populate a single Excel sheet with BOQ data."""
     
-    # Static Headers
     sheet.merge_cells('A3:P3')
     header_cell = sheet['A3']
     header_cell.value = "All Wave AV Systems Pvt. Ltd."
@@ -1235,14 +1140,12 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     header_cell.fill = styles["header_fill"]
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    # Project Info
     sheet['C5'] = "Room Name / Room Type"
     sheet['E5'] = room_name
     sheet['C6'] = "Floor"
     sheet['C7'] = "Number of Seats"
     sheet['C8'] = "Number of Rooms"
 
-    # Table Headers
     headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
     headers2 = [None, None, None, None, None, None, None, None, 'Rate', 'Amt', 'Rate', 'Amt', None, None, None, None]
     
@@ -1250,9 +1153,8 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     sheet.append(headers2)
     header_start_row = sheet.max_row - 1
     
-    # Merge header cells
-    sheet.merge_cells(start_row=header_start_row, start_column=9, end_row=header_start_row, end_column=10) # SGST
-    sheet.merge_cells(start_row=header_start_row, start_column=11, end_row=header_start_row, end_column=12) # CGST
+    sheet.merge_cells(start_row=header_start_row, start_column=9, end_row=header_start_row, end_column=10)
+    sheet.merge_cells(start_row=header_start_row, start_column=11, end_row=header_start_row, end_column=12)
     
     for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row, min_col=1, max_col=len(headers1)):
         for cell in row:
@@ -1260,7 +1162,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
             cell.fill = styles["table_header_fill"]
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-    # Group items by category
     grouped_items = {}
     for item in items:
         cat = item['category']
@@ -1268,7 +1169,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
             grouped_items[cat] = []
         grouped_items[cat].append(item)
 
-    # Add Items
     total_before_gst_hardware = 0
     total_gst_hardware = 0
     item_s_no = 1
@@ -1276,7 +1176,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     category_letters = [chr(ord('A') + i) for i in range(len(grouped_items))]
     
     for i, (category, cat_items) in enumerate(grouped_items.items()):
-        # Category Header
         cat_header_row = [f"{category_letters[i]}", category]
         sheet.append(cat_header_row)
         cat_row_idx = sheet.max_row
@@ -1301,41 +1200,30 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
             total_gst_hardware += total_tax
             
             row_data = [
-                item_s_no, 
-                None, # Description filled by category
-                item.get('specifications', item.get('name', '')),
-                item.get('brand', 'Unknown'),
-                item.get('name', 'Unknown'),
-                item.get('quantity', 1),
-                unit_price_inr,
-                subtotal,
-                f"{sgst_rate}%",
-                sgst_amount,
-                f"{cgst_rate}%",
-                cgst_amount,
-                total_tax,
-                total_with_gst,
-                item.get('justification', ''),
-                None # Placeholder for image
+                item_s_no, None, item.get('specifications', item.get('name', '')),
+                item.get('brand', 'Unknown'), item.get('name', 'Unknown'),
+                item.get('quantity', 1), unit_price_inr, subtotal,
+                f"{sgst_rate}%", sgst_amount, f"{cgst_rate}%", cgst_amount,
+                total_tax, total_with_gst, item.get('justification', ''), None
             ]
             sheet.append(row_data)
             current_row = sheet.max_row
             _add_product_image_to_excel(sheet, current_row, item.get('image_url', ''), 'P')
             item_s_no += 1
     
-    # Add Services
     services = [
         ("Installation & Commissioning", 0.15),
         ("System Warranty (3 Years)", 0.05),
         ("Project Management", 0.10)
     ]
     
+    total_before_gst_services = 0
+    total_gst_services = 0
+    
     if services:
         # --- FIX APPLIED HERE ---
-        # Calculate the next letter for services instead of indexing out of bounds.
         services_letter = chr(ord('A') + len(grouped_items))
         sheet.append([services_letter, "Services"])
-        # --- END FIX ---
         cat_row_idx = sheet.max_row
         sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
         sheet[f'A{cat_row_idx}'].font = styles['bold']
@@ -1343,55 +1231,45 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
         sheet[f'A{cat_row_idx}'].fill = styles['group_header_fill']
         sheet[f'B{cat_row_idx}'].fill = styles['group_header_fill']
         
-    total_before_gst_services = 0
-    total_gst_services = 0
-    
-    services_gst_rate = st.session_state.gst_rates.get('Services', 18)
-    
-    for service_name, percentage in services:
-        service_amount_inr = total_before_gst_hardware * percentage
-        sgst_rate = services_gst_rate / 2
-        cgst_rate = services_gst_rate / 2
-        service_sgst = service_amount_inr * (sgst_rate / 100)
-        service_cgst = service_amount_inr * (cgst_rate / 100)
-        service_total_tax = service_sgst + service_cgst
-        service_total = service_amount_inr + service_total_tax
+        services_gst_rate = st.session_state.gst_rates.get('Services', 18)
         
-        total_before_gst_services += service_amount_inr
-        total_gst_services += service_total_tax
-        
-        sheet.append([
-            item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
-            service_amount_inr, service_amount_inr,
-            f"{sgst_rate}%", service_sgst,
-            f"{cgst_rate}%", service_cgst,
-            service_total_tax, service_total, "As per standard terms", ""
-        ])
-        item_s_no += 1
+        for service_name, percentage in services:
+            service_amount_inr = total_before_gst_hardware * percentage
+            sgst_rate = services_gst_rate / 2
+            cgst_rate = services_gst_rate / 2
+            service_sgst = service_amount_inr * (sgst_rate / 100)
+            service_cgst = service_amount_inr * (cgst_rate / 100)
+            service_total_tax = service_sgst + service_cgst
+            service_total = service_amount_inr + service_total_tax
+            
+            total_before_gst_services += service_amount_inr
+            total_gst_services += service_total_tax
+            
+            sheet.append([
+                item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
+                service_amount_inr, service_amount_inr,
+                f"{sgst_rate}%", service_sgst, f"{cgst_rate}%", service_cgst,
+                service_total_tax, service_total, "As per standard terms", ""
+            ])
+            item_s_no += 1
 
-    # Totals Section
     sheet.append([]) # Spacer
     
-    # Hardware Total
-    hardware_total_row = ["", "Total for Hardware (A)", "", "", "", "", "", total_before_gst_hardware, "", "", "", "", total_gst_hardware, total_before_gst_hardware + total_gst_hardware]
+    hardware_total_row = ["", f"Total for Hardware ({','.join(category_letters)})", "", "", "", "", "", total_before_gst_hardware, "", "", "", "", total_gst_hardware, total_before_gst_hardware + total_gst_hardware]
     sheet.append(hardware_total_row)
     for cell in sheet[sheet.max_row]:
         cell.font = styles['bold']
         cell.fill = styles['total_fill']
 
-    # Services Total
     # --- FIX APPLIED HERE ---
-    # Use the correctly calculated services_letter variable here as well.
     services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
-    # --- END FIX ---
     sheet.append(services_total_row)
     for cell in sheet[sheet.max_row]:
         cell.font = styles['bold']
         cell.fill = styles['total_fill']
         
-    # Grand Total
     grand_total = (total_before_gst_hardware + total_gst_hardware) + (total_before_gst_services + total_gst_services)
-    sheet.append([]) # Spacer
+    sheet.append([])
     grand_total_row_idx = sheet.max_row + 1
     sheet[f'M{grand_total_row_idx}'] = "Grand Total (INR)"
     sheet[f'N{grand_total_row_idx}'] = grand_total
@@ -1403,78 +1281,74 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles):
     sheet[f'M{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
     sheet[f'N{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
 
-    # Final Formatting
     column_widths = {'A': 8, 'B': 35, 'C': 45, 'D': 20, 'E': 30, 'F': 6, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 18, 'O': 40, 'P': 20}
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
     
-    # Apply borders and number formats
     for row in sheet.iter_rows(min_row=header_start_row + 2, max_row=sheet.max_row):
         for cell in row:
             if cell.value is not None:
                 cell.border = styles['thin_border']
-            if cell.column >= 7 and cell.column <= 14: # Currency columns
+            if cell.column >= 7 and cell.column <= 14:
                 cell.number_format = styles['currency_format']
     
+    # --- RETURN VALUE CHANGE ---
     return total_before_gst_hardware + total_before_gst_services, total_gst_hardware + total_gst_services, grand_total
 
 def add_proposal_summary_sheet(workbook, rooms_data, styles):
     """Adds the Proposal Summary sheet."""
-    sheet = workbook.create_sheet("Proposal Summary")
+    sheet = workbook.create_sheet("Proposal Summary", 0)
     
-    # Header
-    sheet.merge_cells('A3:H3')
-    header_cell = sheet['A3']
+    sheet.merge_cells('A1:F1')
+    header_cell = sheet['A1']
     header_cell.value = "Proposal Summary"
     header_cell.font = styles["header"]
     header_cell.fill = styles["header_fill"]
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
+    sheet.row_dimensions[1].height = 30
 
-    # Table Header
-    headers = ["Sr. No", "Description", "Total Qty", "Rate w/o TAX", "Amount w/o TAX", "Total TAX Amount", "Amount with Tax"]
+    headers = ["Sr. No", "Description", "Total Qty", "Amount w/o TAX", "Total TAX Amount", "Amount with Tax"]
     sheet.append(headers)
     header_row = sheet.max_row
     for cell in sheet[header_row]:
         cell.font = styles["bold"]
         cell.fill = styles["group_header_fill"]
 
-    # Populate with room data
     grand_total_with_tax = 0
+    grand_total_subtotal = 0
+    grand_total_gst = 0
+    
     for i, room in enumerate(rooms_data, 1):
         if room.get('boq_items'):
-            # This requires recalculating totals for the summary. For simplicity, we pass it from the main function.
             subtotal = room.get('subtotal', 0)
             gst = room.get('gst', 0)
             total = room.get('total', 0)
+            
+            grand_total_subtotal += subtotal
+            grand_total_gst += gst
             grand_total_with_tax += total
             
-            sheet.append([i, room['name'], 1, subtotal, subtotal, gst, total])
+            sheet.append([i, room['name'], 1, subtotal, gst, total])
 
-    # Grand Total
     total_row = sheet.max_row + 2
-    sheet[f'F{total_row}'] = "GRAND TOTAL (INR)"
-    sheet[f'G{total_row}'] = grand_total_with_tax
-    sheet[f'F{total_row}'].font = styles["grand_total_font"]
-    sheet[f'G{total_row}'].font = styles["grand_total_font"]
-    sheet[f'F{total_row}'].fill = styles["grand_total_fill"]
-    sheet[f'G{total_row}'].fill = styles["grand_total_fill"]
-
-    # Add Commercial Terms (simplified from CSV)
-    terms_start_row = sheet.max_row + 3
-    sheet[f'B{terms_start_row}'] = "Commercial Terms"
-    sheet[f'B{terms_start_row}'].font = Font(size=14, bold=True)
-    # ... Add more static terms as needed
+    sheet[f'C{total_row}'] = "GRAND TOTAL (INR)"
+    sheet[f'D{total_row}'] = grand_total_subtotal
+    sheet[f'E{total_row}'] = grand_total_gst
+    sheet[f'F{total_row}'] = grand_total_with_tax
     
-    # Formatting
-    for col in ['D', 'E', 'F', 'G']:
+    for col in ['C', 'D', 'E', 'F']:
+        sheet[f'{col}{total_row}'].font = styles["grand_total_font"]
+        sheet[f'{col}{total_row}'].fill = styles["grand_total_fill"]
+
+    sheet.column_dimensions['B'].width = 40
+    for col in ['C', 'D', 'E', 'F']:
+        sheet.column_dimensions[col].width = 20
         for cell in sheet[col]:
             cell.number_format = styles['currency_format']
 
 def add_scope_of_work_sheet(workbook):
     """Adds the static Scope of Work sheet."""
     sheet = workbook.create_sheet("Scope of Work")
-    # This can be populated with the static content from the provided CSV file.
-    # For brevity, I'll add a placeholder.
     sheet['A1'] = "Scope of Work"
     sheet['A1'].font = Font(size=16, bold=True)
     sheet['A3'] = "1. Site Coordination and Prerequisites Clearance."
@@ -1511,32 +1385,13 @@ def add_terms_conditions_sheet(workbook):
         ("• 30% payment on completion of installation & commissioning", "text"),
         ("", ""),
         ("3. DELIVERY & INSTALLATION", "section"),
-        ("• Delivery: 4-6 weeks from receipt of advance payment", "text"),
-        ("• Installation will be completed within 2 weeks of delivery", "text"),
-        ("• Site readiness as per AllWave AV specifications required", "text"),
+        ("• Delivery: 4-6 weeks from receipt of advance payment and site readiness.", "text"),
+        ("• Installation will be completed within 2 weeks of material delivery.", "text"),
+        ("• Site readiness as per AllWave AV specifications is required prior to installation.", "text"),
         ("", ""),
         ("4. WARRANTY", "section"),
-        ("• 3 years comprehensive warranty on all equipment", "text"),
-        ("• On-site support within 24-48 hours", "text"),
-        ("• Remote support available 24x7", "text"),
-        ("", ""),
-        ("5. SCOPE INCLUSIONS", "section"),
-        ("• Supply of all listed equipment", "text"),
-        ("• Professional installation & commissioning", "text"),
-        ("• User training (up to 4 hours)", "text"),
-        ("• System documentation & as-built drawings", "text"),
-        ("", ""),
-        ("6. SCOPE EXCLUSIONS", "section"),
-        ("• Civil work, false ceiling, electrical work", "text"),
-        ("• Furniture & interior modifications", "text"),
-        ("• Network infrastructure beyond AV requirements", "text"),
-        ("• Permits & approvals from authorities", "text"),
-        ("", ""),
-        ("7. ADDITIONAL TERMS", "section"),
-        ("• Prices are ex-works and exclude transportation", "text"),
-        ("• All taxes as applicable will be charged extra", "text"),
-        ("• Any changes to scope will be charged separately", "text"),
-        ("• Force majeure conditions applicable", "text"),
+        ("• 3 years comprehensive on-site warranty on all supplied equipment.", "text"),
+        ("• On-site support within 24-48 business hours for critical failures.", "text"),
     ]
     
     styles = _define_styles()
@@ -1547,16 +1402,13 @@ def add_terms_conditions_sheet(workbook):
         
         if style_type == "header":
             cell.font = Font(size=16, bold=True, color="FFFFFF")
-            cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
-            cell.alignment = Alignment(horizontal='center')
+            cell.fill = PatternFill(start_color="002060", fill_type="solid")
         elif style_type == "section":
             cell.font = Font(size=12, bold=True, color="002060")
-        elif style_type == "text":
-            cell.font = Font(size=11)
-            
+        
         cell.alignment = Alignment(wrap_text=True, vertical='top')
     
-    sheet.column_dimensions['A'].width = 80
+    sheet.column_dimensions['A'].width = 100
 
 def generate_company_excel(rooms_data=None):
     """Generate Excel file in the new company standard format."""
@@ -1570,8 +1422,6 @@ def generate_company_excel(rooms_data=None):
     project_name = st.session_state.get('project_name_input', 'AV Installation')
     client_name = st.session_state.get('client_name_input', 'Valued Client')
     
-    summary_data = []
-
     if rooms_data:
         # Multi-room project
         for room in rooms_data:
@@ -1593,16 +1443,13 @@ def generate_company_excel(rooms_data=None):
         sheet.title = re.sub(r'[\\/*?:"<>|]', '', room_name)[:30]
         subtotal, gst, total = _populate_company_boq_sheet(sheet, st.session_state.boq_items, room_name, styles)
         
-        # Create a dummy rooms_data for summary sheet
         single_room_summary = [{'name': room_name, 'subtotal': subtotal, 'gst': gst, 'total': total, 'boq_items': True}]
         add_proposal_summary_sheet(workbook, single_room_summary, styles)
 
-    # Add other standard sheets
     add_scope_of_work_sheet(workbook)
     add_version_control_sheet(workbook, project_name, client_name)
     add_terms_conditions_sheet(workbook)
     
-    # Remove the default sheet created by openpyxl
     if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
         del workbook["Sheet"]
 
@@ -1616,137 +1463,51 @@ def generate_company_excel(rooms_data=None):
 def get_sample_product_data():
     """Provide comprehensive sample products with AVIXA-relevant specifications."""
     return [
-        # Displays
         {
-            'name': 'Samsung 55" QM55R 4K Display',
-            'brand': 'Samsung',
-            'category': 'Displays',
-            'price': 1200,
-            'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
+            'name': 'Samsung 55" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
+            'price': 1200, 'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
             'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm55r/qm55r_001_front_black.png',
-            'gst_rate': 18,
-            'power_draw': 180
+            'gst_rate': 18, 'power_draw': 180
         },
         {
-            'name': 'Samsung 75" QM75R 4K Display',
-            'brand': 'Samsung', 
-            'category': 'Displays',
-            'price': 2800,
-            'features': '75" 4K UHD, 500-nit brightness, 16/7 operation, Built-in SoC',
+            'name': 'Samsung 75" QM75R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
+            'price': 2800, 'features': '75" 4K UHD, 500-nit brightness, 16/7 operation, Built-in SoC',
             'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm75r/qm75r_001_front_black.png',
-            'gst_rate': 18,
-            'power_draw': 320
+            'gst_rate': 18, 'power_draw': 320
         },
-        
-        # Video Conferencing
         {
-            'name': 'Logitech Rally Bar',
-            'brand': 'Logitech', 
-            'category': 'Video Conferencing',
-            'price': 2700,
-            'features': 'All-in-one video bar, 4K camera, AI auto-framing, Integrated speakers',
+            'name': 'Logitech Rally Bar', 'brand': 'Logitech', 'category': 'Video Conferencing',
+            'price': 2700, 'features': 'All-in-one video bar, 4K camera, AI auto-framing, Integrated speakers',
             'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/rally-bar/gallery/rally-bar-gallery-1-graphite.png',
-            'gst_rate': 18,
-            'power_draw': 90
+            'gst_rate': 18, 'power_draw': 90
         },
         {
-            'name': 'Logitech PTZ Pro 2',
-            'brand': 'Logitech',
-            'category': 'Video Conferencing', 
-            'price': 600,
-            'features': 'PTZ Camera, 10x zoom, 1080p60, USB 3.0, Remote control',
-            'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/ptz-pro-2/gallery/ptz-pro2-gallery-1.png',
-            'gst_rate': 18,
-            'power_draw': 25
-        },
-        
-        # Audio Equipment
-        {
-            'name': 'Shure MXA920 Ceiling Array',
-            'brand': 'Shure',
-            'category': 'Audio',
-            'price': 1800,
-            'features': 'Ceiling mic array, Steerable coverage, Dante networking, IntelliMix DSP',
+            'name': 'Shure MXA920 Ceiling Array', 'brand': 'Shure', 'category': 'Audio',
+            'price': 1800, 'features': 'Ceiling mic array, Steerable coverage, Dante networking, IntelliMix DSP',
             'image_url': 'https://pim-resources.shure.com/OriginFiles/Image/large/MXA920_P1_Primary_Image.png',
-            'gst_rate': 18,
-            'power_draw': 25
+            'gst_rate': 18, 'power_draw': 25
         },
         {
-            'name': 'QSC CP8T Ceiling Speaker',
-            'brand': 'QSC',
-            'category': 'Audio',
-            'price': 280,
-            'features': '8" ceiling speaker, 70V/100V, 60W, Plenum rated, Wide dispersion',
-            'image_url': 'https://www.qsc.com/resource/blob/24070/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cp8t-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 60
+            'name': 'QSC CP8T Ceiling Speaker', 'brand': 'QSC', 'category': 'Audio',
+            'price': 280, 'features': '8" ceiling speaker, 70V/100V, 60W, Plenum rated, Wide dispersion',
+            'image_url': '', 'gst_rate': 18, 'power_draw': 60
         },
         {
-            'name': 'QSC CXD4.2 Amplifier',
-            'brand': 'QSC',
-            'category': 'Audio',
-            'price': 850,
-            'features': '4-channel amplifier, 200W per channel, DSP, Dante, Q-SYS integration',
-            'image_url': 'https://www.qsc.com/resource/blob/24082/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cxd42-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 400
-        },
-        
-        # Control Systems
-        {
-            'name': 'Poly TC10 Touch Controller',
-            'brand': 'Poly',
-            'category': 'Control',
-            'price': 1200,
-            'features': '10" touch controller, Teams/Zoom certified, PoE powered',
+            'name': 'Poly TC10 Touch Controller', 'brand': 'Poly', 'category': 'Control',
+            'price': 1200, 'features': '10" touch controller, Teams/Zoom certified, PoE powered',
             'image_url': 'https://www.poly.com/content/dam/www/products/video-conferencing/poly-tc10/images/poly-tc10-front-image.png',
-            'gst_rate': 18,
-            'power_draw': 25
-        },
-        
-        # Infrastructure
-        {
-            'name': 'APC SMT1500 UPS',
-            'brand': 'APC',
-            'category': 'Infrastructure',
-            'price': 450,
-            'features': '1500VA UPS, LCD display, Network card slot, 8 outlets',
-            'image_url': 'https://www.apc.com/resource/include/techspec_index/images/smt1500.jpg',
-            'gst_rate': 18,
-            'power_draw': 0  # UPS provides power
+            'gst_rate': 18, 'power_draw': 25
         },
         {
-            'name': 'Middle Atlantic EWR-12-22PD Rack',
-            'brand': 'Middle Atlantic',
-            'category': 'Infrastructure', 
-            'price': 650,
-            'features': '12U wall mount rack, Vented front/rear doors, PDU included',
-            'image_url': 'https://www.middleatlantic.com/resource/blob/24090/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/ewr-12-22pd-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 0
-        },
-        
-        # Cables (Essential for AVIXA calculations)
-        {
-            'name': 'Cat6A Cable (per 100ft)',
-            'brand': 'Belden',
-            'category': 'Cables',
-            'price': 85,
-            'features': 'Cat6A network cable, Plenum rated, 10Gb rated, 23AWG',
-            'image_url': '',
-            'gst_rate': 18,
-            'power_draw': 0
+            'name': 'APC SMT1500 UPS', 'brand': 'APC', 'category': 'Infrastructure',
+            'price': 450, 'features': '1500VA UPS, LCD display, Network card slot, 8 outlets',
+            'image_url': '', 'gst_rate': 18, 'power_draw': 0
         },
         {
-            'name': 'HDMI 2.1 Cable (per 50ft)', 
-            'brand': 'Kramer',
-            'category': 'Cables',
-            'price': 120,
-            'features': 'HDMI 2.1 cable, 8K60 support, Active optical hybrid',
-            'image_url': '',
-            'gst_rate': 18, 
-            'power_draw': 0
-        }
+            'name': 'Cat6A Cable (per 100ft)', 'brand': 'Belden', 'category': 'Cables',
+            'price': 85, 'features': 'Cat6A network cable, Plenum rated, 10Gb rated, 23AWG',
+            'image_url': '', 'gst_rate': 18, 'power_draw': 0
+        },
     ]
 
 def show_login_page():
@@ -1766,8 +1527,7 @@ def show_login_page():
             submit = st.form_submit_button("Login", type="primary", use_container_width=True)
             
             if submit:
-                # --- CHANGE IS HERE ---
-                # Now checks if the email ends with EITHER of the domains in the tuple.
+                # --- [FIXED] Authentication Logic ---
                 if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
@@ -1780,7 +1540,6 @@ def show_login_page():
         st.info("Phase 1 Internal Tool - Contact IT for access issues")
 
 def main():
-    # Simple authentication for Phase 1
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
         
@@ -1788,7 +1547,6 @@ def main():
         show_login_page()
         return
     
-    # Page config for main app
     st.set_page_config(
         page_title="Professional AV BOQ Generator",
         page_icon="⚡",
@@ -1796,7 +1554,6 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # --- Enhanced Session State Initialization ---
     if 'boq_items' not in st.session_state:
         st.session_state.boq_items = []
     if 'boq_content' not in st.session_state:
@@ -1810,7 +1567,6 @@ def main():
     if 'gst_rates' not in st.session_state:
         st.session_state.gst_rates = {'Electronics': 18, 'Services': 18, 'Default': 18}
 
-    # Load data
     product_df, guidelines, data_issues = load_and_validate_data()
     if data_issues:
         with st.expander("⚠️ Data Quality Issues", expanded=False):
@@ -1826,7 +1582,6 @@ def main():
     
     project_id, quote_valid_days = create_project_header()
     
-    # --- Sidebar ---
     with st.sidebar:
         st.markdown(f"👤 **Logged in as:** {st.session_state.get('user_email', 'Unknown')}")
         if st.button("Logout", type="secondary"):
@@ -1859,20 +1614,20 @@ def main():
         st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
         st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
 
-    # --- Main Content Tabs ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Multi-Room Project", "Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
     
     with tab1:
         create_multi_room_interface()
         
     with tab2:
-        room_area, ceiling_height = create_room_calculator()
+        room_area, ceiling_height, room_length, room_width = create_room_calculator()
         
     with tab3:
         features = st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", height=100, key="features_text_area")
         technical_reqs = create_advanced_requirements()
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-
+        technical_reqs['room_length'] = st.session_state.get('room_length_input', 24)
+        technical_reqs['room_width'] = st.session_state.get('room_width_input', 16)
 
     with tab4:
         st.subheader("Professional BOQ Generation")
@@ -1890,7 +1645,6 @@ def main():
                         st.session_state.boq_content = boq_content
                         st.session_state.boq_items = boq_items
                         
-                        # Save to current room if multi-room is used
                         if st.session_state.project_rooms:
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         
@@ -1936,9 +1690,7 @@ def main():
             display_boq_results(st.session_state.boq_content, st.session_state.validation_results, project_id, quote_valid_days, product_df)
 
     with tab5:
-        # This function is now imported from components/visualizer.py
         create_3d_visualization()
 
-# Run the application
 if __name__ == "__main__":
     main()
