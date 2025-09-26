@@ -156,87 +156,318 @@ def generate_with_retry(model, prompt, max_retries=3):
 
 # --- NEW: Enhanced AVIXA Calculations ---
 def calculate_avixa_recommendations(room_length, room_width, room_height, room_type):
-    """Calculate specific AVIXA recommendations for the room."""
+    """Calculate comprehensive AVIXA recommendations with proper formulas."""
     
     room_area = room_length * room_width
     room_volume = room_area * room_height
     
-    # AVIXA Display Sizing Formula: Screen height = Viewing distance / 6
-    max_viewing_distance = min(room_length * 0.8, room_width * 0.9)
-    recommended_screen_height_ft = max_viewing_distance / 6
-    recommended_screen_size_inches = recommended_screen_height_ft * 12 / 0.49  # 16:9 aspect ratio
+    # AVIXA DISCAS Display Sizing - Proper Implementation
+    max_viewing_distance = min(room_length * 0.85, room_width * 0.9)
     
-    # Audio Coverage (AVIXA recommendations)
-    audio_power_needed = room_volume * 0.5  # 0.5W per cubic foot baseline
+    # For detailed viewing (text/presentations): Screen height = viewing distance / 6
+    detailed_screen_height_ft = max_viewing_distance / 6
+    detailed_screen_size = detailed_screen_height_ft * 12 / 0.49  # 16:9 conversion
+    
+    # For basic viewing (video): Screen height = viewing distance / 4  
+    basic_screen_height_ft = max_viewing_distance / 4
+    basic_screen_size = basic_screen_height_ft * 12 / 0.49
+    
+    # Audio Power Requirements (Enhanced)
+    base_power_per_cubic_ft = 0.5
     if 'training' in room_type.lower() or 'presentation' in room_type.lower():
-        audio_power_needed *= 1.5
+        base_power_per_cubic_ft = 0.75  # Higher for presentation spaces
+    elif 'executive' in room_type.lower() or 'boardroom' in room_type.lower():
+        base_power_per_cubic_ft = 1.0   # Highest for critical spaces
         
-    # Lighting Requirements (AVIXA standards)
-    ambient_light_target = 200 if 'conference' in room_type.lower() else 300  # Lux
-    presentation_light_target = 500
+    audio_power_needed = int(room_volume * base_power_per_cubic_ft)
     
-    # Network Requirements
-    bandwidth_per_person = 2  # Mbps per person for video conferencing
-    estimated_people = min(room_area // 25, 50)
-    recommended_bandwidth = bandwidth_per_person * estimated_people
+    # Lighting Requirements (AVIXA Standards)
+    if 'conference' in room_type.lower():
+        ambient_lighting = 200  # Lux
+        presentation_lighting = 150  # Dimmed for displays
+    elif 'training' in room_type.lower():
+        ambient_lighting = 300  # Higher for note-taking
+        presentation_lighting = 200
+    else:
+        ambient_lighting = 250  # General meeting spaces
+        presentation_lighting = 175
+    
+    # Network Bandwidth (Realistic Calculations)
+    estimated_people = min(room_area // 20, 50)  # 20 sq ft per person max
+    
+    # Per-person bandwidth requirements
+    hd_video_mbps = 2.5   # 1080p video conferencing
+    uhd_video_mbps = 8.0   # 4K video conferencing  
+    content_sharing_mbps = 5.0  # Wireless presentation
+    
+    recommended_bandwidth = int((hd_video_mbps * estimated_people) + content_sharing_mbps + 10)  # 10Mbps buffer
+    
+    # Power Load Calculations
+    display_power = 250 if detailed_screen_size < 75 else 400  # Watts per display
+    audio_system_power = 150 + (audio_power_needed * 0.3)  # Amplifiers + processing
+    camera_power = 25
+    network_power = 100  # Switches and codecs
+    control_power = 75
+    
+    total_av_power = display_power + audio_system_power + camera_power + network_power + control_power
+    
+    # Circuit Requirements
+    if total_av_power < 1200:
+        circuit_requirement = "15A Standard Circuit"
+    elif total_av_power < 1800:
+        circuit_requirement = "20A Dedicated Circuit"
+    else:
+        circuit_requirement = "Multiple 20A Circuits"
+    
+    # Cable Run Calculations
+    display_runs = 2  # HDMI + Power per display
+    audio_runs = estimated_people // 3  # Microphone coverage
+    network_runs = 3 + (estimated_people // 6)  # Control + cameras + wireless APs
+    power_runs = 2 + (total_av_power // 1000)  # Based on power zones
+    
+    # UPS Requirements (Based on Room Criticality)
+    if 'executive' in room_type.lower() or 'boardroom' in room_type.lower():
+        ups_runtime_minutes = 30
+    elif 'training' in room_type.lower() or 'conference' in room_type.lower():
+        ups_runtime_minutes = 15
+    else:
+        ups_runtime_minutes = 10
+        
+    ups_va_required = int(total_av_power * 1.4)  # 40% overhead for UPS sizing
     
     return {
-        'recommended_display_size': int(recommended_screen_size_inches),
+        # Display Specifications
+        'detailed_viewing_display_size': int(detailed_screen_size),
+        'basic_viewing_display_size': int(basic_screen_size),
         'max_viewing_distance': max_viewing_distance,
-        'audio_power_needed': int(audio_power_needed),
-        'ambient_lighting_lux': ambient_light_target,
-        'presentation_lighting_lux': presentation_light_target,
+        'recommended_display_count': 2 if room_area > 300 else 1,
+        
+        # Audio Specifications  
+        'audio_power_needed': audio_power_needed,
+        'microphone_coverage_zones': max(2, estimated_people // 4),
+        'speaker_zones_required': max(2, int(room_area // 150)),
+        
+        # Lighting Specifications
+        'ambient_lighting_lux': ambient_lighting,
+        'presentation_lighting_lux': presentation_lighting,
+        'lighting_zones_required': max(2, int(room_area // 200)),
+        
+        # Network & Power
+        'estimated_occupancy': estimated_people,
         'recommended_bandwidth_mbps': recommended_bandwidth,
-        'estimated_occupancy': estimated_people
+        'total_power_load_watts': total_av_power,
+        'circuit_requirement': circuit_requirement,
+        'ups_va_required': ups_va_required,
+        'ups_runtime_minutes': ups_runtime_minutes,
+        
+        # Infrastructure
+        'cable_runs': {
+            'cat6a_network': network_runs,
+            'hdmi_video': display_runs, 
+            'xlr_audio': audio_runs,
+            'power_circuits': power_runs
+        },
+        
+        # Compliance Flags
+        'requires_ada_compliance': estimated_people > 15,
+        'requires_hearing_loop': estimated_people > 50,
+        'requires_assistive_listening': estimated_people > 25
     }
+
+def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
+    """Determine specific equipment based on AVIXA calculations and room requirements."""
+    
+    requirements = {
+        'displays': [],
+        'audio_system': {},
+        'video_system': {},
+        'control_system': {},
+        'infrastructure': {},
+        'compliance': []
+    }
+    
+    # Display Selection Logic
+    display_size = avixa_calcs['detailed_viewing_display_size']
+    display_count = avixa_calcs['recommended_display_count']
+    
+    if display_size <= 55:
+        display_type = "Commercial LED Display"
+    elif display_size <= 75:
+        display_type = "Large Format Display"  
+    elif display_size <= 86:
+        display_type = "Professional Large Format Display"
+    else:
+        display_type = "Video Wall or Laser Projector"
+    
+    requirements['displays'] = {
+        'type': display_type,
+        'size_inches': display_size,
+        'quantity': display_count,
+        'resolution': '4K' if display_size > 43 else '1080p',
+        'mounting': 'Wall Mount' if display_size < 75 else 'Heavy Duty Wall Mount'
+    }
+    
+    # Audio System Selection Logic  
+    room_volume = avixa_calcs['audio_power_needed'] / 0.5  # Reverse calculate volume
+    ceiling_height = technical_reqs.get('ceiling_height', 10)
+    
+    if room_volume < 2000:  # Small rooms
+        requirements['audio_system'] = {
+            'type': 'All-in-One Video Bar',
+            'microphones': 'Integrated Beamforming Array',
+            'speakers': 'Integrated Speakers',
+            'dsp_required': False
+        }
+    elif room_volume < 5000:  # Medium rooms
+        if ceiling_height < 9:
+            mic_solution = 'Tabletop Microphones'
+        else:
+            mic_solution = 'Ceiling Microphone Array'
+            
+        requirements['audio_system'] = {
+            'type': 'Distributed Audio System',
+            'microphones': mic_solution,
+            'microphone_count': avixa_calcs['microphone_coverage_zones'],
+            'speakers': 'Ceiling Speakers',
+            'speaker_count': avixa_calcs['speaker_zones_required'],
+            'amplifier': 'Multi-Channel Amplifier',
+            'dsp_required': True,
+            'dsp_type': 'Basic DSP with AEC'
+        }
+    else:  # Large rooms
+        requirements['audio_system'] = {
+            'type': 'Professional Audio System',
+            'microphones': 'Steerable Ceiling Array',
+            'microphone_count': avixa_calcs['microphone_coverage_zones'],
+            'speakers': 'Distributed Ceiling System', 
+            'speaker_count': avixa_calcs['speaker_zones_required'],
+            'amplifier': 'Networked Amplifier System',
+            'dsp_required': True,
+            'dsp_type': 'Advanced DSP with Dante/AVB',
+            'voice_lift': room_volume > 8000
+        }
+    
+    # Camera System Selection
+    if avixa_calcs['estimated_occupancy'] <= 6:
+        camera_type = 'Fixed Wide-Angle Camera'
+    elif avixa_calcs['estimated_occupancy'] <= 12:
+        camera_type = 'PTZ Camera with Auto-Framing'
+    else:
+        camera_type = 'Multi-Camera System with Tracking'
+        
+    requirements['video_system'] = {
+        'camera_type': camera_type,
+        'camera_count': 1 if avixa_calcs['estimated_occupancy'] <= 12 else 2,
+        '4k_required': avixa_calcs['estimated_occupancy'] > 8
+    }
+    
+    # Control System Selection
+    if room_volume < 2000:
+        control_type = 'Native Room System Control'
+    elif room_volume < 5000:
+        control_type = 'Touch Panel Control'
+    else:
+        control_type = 'Advanced Programmable Control System'
+        
+    requirements['control_system'] = {
+        'type': control_type,
+        'touch_panel_size': '7-inch' if room_volume < 3000 else '10-inch',
+        'integration_required': room_volume > 5000
+    }
+    
+    # Infrastructure Requirements
+    requirements['infrastructure'] = {
+        'equipment_rack': 'Wall-Mount' if room_volume < 3000 else 'Floor-Standing',
+        'rack_size': '6U' if room_volume < 3000 else '12U' if room_volume < 8000 else '24U',
+        'cooling_required': avixa_calcs['total_power_load_watts'] > 1500,
+        'ups_required': True,
+        'cable_management': 'Standard' if room_volume < 5000 else 'Professional'
+    }
+    
+    # Compliance Requirements
+    if avixa_calcs['requires_ada_compliance']:
+        requirements['compliance'].append('ADA Compliant Touch Panels (15-48" height)')
+        requirements['compliance'].append('Visual Notification System')
+        
+    if avixa_calcs['requires_hearing_loop']:
+        requirements['compliance'].append('Hearing Loop System')
+        
+    if avixa_calcs['requires_assistive_listening']:
+        requirements['compliance'].append('FM/IR Assistive Listening (4% of capacity)')
+    
+    return requirements
 
 # --- NEW: Enhanced BOQ Generation with Justifications ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation that includes WHY column with justifications."""
     
-    room_spec = ROOM_SPECS[room_type]
     product_catalog_string = product_df.head(150).to_csv(index=False)
     
     avixa_calcs = calculate_avixa_recommendations(
         room_area**0.5,  # Approximate length from area
         room_area/(room_area**0.5),  # Approximate width
-        10,  # Default height
+        technical_reqs.get('ceiling_height', 10),  # Use actual ceiling height
         room_type
     )
-    
+
+    equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
+
     enhanced_prompt = f"""
-You are a Professional AV Systems Engineer with 15+ years of experience in the Indian market. Your company is AllWave AV. Create a production-ready BOQ.
+You are a Professional AV Systems Engineer with AVIXA CTS certification and 15+ years of experience in the Indian market. Your company is AllWave AV. Create a production-ready BOQ following AVIXA DISCAS standards.
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
-- Room Area: {room_area:.0f} sq ft
+- Room Area: {room_area:.0f} sq ft  
 - Budget Tier: {budget_tier}
 - Special Requirements: {features}
 - Infrastructure: {technical_reqs}
 
-**TECHNICAL CONSTRAINTS & GUIDELINES:**
-- Adhere to the provided AVIXA standards.
-- Display size range: {room_spec['recommended_display_size'][0]}"-{room_spec['recommended_display_size'][1]}"
-- AVIXA Calculated Display Size: {avixa_calcs['recommended_display_size']}" (based on {avixa_calcs['max_viewing_distance']:.1f}ft viewing distance)
+**AVIXA TECHNICAL CALCULATIONS:**
+- Display Size (Detailed Viewing): {avixa_calcs['detailed_viewing_display_size']}" (based on {avixa_calcs['max_viewing_distance']:.1f}ft viewing distance)
+- Display Count Required: {avixa_calcs['recommended_display_count']}
 - Audio Power Required: {avixa_calcs['audio_power_needed']}W minimum
+- Microphone Coverage Zones: {avixa_calcs['microphone_coverage_zones']}
+- Speaker Zones Required: {avixa_calcs['speaker_zones_required']}
 - Estimated Occupancy: {avixa_calcs['estimated_occupancy']} people
-- Budget target: ${room_spec['typical_budget_range'][0]:,}-${room_spec['typical_budget_range'][1]:,}
+- Total Power Load: {avixa_calcs['total_power_load_watts']}W
+- Circuit Requirement: {avixa_calcs['circuit_requirement']}
+- Network Bandwidth Required: {avixa_calcs['recommended_bandwidth_mbps']} Mbps
+
+**EQUIPMENT SELECTION REQUIREMENTS:**
+- Displays: {equipment_reqs['displays']['type']} - {equipment_reqs['displays']['size_inches']}" x {equipment_reqs['displays']['quantity']}
+- Audio System: {equipment_reqs['audio_system']['type']}
+- Microphones: {equipment_reqs['audio_system']['microphones']}
+- Camera System: {equipment_reqs['video_system']['camera_type']}
+- Control System: {equipment_reqs['control_system']['type']}
+- Infrastructure: {equipment_reqs['infrastructure']['equipment_rack']} ({equipment_reqs['infrastructure']['rack_size']})
+
+**COMPLIANCE REQUIREMENTS:**
+{chr(10).join(f"- {req}" for req in equipment_reqs['compliance']) if equipment_reqs['compliance'] else "- Standard commercial installation"}
+
+**CABLE AND INFRASTRUCTURE REQUIREMENTS:**
+- Cat6A Network Runs: {avixa_calcs['cable_runs']['cat6a_network']}
+- HDMI Video Runs: {avixa_calcs['cable_runs']['hdmi_video']}
+- XLR Audio Runs: {avixa_calcs['cable_runs']['xlr_audio']}  
+- Power Circuit Runs: {avixa_calcs['cable_runs']['power_circuits']}
+- UPS Requirement: {avixa_calcs['ups_va_required']}VA, {avixa_calcs['ups_runtime_minutes']} minutes runtime
 
 **MANDATORY REQUIREMENTS:**
 1. ONLY use products from the provided product catalog sample.
-2. Include appropriate mounting, cabling, and installation services.
-3. Add standard service line items (Installation, Warranty, Project Management).
-4. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
+2. Include ALL calculated cable runs and infrastructure items.
+3. Add UPS system based on calculated requirements.
+4. Include compliance items if required.
+5. Add standard service line items (Installation, Warranty, Project Management).
+6. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
 
 **REMARKS COLUMN GUIDELINES:**
-- Reason 1: Technical specification that makes this product suitable (e.g., "1) 65" display optimal for 12ft viewing distance per AVIXA standards")
-- Reason 2: Business/operational benefit (e.g., "2) Reduces maintenance costs with 5-year warranty")
-- Reason 3: End-user experience benefit (e.g., "3) One-touch meeting start improves user adoption")
+- Reason 1: Technical specification that makes this product suitable (reference AVIXA calculations)
+- Reason 2: Business/operational benefit (e.g., "Reduces maintenance costs with 5-year warranty")
+- Reason 3: End-user experience benefit (e.g., "One-touch meeting start improves user adoption")
 - Keep each reason under 15 words
-- Make reasons specific to the room type and user needs
+- Reference specific AVIXA calculations where applicable
 
 **OUTPUT FORMAT REQUIREMENT:**
-Start with a brief System Design Summary, then provide the BOQ in a Markdown table with these exact columns:
+Start with a System Design Summary including AVIXA compliance notes, then provide the BOQ in a Markdown table:
 | Category | Make | Model No. | Specifications | Quantity | Unit Price (USD) | Remarks |
 
 **PRODUCT CATALOG SAMPLE:**
@@ -245,7 +476,7 @@ Start with a brief System Design Summary, then provide the BOQ in a Markdown tab
 **AVIXA GUIDELINES:**
 {guidelines}
 
-Generate the detailed BOQ:
+Generate the detailed AVIXA-compliant BOQ:
 """
     
     try:
@@ -253,11 +484,11 @@ Generate the detailed BOQ:
         if response and response.text:
             boq_content = response.text
             boq_items = extract_enhanced_boq_items(boq_content, product_df)
-            return boq_content, boq_items
-        return None, []
+            return boq_content, boq_items, avixa_calcs, equipment_reqs
+        return None, [], None, None
     except Exception as e:
         st.error(f"Enhanced BOQ generation failed: {str(e)}")
-        return None, []
+        return None, [], None, None
 
 
 # --- BOQ Validation & Data Extraction ---
@@ -328,6 +559,104 @@ def validate_against_avixa(model, guidelines, boq_items):
     except Exception as e:
         return [f"AVIXA compliance check failed: {str(e)}"]
 
+def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
+    """Validate BOQ against AVIXA standards and compliance requirements."""
+    issues = []
+    warnings = []
+    
+    # Display Compliance Validation
+    displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
+    if not displays:
+        issues.append("CRITICAL: No display found in BOQ")
+    else:
+        for display in displays:
+            size_match = re.search(r'(\d+)"', display.get('name', ''))
+            if size_match:
+                size = int(size_match.group(1))
+                recommended_size = avixa_calcs['detailed_viewing_display_size']
+                if abs(size - recommended_size) > 10:
+                    warnings.append(f"Display size {size}\" deviates from AVIXA calculation ({recommended_size}\")")
+    
+    # Audio System Compliance
+    has_dsp = any('dsp' in item.get('name', '').lower() or 'processor' in item.get('name', '').lower() 
+                  for item in boq_items)
+    if equipment_reqs['audio_system'].get('dsp_required') and not has_dsp:
+        issues.append("CRITICAL: DSP required but not found in BOQ")
+    
+    # Power Load Validation
+    total_estimated_power = sum(item.get('power_draw', 150) * item.get('quantity', 1) 
+                                for item in boq_items if 'service' not in item.get('category', '').lower())
+    
+    if total_estimated_power > avixa_calcs['total_power_load_watts'] * 1.2:
+        warnings.append(f"Power consumption ({total_estimated_power}W) exceeds AVIXA calculation")
+    
+    # UPS Requirement Check
+    has_ups = any('ups' in item.get('name', '').lower() for item in boq_items)
+    if avixa_calcs['ups_va_required'] > 1000 and not has_ups:
+        issues.append("CRITICAL: UPS system required but not found in BOQ")
+    
+    # Cable Infrastructure Check
+    required_cables = avixa_calcs['cable_runs']
+    cable_categories = ['cable', 'wire', 'connect']
+    has_adequate_cables = any(
+        any(cable_cat in item.get('category', '').lower() for cable_cat in cable_categories)
+        for item in boq_items
+    )
+    
+    if not has_adequate_cables:
+        warnings.append("Cable infrastructure may be inadequate for calculated runs")
+    
+    # Compliance Requirements Check
+    if avixa_calcs['requires_ada_compliance']:
+        ada_items = [item for item in boq_items 
+                     if any(term in item.get('name', '').lower() 
+                            for term in ['assistive', 'ada', 'hearing', 'loop'])]
+        if not ada_items:
+            issues.append("CRITICAL: ADA compliance required but no assistive devices in BOQ")
+    
+    return {
+        'avixa_issues': issues,
+        'avixa_warnings': warnings,
+        'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
+        'avixa_calculations_used': avixa_calcs,
+        'equipment_requirements_met': equipment_reqs
+    }
+
+def estimate_power_draw(category, name):
+    """Estimate power draw based on equipment category and name."""
+    name_lower = name.lower()
+    category_lower = category.lower()
+    
+    if 'display' in category_lower:
+        if any(size in name_lower for size in ['55', '60', '65']):
+            return 200
+        elif any(size in name_lower for size in ['70', '75', '80']):
+            return 300
+        elif any(size in name_lower for size in ['85', '90', '95', '98']):
+            return 400
+        else:
+            return 150
+    elif 'audio' in category_lower:
+        if 'amplifier' in name_lower:
+            return 300
+        elif 'speaker' in name_lower:
+            return 60
+        elif 'microphone' in name_lower:
+            return 15
+        else:
+            return 50
+    elif 'video conferencing' in category_lower:
+        if 'rally' in name_lower or 'bar' in name_lower:
+            return 90
+        elif 'camera' in name_lower:
+            return 25
+        else:
+            return 40
+    elif 'control' in category_lower:
+        return 75
+    else:
+        return 25  # Default for misc items
+
 # --- NEW: Enhanced BOQ Item Extraction ---
 def extract_enhanced_boq_items(boq_content, product_df):
     """Extract BOQ items from AI response based on new company format."""
@@ -397,7 +726,8 @@ def extract_enhanced_boq_items(boq_content, product_df):
                     'specifications': specifications,
                     'image_url': image_url,
                     'gst_rate': gst_rate,
-                    'matched': matched_product is not None
+                    'matched': matched_product is not None,
+                    'power_draw': estimate_power_draw(actual_category, actual_name)
                 })
                 
             elif in_table and not line.startswith('|'):
@@ -1283,34 +1613,138 @@ def generate_company_excel(rooms_data=None):
 
 # --- Main Application ---
 def get_sample_product_data():
-    """Provide sample products with images for testing."""
+    """Provide comprehensive sample products with AVIXA-relevant specifications."""
     return [
+        # Displays
         {
-            'name': 'Samsung 65" 4K Display BU8000',
+            'name': 'Samsung 55" QM55R 4K Display',
             'brand': 'Samsung',
             'category': 'Displays',
-            'price': 850, # USD
-            'features': '65" 4K UHD, HDR10+, Smart Features, Commercial Grade',
-            'image_url': 'https://images.samsung.com/is/image/samsung/assets/in/2201/pim/feature/bu8000_feature_05_crystal_processor_4k_pc.jpg',
-            'gst_rate': 18
+            'price': 1200,
+            'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
+            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm55r/qm55r_001_front_black.png',
+            'gst_rate': 18,
+            'power_draw': 180
         },
+        {
+            'name': 'Samsung 75" QM75R 4K Display',
+            'brand': 'Samsung', 
+            'category': 'Displays',
+            'price': 2800,
+            'features': '75" 4K UHD, 500-nit brightness, 16/7 operation, Built-in SoC',
+            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm75r/qm75r_001_front_black.png',
+            'gst_rate': 18,
+            'power_draw': 320
+        },
+        
+        # Video Conferencing
         {
             'name': 'Logitech Rally Bar',
             'brand': 'Logitech', 
             'category': 'Video Conferencing',
-            'price': 4500, # USD
-            'features': 'All-in-one video bar, 4K camera, AI-powered framing, Built-in speakers',
+            'price': 2700,
+            'features': 'All-in-one video bar, 4K camera, AI auto-framing, Integrated speakers',
             'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/rally-bar/gallery/rally-bar-gallery-1-graphite.png',
-            'gst_rate': 18
+            'gst_rate': 18,
+            'power_draw': 90
         },
         {
-            'name': 'Bose Professional EdgeMax EM180',
-            'brand': 'Bose',
+            'name': 'Logitech PTZ Pro 2',
+            'brand': 'Logitech',
+            'category': 'Video Conferencing', 
+            'price': 600,
+            'features': 'PTZ Camera, 10x zoom, 1080p60, USB 3.0, Remote control',
+            'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/ptz-pro-2/gallery/ptz-pro2-gallery-1.png',
+            'gst_rate': 18,
+            'power_draw': 25
+        },
+        
+        # Audio Equipment
+        {
+            'name': 'Shure MXA920 Ceiling Array',
+            'brand': 'Shure',
             'category': 'Audio',
-            'price': 550, # USD
-            'features': 'Ceiling-mount loudspeaker, 180° coverage, Commercial grade',
-            'image_url': 'https://assets.bose.com/content/dam/Bose_DAM/Web/pro/global/products/loudspeakers/EdgeMax_EM180/em180_1.png/jcr:content/renditions/cq5dam.web.320.320.png',
-            'gst_rate': 18
+            'price': 1800,
+            'features': 'Ceiling mic array, Steerable coverage, Dante networking, IntelliMix DSP',
+            'image_url': 'https://pim-resources.shure.com/OriginFiles/Image/large/MXA920_P1_Primary_Image.png',
+            'gst_rate': 18,
+            'power_draw': 25
+        },
+        {
+            'name': 'QSC CP8T Ceiling Speaker',
+            'brand': 'QSC',
+            'category': 'Audio',
+            'price': 280,
+            'features': '8" ceiling speaker, 70V/100V, 60W, Plenum rated, Wide dispersion',
+            'image_url': 'https://www.qsc.com/resource/blob/24070/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cp8t-data.jpg',
+            'gst_rate': 18,
+            'power_draw': 60
+        },
+        {
+            'name': 'QSC CXD4.2 Amplifier',
+            'brand': 'QSC',
+            'category': 'Audio',
+            'price': 850,
+            'features': '4-channel amplifier, 200W per channel, DSP, Dante, Q-SYS integration',
+            'image_url': 'https://www.qsc.com/resource/blob/24082/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cxd42-data.jpg',
+            'gst_rate': 18,
+            'power_draw': 400
+        },
+        
+        # Control Systems
+        {
+            'name': 'Poly TC10 Touch Controller',
+            'brand': 'Poly',
+            'category': 'Control',
+            'price': 1200,
+            'features': '10" touch controller, Teams/Zoom certified, PoE powered',
+            'image_url': 'https://www.poly.com/content/dam/www/products/video-conferencing/poly-tc10/images/poly-tc10-front-image.png',
+            'gst_rate': 18,
+            'power_draw': 25
+        },
+        
+        # Infrastructure
+        {
+            'name': 'APC SMT1500 UPS',
+            'brand': 'APC',
+            'category': 'Infrastructure',
+            'price': 450,
+            'features': '1500VA UPS, LCD display, Network card slot, 8 outlets',
+            'image_url': 'https://www.apc.com/resource/include/techspec_index/images/smt1500.jpg',
+            'gst_rate': 18,
+            'power_draw': 0  # UPS provides power
+        },
+        {
+            'name': 'Middle Atlantic EWR-12-22PD Rack',
+            'brand': 'Middle Atlantic',
+            'category': 'Infrastructure', 
+            'price': 650,
+            'features': '12U wall mount rack, Vented front/rear doors, PDU included',
+            'image_url': 'https://www.middleatlantic.com/resource/blob/24090/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/ewr-12-22pd-data.jpg',
+            'gst_rate': 18,
+            'power_draw': 0
+        },
+        
+        # Cables (Essential for AVIXA calculations)
+        {
+            'name': 'Cat6A Cable (per 100ft)',
+            'brand': 'Belden',
+            'category': 'Cables',
+            'price': 85,
+            'features': 'Cat6A network cable, Plenum rated, 10Gb rated, 23AWG',
+            'image_url': '',
+            'gst_rate': 18,
+            'power_draw': 0
+        },
+        {
+            'name': 'HDMI 2.1 Cable (per 50ft)', 
+            'brand': 'Kramer',
+            'category': 'Cables',
+            'price': 120,
+            'features': 'HDMI 2.1 cable, 8K60 support, Active optical hybrid',
+            'image_url': '',
+            'gst_rate': 18, 
+            'power_draw': 0
         }
     ]
 
@@ -1436,6 +1870,8 @@ def main():
     with tab3:
         features = st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", height=100, key="features_text_area")
         technical_reqs = create_advanced_requirements()
+        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
+
 
     with tab4:
         st.subheader("Professional BOQ Generation")
@@ -1445,7 +1881,7 @@ def main():
             if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
                 with st.spinner("Generating professional BOQ..."):
                     room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-                    boq_content, boq_items = generate_boq_with_justifications(
+                    boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
                         model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
                     )
                     
@@ -1457,11 +1893,20 @@ def main():
                         if st.session_state.project_rooms:
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         
+                        avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs)
                         validator = BOQValidator(ROOM_SPECS, product_df)
                         issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
-                        avixa_warnings = validate_against_avixa(model, guidelines, boq_items)
-                        warnings.extend(avixa_warnings)
-                        st.session_state.validation_results = {"issues": issues, "warnings": warnings}
+                        avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
+                        
+                        all_issues = issues + avixa_validation['avixa_issues']
+                        all_warnings = warnings + avixa_warnings_old + avixa_validation['avixa_warnings']
+                        
+                        st.session_state.validation_results = {
+                            "issues": all_issues, 
+                            "warnings": all_warnings,
+                            "avixa_compliance_score": avixa_validation['compliance_score']
+                        }
+                        
                         st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
                         st.rerun()
                     else:
