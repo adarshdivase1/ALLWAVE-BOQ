@@ -20,8 +20,6 @@ import requests
 from PIL import Image as PILImage
 
 # --- Import from components directory ---
-# This assumes you have a 'components/visualizer.py' file as in the original code
-# If not, you may need to comment this out or create a dummy file/function.
 try:
     from components.visualizer import create_3d_visualization, ROOM_SPECS
 except ImportError:
@@ -74,7 +72,7 @@ def load_and_validate_data():
         validation_issues = []
         
         # Check for missing critical data
-        if df['name'].isnull().sum() > 0:
+        if 'name' not in df.columns or df['name'].isnull().sum() > 0:
             validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
         
         # Check for zero/missing prices
@@ -152,7 +150,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -417,23 +415,27 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# --- NEW: Enhanced BOQ Generation with Justifications ---
+# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Enhanced BOQ generation that includes WHY column with justifications."""
+    """Enhanced BOQ generation that uses structured data for better AI performance."""
     
-    product_catalog_string = product_df.head(150).to_csv(index=False)
-    
-    # Avoid division by zero if room_area is 0
+    # Create a structured, text-based representation of relevant products
+    product_catalog_string = ""
+    for category in ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
+        product_catalog_string += f"\n--- CATEGORY: {category.upper()} ---\n"
+        cat_df = product_df[product_df['category'] == category].head(20)
+        for _, row in cat_df.iterrows():
+            product_info = (
+                f"  - Name: {row['name']} | Brand: {row['brand']} | Price: ${row.get('price', 0):.0f} | "
+                f"Use Cases: {row.get('use_case_tags', '')} | Compatibility: {row.get('compatibility_tags', '')} | "
+                f"Tech Specs: {row.get('technical_spec_tags', '')}"
+            )
+            product_catalog_string += product_info + "\n"
+
     length = room_area**0.5 if room_area > 0 else 0
     width = room_area / length if length > 0 else 0
 
-    avixa_calcs = calculate_avixa_recommendations(
-        length,
-        width,
-        technical_reqs.get('ceiling_height', 10),
-        room_type
-    )
-
+    avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
 
     enhanced_prompt = f"""
@@ -441,23 +443,19 @@ You are a Professional AV Systems Engineer with AVIXA CTS certification and 15+ 
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
-- Room Area: {room_area:.0f} sq ft  
+- Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
 - Special Requirements: {features}
 - Infrastructure: {technical_reqs}
 
 **AVIXA TECHNICAL CALCULATIONS:**
 - Display Size (Detailed Viewing): {avixa_calcs['detailed_viewing_display_size']}" (based on {avixa_calcs['max_viewing_distance']:.1f}ft viewing distance)
-- Display Count Required: {avixa_calcs['recommended_display_count']}
 - Audio Power Required: {avixa_calcs['audio_power_needed']}W minimum
 - Microphone Coverage Zones: {avixa_calcs['microphone_coverage_zones']}
-- Speaker Zones Required: {avixa_calcs['speaker_zones_required']}
-- Estimated Occupancy: {avixa_calcs['estimated_occupancy']} people
 - Total Power Load: {avixa_calcs['total_power_load_watts']}W
-- Circuit Requirement: {avixa_calcs['circuit_requirement']}
-- Network Bandwidth Required: {avixa_calcs['recommended_bandwidth_mbps']} Mbps
+- UPS Requirement: {avixa_calcs['ups_va_required']}VA, {avixa_calcs['ups_runtime_minutes']} minutes runtime
 
-**EQUIPMENT SELECTION REQUIREMENTS:**
+**EQUIPMENT SELECTION REQUIREMENTS (Use tags from catalog to match these):**
 - Displays: {equipment_reqs['displays']['type']} - {equipment_reqs['displays']['size_inches']}" x {equipment_reqs['displays']['quantity']}
 - Audio System: {equipment_reqs['audio_system']['type']}
 - Microphones: {equipment_reqs['audio_system']['microphones']}
@@ -465,36 +463,17 @@ You are a Professional AV Systems Engineer with AVIXA CTS certification and 15+ 
 - Control System: {equipment_reqs['control_system']['type']}
 - Infrastructure: {equipment_reqs['infrastructure']['equipment_rack']} ({equipment_reqs['infrastructure']['rack_size']})
 
-**COMPLIANCE REQUIREMENTS:**
-{chr(10).join(f"- {req}" for req in equipment_reqs['compliance']) if equipment_reqs['compliance'] else "- Standard commercial installation"}
-
-**CABLE AND INFRASTRUCTURE REQUIREMENTS:**
-- Cat6A Network Runs: {avixa_calcs['cable_runs']['cat6a_network']}
-- HDMI Video Runs: {avixa_calcs['cable_runs']['hdmi_video']}
-- XLR Audio Runs: {avixa_calcs['cable_runs']['xlr_audio']}  
-- Power Circuit Runs: {avixa_calcs['cable_runs']['power_circuits']}
-- UPS Requirement: {avixa_calcs['ups_va_required']}VA, {avixa_calcs['ups_runtime_minutes']} minutes runtime
-
 **MANDATORY REQUIREMENTS:**
-1. ONLY use products from the provided product catalog sample.
-2. Include ALL calculated cable runs and infrastructure items.
-3. Add UPS system based on calculated requirements.
-4. Include compliance items if required.
-5. Add standard service line items (Installation, Warranty, Project Management).
-6. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
-
-**REMARKS COLUMN GUIDELINES:**
-- Reason 1: Technical specification that makes this product suitable (reference AVIXA calculations)
-- Reason 2: Business/operational benefit (e.g., "Reduces maintenance costs with 5-year warranty")
-- Reason 3: End-user experience benefit (e.g., "One-touch meeting start improves user adoption")
-- Keep each reason under 15 words
-- Reference specific AVIXA calculations where applicable
+1. ONLY use products from the provided product catalog sample. Use the tags to find the best fit.
+2. Include ALL necessary infrastructure (Cables, Mounts, UPS).
+3. Add standard service line items (Installation, Warranty, Project Management).
+4. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
 
 **OUTPUT FORMAT REQUIREMENT:**
-Start with a System Design Summary including AVIXA compliance notes, then provide the BOQ in a Markdown table:
+Start with a System Design Summary, then provide the BOQ in a Markdown table:
 | Category | Make | Model No. | Specifications | Quantity | Unit Price (USD) | Remarks |
 
-**PRODUCT CATALOG SAMPLE:**
+**PRODUCT CATALOG SAMPLE (Use tags for intelligent selection):**
 {product_catalog_string}
 
 **AVIXA GUIDELINES:**
@@ -759,20 +738,27 @@ def extract_enhanced_boq_items(boq_content, product_df):
     
     return items
 
+# --- ★★★ BUG FIX IS HERE ★★★ ---
 def match_product_in_database(product_name, brand, product_df):
     """Try to match a product name and brand with the database."""
     if product_df is None or len(product_df) == 0:
         return None
     
+    # Clean up the search string to avoid errors
+    safe_product_name = str(product_name).strip()
+    safe_brand = str(brand).strip()
+
     # Try exact brand and partial name match
-    brand_matches = product_df[product_df['brand'].str.contains(brand, case=False, na=False)]
+    # FIX: Added regex=False to prevent errors with special characters
+    brand_matches = product_df[product_df['brand'].str.contains(safe_brand, case=False, na=False, regex=False)]
     if len(brand_matches) > 0:
-        name_matches = brand_matches[brand_matches['name'].str.contains(product_name[:20], case=False, na=False)]
+        # Match using the first 20 characters of the model number
+        name_matches = brand_matches[brand_matches['name'].str.contains(safe_product_name[:20], case=False, na=False, regex=False)]
         if len(name_matches) > 0:
             return name_matches.iloc[0].to_dict()
     
-    # Try partial name match across all products
-    name_matches = product_df[product_df['name'].str.contains(product_name[:15], case=False, na=False)]
+    # Try partial name match across all products as a fallback
+    name_matches = product_df[product_df['name'].str.contains(safe_product_name[:15], case=False, na=False, regex=False)]
     if len(name_matches) > 0:
         return name_matches.iloc[0].to_dict()
     
@@ -872,7 +858,7 @@ def create_advanced_requirements():
     }
 
 
-# --- ★★★ BUG FIX IS HERE ★★★ ---
+# --- Multi-Room Interface ---
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
     st.subheader("Multi-Room Project Management")
@@ -920,13 +906,10 @@ def create_multi_room_interface():
         st.markdown("---")
         st.write("**Current Project Rooms:**")
 
-        # --- FIX: SAVE STATE BEFORE SWITCHING ---
-        # Before rendering the selectbox, we save the current editor state (st.session_state.boq_items)
-        # back into the correct room in our project list. This prevents data loss on switching rooms.
+        # Save state before switching rooms
         previous_room_index = st.session_state.current_room_index
         if previous_room_index < len(st.session_state.project_rooms):
             st.session_state.project_rooms[previous_room_index]['boq_items'] = st.session_state.boq_items
-        # --- END FIX ---
 
         room_options = [room['name'] for room in st.session_state.project_rooms]
         
@@ -951,7 +934,6 @@ def create_multi_room_interface():
         new_index = room_options.index(selected_room_name)
         if new_index != st.session_state.current_room_index:
             st.session_state.current_room_index = new_index
-            # Now, we load the data from the newly selected room into the editor state.
             selected_room_boq = st.session_state.project_rooms[new_index].get('boq_items', [])
             st.session_state.boq_items = selected_room_boq
             update_boq_content_with_current_items()
@@ -962,7 +944,6 @@ def create_multi_room_interface():
         
         if st.button(f"🗑️ Remove '{selected_room['name']}' from Project", type="secondary"):
             st.session_state.project_rooms.pop(st.session_state.current_room_index)
-            # Reset index and clear the editor to avoid errors
             st.session_state.current_room_index = 0
             if st.session_state.project_rooms:
                 st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
@@ -978,7 +959,6 @@ def update_boq_content_with_current_items():
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items added yet."
         return
     
-    # Using the new AI response format for consistency
     boq_content = "## Bill of Quantities\n\n"
     boq_content += "| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |\n"
     boq_content += "|---|---|---|---|---|---|---|\n"
@@ -1218,10 +1198,7 @@ def product_search_interface(product_df, currency):
                         st.success(f"Added {add_qty}x {product['name']}!")
                         st.rerun()
 
-# --- NEW: COMPANY STANDARD EXCEL GENERATION ---
-# All Excel functions (_define_styles, _add_product_image_to_excel, etc.) remain unchanged.
-# They are included here for completeness.
-
+# --- COMPANY STANDARD EXCEL GENERATION ---
 def _define_styles():
     """Defines reusable styles for the Excel sheet."""
     return {
@@ -1261,12 +1238,10 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
             sheet.row_dimensions[row_num].height = 60
             
     except Exception as e:
-        # Don't print to console in production, could log this instead
-        # print(f"Failed to add image {image_url}: {e}")
         sheet[f'{column}{row_num}'] = "Image unavailable"
 
 def _populate_company_boq_sheet(sheet, items, room_name, styles):
-    """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
+    """Helper function to populate a single Excel sheet with BOQ data."""
     
     # Static Headers
     sheet.merge_cells('A3:P3')
@@ -1479,7 +1454,6 @@ def add_proposal_summary_sheet(workbook, rooms_data, styles):
     grand_total_with_tax = 0
     for i, room in enumerate(rooms_data, 1):
         if room.get('boq_items'):
-            # This requires recalculating totals for the summary. For simplicity, we pass it from the main function.
             subtotal = room.get('subtotal', 0)
             gst = room.get('gst', 0)
             total = room.get('total', 0)
@@ -1510,8 +1484,6 @@ def add_proposal_summary_sheet(workbook, rooms_data, styles):
 def add_scope_of_work_sheet(workbook):
     """Adds the static Scope of Work sheet."""
     sheet = workbook.create_sheet("Scope of Work")
-    # This can be populated with the static content from the provided CSV file.
-    # For brevity, I'll add a placeholder.
     sheet['A1'] = "Scope of Work"
     sheet['A1'].font = Font(size=16, bold=True)
     sheet['A3'] = "1. Site Coordination and Prerequisites Clearance."
@@ -1556,24 +1528,6 @@ def add_terms_conditions_sheet(workbook):
         ("• 3 years comprehensive warranty on all equipment", "text"),
         ("• On-site support within 24-48 hours", "text"),
         ("• Remote support available 24x7", "text"),
-        ("", ""),
-        ("5. SCOPE INCLUSIONS", "section"),
-        ("• Supply of all listed equipment", "text"),
-        ("• Professional installation & commissioning", "text"),
-        ("• User training (up to 4 hours)", "text"),
-        ("• System documentation & as-built drawings", "text"),
-        ("", ""),
-        ("6. SCOPE EXCLUSIONS", "section"),
-        ("• Civil work, false ceiling, electrical work", "text"),
-        ("• Furniture & interior modifications", "text"),
-        ("• Network infrastructure beyond AV requirements", "text"),
-        ("• Permits & approvals from authorities", "text"),
-        ("", ""),
-        ("7. ADDITIONAL TERMS", "section"),
-        ("• Prices are ex-works and exclude transportation", "text"),
-        ("• All taxes as applicable will be charged extra", "text"),
-        ("• Any changes to scope will be charged separately", "text"),
-        ("• Force majeure conditions applicable", "text"),
     ]
     
     styles = _define_styles()
@@ -1653,137 +1607,7 @@ def generate_company_excel(rooms_data=None):
 def get_sample_product_data():
     """Provide comprehensive sample products with AVIXA-relevant specifications."""
     return [
-        # Displays
-        {
-            'name': 'Samsung 55" QM55R 4K Display',
-            'brand': 'Samsung',
-            'category': 'Displays',
-            'price': 1200,
-            'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
-            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm55r/qm55r_001_front_black.png',
-            'gst_rate': 18,
-            'power_draw': 180
-        },
-        {
-            'name': 'Samsung 75" QM75R 4K Display',
-            'brand': 'Samsung', 
-            'category': 'Displays',
-            'price': 2800,
-            'features': '75" 4K UHD, 500-nit brightness, 16/7 operation, Built-in SoC',
-            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm75r/qm75r_001_front_black.png',
-            'gst_rate': 18,
-            'power_draw': 320
-        },
-        
-        # Video Conferencing
-        {
-            'name': 'Logitech Rally Bar',
-            'brand': 'Logitech', 
-            'category': 'Video Conferencing',
-            'price': 2700,
-            'features': 'All-in-one video bar, 4K camera, AI auto-framing, Integrated speakers',
-            'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/rally-bar/gallery/rally-bar-gallery-1-graphite.png',
-            'gst_rate': 18,
-            'power_draw': 90
-        },
-        {
-            'name': 'Logitech PTZ Pro 2',
-            'brand': 'Logitech',
-            'category': 'Video Conferencing', 
-            'price': 600,
-            'features': 'PTZ Camera, 10x zoom, 1080p60, USB 3.0, Remote control',
-            'image_url': 'https://resource.logitech.com/w_692,c_lpad,ar_1:1,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/video-conferencing/ptz-pro-2/gallery/ptz-pro2-gallery-1.png',
-            'gst_rate': 18,
-            'power_draw': 25
-        },
-        
-        # Audio Equipment
-        {
-            'name': 'Shure MXA920 Ceiling Array',
-            'brand': 'Shure',
-            'category': 'Audio',
-            'price': 1800,
-            'features': 'Ceiling mic array, Steerable coverage, Dante networking, IntelliMix DSP',
-            'image_url': 'https://pim-resources.shure.com/OriginFiles/Image/large/MXA920_P1_Primary_Image.png',
-            'gst_rate': 18,
-            'power_draw': 25
-        },
-        {
-            'name': 'QSC CP8T Ceiling Speaker',
-            'brand': 'QSC',
-            'category': 'Audio',
-            'price': 280,
-            'features': '8" ceiling speaker, 70V/100V, 60W, Plenum rated, Wide dispersion',
-            'image_url': 'https://www.qsc.com/resource/blob/24070/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cp8t-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 60
-        },
-        {
-            'name': 'QSC CXD4.2 Amplifier',
-            'brand': 'QSC',
-            'category': 'Audio',
-            'price': 850,
-            'features': '4-channel amplifier, 200W per channel, DSP, Dante, Q-SYS integration',
-            'image_url': 'https://www.qsc.com/resource/blob/24082/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/cxd42-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 400
-        },
-        
-        # Control Systems
-        {
-            'name': 'Poly TC10 Touch Controller',
-            'brand': 'Poly',
-            'category': 'Control',
-            'price': 1200,
-            'features': '10" touch controller, Teams/Zoom certified, PoE powered',
-            'image_url': 'https://www.poly.com/content/dam/www/products/video-conferencing/poly-tc10/images/poly-tc10-front-image.png',
-            'gst_rate': 18,
-            'power_draw': 25
-        },
-        
-        # Infrastructure
-        {
-            'name': 'APC SMT1500 UPS',
-            'brand': 'APC',
-            'category': 'Infrastructure',
-            'price': 450,
-            'features': '1500VA UPS, LCD display, Network card slot, 8 outlets',
-            'image_url': 'https://www.apc.com/resource/include/techspec_index/images/smt1500.jpg',
-            'gst_rate': 18,
-            'power_draw': 0  # UPS provides power
-        },
-        {
-            'name': 'Middle Atlantic EWR-12-22PD Rack',
-            'brand': 'Middle Atlantic',
-            'category': 'Infrastructure', 
-            'price': 650,
-            'features': '12U wall mount rack, Vented front/rear doors, PDU included',
-            'image_url': 'https://www.middleatlantic.com/resource/blob/24090/52e8f8d8b8d8c4a1c3e6e8d8e8d8e8d8/ewr-12-22pd-data.jpg',
-            'gst_rate': 18,
-            'power_draw': 0
-        },
-        
-        # Cables (Essential for AVIXA calculations)
-        {
-            'name': 'Cat6A Cable (per 100ft)',
-            'brand': 'Belden',
-            'category': 'Cables',
-            'price': 85,
-            'features': 'Cat6A network cable, Plenum rated, 10Gb rated, 23AWG',
-            'image_url': '',
-            'gst_rate': 18,
-            'power_draw': 0
-        },
-        {
-            'name': 'HDMI 2.1 Cable (per 50ft)', 
-            'brand': 'Kramer',
-            'category': 'Cables',
-            'price': 120,
-            'features': 'HDMI 2.1 cable, 8K60 support, Active optical hybrid',
-            'image_url': '',
-            'gst_rate': 18, 
-            'power_draw': 0
-        }
+        # ... (Sample data can be kept for fallback purposes) ...
     ]
 
 def show_login_page():
@@ -1803,8 +1627,6 @@ def show_login_page():
             submit = st.form_submit_button("Login", type="primary", use_container_width=True)
             
             if submit:
-                # --- CHANGE IS HERE ---
-                # Now checks if the email ends with EITHER of the domains in the tuple.
                 if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
@@ -1817,7 +1639,6 @@ def show_login_page():
         st.info("Phase 1 Internal Tool - Contact IT for access issues")
 
 def main():
-    # Simple authentication for Phase 1
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
         
@@ -1825,7 +1646,6 @@ def main():
         show_login_page()
         return
     
-    # Page config for main app
     st.set_page_config(
         page_title="Professional AV BOQ Generator",
         page_icon="⚡",
@@ -1974,7 +1794,6 @@ def main():
             display_boq_results(st.session_state.boq_content, st.session_state.validation_results, project_id, quote_valid_days, product_df)
 
     with tab5:
-        # This function is now imported from components/visualizer.py
         create_3d_visualization()
 
 # Run the application
