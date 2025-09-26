@@ -159,11 +159,13 @@ def setup_gemini():
         st.error(f"Gemini API configuration failed: {e}")
         return None
 
+# In app.py
+
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
         try:
-            # Add safety settings to be less restrictive
+            # --- NEW: Add safety settings to prevent blocking ---
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -422,9 +424,10 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
+# In app.py
+
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Generates a more logical BOQ with a stricter, clearer prompt."""
+    """Generates a more logical BOQ with a refined, collaborative prompt."""
     
     product_catalog_string = ""
     for category in ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
@@ -440,25 +443,26 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
 
-    # --- NEW, EVEN STRICTER PROMPT ---
+    # --- NEW, COLLABORATIVE PROMPT ---
     enhanced_prompt = f"""
-You are an expert AV Systems Engineer. Your single most important task is to create a LOGICAL and COMPLETE Bill of Quantities (BOQ).
+As an expert AV Systems Engineer, your task is to create a logical and complete Bill of Quantities (BOQ). Please follow these guidelines to ensure a high-quality result.
 
-**GUIDING PRINCIPLES:**
-1.  **Complete System:** The final BOQ must be a full, working system. Your primary goal is to ensure all essential components are present. This means you **must** include a display, an audio solution, and a control system.
-2.  **Logical Choices:** Please select components that are meant to work together. Avoid redundant items like two different video bars for the same room.
-3.  **Budget Adherence:** The client's budget is '{budget_tier}'. Please select cost-effective options from the catalog that align with this.
-4.  **Strict Formatting:** It is critical that your entire response is ONLY the Markdown table. Start with "| Category |" and do not add any text, summaries, or explanations before or after the table.
+**Guiding Principles for a Successful BOQ:**
+1.  **Create a Complete System:** The most important goal is a fully functional system. Please ensure the BOQ includes all essential components, especially a primary display, an audio solution, and a control system.
+2.  **Select Logical Components:** Choose products that are designed to work together. For instance, please avoid redundant items like two different video bars for one room and ensure any selected mount is appropriate for the chosen display.
+3.  **Respect the Budget:** The client's indicated budget is '{budget_tier}'. Aim to select cost-effective options from the catalog that align with this.
+4.  **Adhere to the Catalog:** Please select products only from the provided list.
+5.  **Strict Formatting:** For the output to be processed correctly, it's essential that your entire response consists ONLY of the Markdown table. Please begin the response with "| Category |" and do not include any text, summaries, or explanations before or after the table.
 
-**PROJECT REQUIREMENTS:**
+**Project Requirements:**
 - Room Type: {room_type}
 - Budget: {budget_tier}
-- Required Display Size: ~{equipment_reqs['displays']['size_inches']} inches
+- Required Display Size: Approximately {equipment_reqs['displays']['size_inches']} inches
 
-**PRODUCT CATALOG (select from this list only):**
+**Product Catalog (select from this list only):**
 {product_catalog_string}
 
-Generate the BOQ now.
+Please generate the BOQ now based on these guidelines.
 """
     
     try:
