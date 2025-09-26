@@ -150,7 +150,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -163,7 +163,14 @@ def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(prompt)
+            # Add safety settings to be less restrictive
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            response = model.generate_content(prompt, safety_settings=safety_settings)
             return response
         except Exception as e:
             if attempt == max_retries - 1:
@@ -415,8 +422,7 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# app.py -> Replace the existing function with this one
-
+# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Generates a more logical BOQ with a stricter, clearer prompt."""
     
@@ -438,22 +444,21 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     enhanced_prompt = f"""
 You are an expert AV Systems Engineer. Your single most important task is to create a LOGICAL and COMPLETE Bill of Quantities (BOQ).
 
-**NON-NEGOTIABLE RULES:**
-1.  **OUTPUT MUST BE A MARKDOWN TABLE ONLY.** Start the response with "| Category |" and end it with the last item's line. DO NOT include any summary, explanation, or any text before or after the table.
-2.  **A DISPLAY IS MANDATORY.** The BOQ is incomplete without a display. You **MUST** select one from the 'Displays' category that matches the required size. This is your top priority.
-3.  **NO REDUNDANT CORE COMPONENTS.** A room needs only ONE primary video bar/camera system. Do not select multiple.
-4.  **LOGICAL PAIRING.** Select mounts and cables that are appropriate for the other items you have chosen.
-5.  **ADHERE TO BUDGET:** The budget is '{budget_tier}'. Select cost-effective options from the catalog.
+**GUIDING PRINCIPLES:**
+1.  **Complete System:** The final BOQ must be a full, working system. Your primary goal is to ensure all essential components are present. This means you **must** include a display, an audio solution, and a control system.
+2.  **Logical Choices:** Please select components that are meant to work together. Avoid redundant items like two different video bars for the same room.
+3.  **Budget Adherence:** The client's budget is '{budget_tier}'. Please select cost-effective options from the catalog that align with this.
+4.  **Strict Formatting:** It is critical that your entire response is ONLY the Markdown table. Start with "| Category |" and do not add any text, summaries, or explanations before or after the table.
 
 **PROJECT REQUIREMENTS:**
 - Room Type: {room_type}
 - Budget: {budget_tier}
 - Required Display Size: ~{equipment_reqs['displays']['size_inches']} inches
 
-**PRODUCT CATALOG:**
+**PRODUCT CATALOG (select from this list only):**
 {product_catalog_string}
 
-Now, generate the BOQ.
+Generate the BOQ now.
 """
     
     try:
@@ -1517,24 +1522,6 @@ def add_terms_conditions_sheet(workbook):
         ("• 3 years comprehensive warranty on all equipment", "text"),
         ("• On-site support within 24-48 hours", "text"),
         ("• Remote support available 24x7", "text"),
-        ("", ""),
-        ("5. SCOPE INCLUSIONS", "section"),
-        ("• Supply of all listed equipment", "text"),
-        ("• Professional installation & commissioning", "text"),
-        ("• User training (up to 4 hours)", "text"),
-        ("• System documentation & as-built drawings", "text"),
-        ("", ""),
-        ("6. SCOPE EXCLUSIONS", "section"),
-        ("• Civil work, false ceiling, electrical work", "text"),
-        ("• Furniture & interior modifications", "text"),
-        ("• Network infrastructure beyond AV requirements", "text"),
-        ("• Permits & approvals from authorities", "text"),
-        ("", ""),
-        ("7. ADDITIONAL TERMS", "section"),
-        ("• Prices are ex-works and exclude transportation", "text"),
-        ("• All taxes as applicable will be charged extra", "text"),
-        ("• Any changes to scope will be charged separately", "text"),
-        ("• Force majeure conditions applicable", "text"),
     ]
     
     styles = _define_styles()
@@ -1791,7 +1778,8 @@ def main():
                             st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
                             st.rerun()
                         else:
-                            st.error("Failed to generate BOQ. Please try again.")
+                            # --- MODIFIED: More specific error message ---
+                            st.error("Failed to generate BOQ. The AI model did not return a valid list of items. This can be due to safety settings or an overly restrictive prompt. Please try again or adjust the room requirements.")
 
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
