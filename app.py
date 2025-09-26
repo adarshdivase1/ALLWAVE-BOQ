@@ -416,14 +416,15 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     return requirements
 
 # --- ★★★ IMPROVEMENT IS HERE ★★★ ---
+# app.py -> Replace the existing function with this one
+
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Generates a more logical BOQ with a stricter, clearer prompt."""
     
-    # Create a simplified and structured catalog for the AI
     product_catalog_string = ""
-    for category in ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
+    for category in ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
         product_catalog_string += f"\n--- CATEGORY: {category.upper()} ---\n"
-        cat_df = product_df[product_df['category'] == category].head(25) # Limit to 25 products per category
+        cat_df = product_df[product_df['category'] == category].head(30)
         for _, row in cat_df.iterrows():
             product_info = f"  - Name: {row['name']} | Brand: {row['brand']} | Price: ${row.get('price', 0):.0f}"
             product_catalog_string += product_info + "\n"
@@ -434,41 +435,36 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
 
-    # --- NEW, STRICTER PROMPT ---
+    # --- NEW, EVEN STRICTER PROMPT ---
     enhanced_prompt = f"""
-You are an expert AV Systems Engineer. Your task is to create a LOGICAL and COST-EFFECTIVE Bill of Quantities (BOQ).
+You are an expert AV Systems Engineer. Your single most important task is to create a LOGICAL and COMPLETE Bill of Quantities (BOQ).
 
-**CRITICAL RULES:**
-1.  **MUST Include Core Components:** The BOQ **MUST** include a primary display, an audio solution (like speakers/mics), and a control system. Do not forget these.
-2.  **Match Components Logically:** Select components that work together. For example, if you choose a specific display, select a mount that is compatible with it.
-3.  **Adhere to Budget:** The budget is '{budget_tier}'. Do not select excessively expensive products unless required. Be price-conscious.
-4.  **Use ONLY Products from Catalog:** Do not invent products. Select ONLY from the provided catalog.
-5.  **Sanity Check Prices:** Before finalizing, review the total price. If it seems absurdly high for a single room, you have made a mistake. Re-evaluate your product choices.
+**NON-NEGOTIABLE RULES:**
+1.  **OUTPUT MUST BE A MARKDOWN TABLE ONLY.** Start the response with "| Category |" and end it with the last item's line. DO NOT include any summary, explanation, or any text before or after the table.
+2.  **A DISPLAY IS MANDATORY.** The BOQ is incomplete without a display. You **MUST** select one from the 'Displays' category that matches the required size. This is your top priority.
+3.  **NO REDUNDANT CORE COMPONENTS.** A room needs only ONE primary video bar/camera system. Do not select multiple.
+4.  **LOGICAL PAIRING.** Select mounts and cables that are appropriate for the other items you have chosen.
+5.  **ADHERE TO BUDGET:** The budget is '{budget_tier}'. Select cost-effective options from the catalog.
 
-**PROJECT SPECIFICATIONS:**
+**PROJECT REQUIREMENTS:**
 - Room Type: {room_type}
-- Budget Tier: {budget_tier}
-- Special Requirements: {features}
-
-**TECHNICAL REQUIREMENTS (Select products to meet these):**
+- Budget: {budget_tier}
 - Required Display Size: ~{equipment_reqs['displays']['size_inches']} inches
-- Required Display Quantity: {equipment_reqs['displays']['quantity']}
-- Required Audio System Type: {equipment_reqs['audio_system']['type']}
 
-**OUTPUT FORMAT:**
-Provide the BOQ in a Markdown table. Do not include a summary or any other text.
-| Category | Make | Model No. | Specifications | Quantity | Unit Price (USD) | Remarks |
-
-**PRODUCT CATALOG SAMPLE:**
+**PRODUCT CATALOG:**
 {product_catalog_string}
 
-Generate the BOQ:
+Now, generate the BOQ.
 """
     
     try:
         response = generate_with_retry(model, enhanced_prompt)
         if response and response.text:
             boq_content = response.text
+            # Clean up potential text before the markdown table
+            if '|' in boq_content:
+                boq_content = boq_content[boq_content.find('|'):]
+            
             boq_items = extract_enhanced_boq_items(boq_content, product_df)
             return boq_content, boq_items, avixa_calcs, equipment_reqs
         return None, [], None, None
