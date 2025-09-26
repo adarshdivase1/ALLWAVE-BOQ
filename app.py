@@ -136,12 +136,13 @@ def load_and_validate_data():
 def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # Use the correct model name for google.generativeai library
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
+        st.error("Check your API key in Streamlit secrets")
         return None
-
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
