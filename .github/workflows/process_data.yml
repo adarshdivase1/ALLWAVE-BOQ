@@ -1,14 +1,16 @@
-# .github/workflows/process_data.yml
 name: Process New Product Data
+
 on:
   push:
     paths:
       - 'data/**.csv'
+
 jobs:
   build-and-commit:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,32 +45,27 @@ jobs:
           
           # Check if there are any changes to commit
           if git diff-index --quiet HEAD; then
-            echo "No changes to the draft file. Nothing to commit."
+            echo "No changes to the master catalog. Nothing to commit."
             exit 0
           fi
           
-          git commit -m "Automated: Update master catalog draft"
+          git commit -m "Automated: Update master product catalog"
           
           # Retry push up to 3 times
           for i in {1..3}; do
             echo "Push attempt $i..."
             
-            # Sync before each push attempt
+            # Sync before each push attempt to avoid conflicts
             git fetch origin
-            
-            # Check if we need to rebase
-            if ! git diff-index --quiet origin/main HEAD; then
-              echo "Remote has changes, rebasing..."
-              git rebase origin/main
-            fi
+            git rebase origin/main
             
             # Try to push
             if git push origin main; then
               echo "✅ Successfully pushed changes!"
               exit 0
             else
-              echo "❌ Push attempt $i failed, waiting 3 seconds before retry..."
-              sleep 3
+              echo "❌ Push attempt $i failed, waiting 5 seconds before retry..."
+              sleep 5
             fi
           done
           
