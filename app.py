@@ -1321,24 +1321,25 @@ def show_login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.title("🏢 AllWave AV")
+        st.title("🏢 AllWave AV & GS")
         st.subheader("Design & Estimation Portal")
         st.markdown("---")
         
         with st.form("login_form"):
-            email = st.text_input("Email ID", placeholder="yourname@allwaveav.com")
+            email = st.text_input("Email ID", placeholder="yourname@allwaveav.com or yourname@allwavegs.com")
             password = st.text_input("Password", type="password", placeholder="Enter password")
             submit = st.form_submit_button("Login", type="primary", use_container_width=True)
             
             if submit:
-                # Simple validation for Phase 1
-                if email.endswith("@allwaveav.com") and len(password) > 3:
+                # --- CHANGE IS HERE ---
+                # Now checks if the email ends with EITHER of the domains in the tuple.
+                if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
                     st.success("Login successful!")
                     st.rerun()
                 else:
-                    st.error("Please use your AllWave AV email and valid password")
+                    st.error("Please use your AllWave AV or AllWave GS email and a valid password")
         
         st.markdown("---")
         st.info("Phase 1 Internal Tool - Contact IT for access issues")
