@@ -137,7 +137,7 @@ def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         # Use the correct model name
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash-001')
         
         # Test the model with a simple call
         test_response = model.generate_content("Hello")
