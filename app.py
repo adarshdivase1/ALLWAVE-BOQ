@@ -150,7 +150,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -159,8 +159,7 @@ def setup_gemini():
         st.error(f"Gemini API configuration failed: {e}")
         return None
 
-# In app.py
-
+# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
@@ -424,8 +423,7 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# In app.py
-
+# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Generates a more logical BOQ with a refined, collaborative prompt."""
     
@@ -1757,6 +1755,7 @@ def main():
                             model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
                         )
                         
+                        # --- MODIFIED: More specific error checking ---
                         if boq_items:
                             st.session_state.boq_items = boq_items
                             update_boq_content_with_current_items()
@@ -1782,7 +1781,6 @@ def main():
                             st.success(f"✅ Generated enhanced BOQ with {len(boq_items)} items!")
                             st.rerun()
                         else:
-                            # --- MODIFIED: More specific error message ---
                             st.error("Failed to generate BOQ. The AI model did not return a valid list of items. This can be due to safety settings or an overly restrictive prompt. Please try again or adjust the room requirements.")
 
         with col2:
