@@ -580,7 +580,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
     
     # Audio System Compliance
     has_dsp = any('dsp' in item.get('name', '').lower() or 'processor' in item.get('name', '').lower() 
-                  for item in boq_items)
+                    for item in boq_items)
     if equipment_reqs['audio_system'].get('dsp_required') and not has_dsp:
         issues.append("CRITICAL: DSP required but not found in BOQ")
     
@@ -1887,8 +1887,10 @@ def main():
                     )
                     
                     if boq_items:
-                        st.session_state.boq_content = boq_content
+                        # --- FIX APPLIED FOR UI DISPLAY ---
                         st.session_state.boq_items = boq_items
+                        update_boq_content_with_current_items()
+                        # --- END FIX ---
                         
                         # Save to current room if multi-room is used
                         if st.session_state.project_rooms:
