@@ -135,7 +135,7 @@ def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         # Use the correct model name for google.generativeai library
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash-001')
         return model
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
