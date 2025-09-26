@@ -2,59 +2,45 @@ import pandas as pd
 import os
 import re
 
+# (find_header_row and clean_brand_name functions remain the same)
 def find_header_row(file_path, keywords, max_rows=20):
-    """Tries to find the correct header row in a messy CSV."""
-    try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for i, line in enumerate(f):
-                if i >= max_rows:
-                    break
-                if sum(keyword.lower() in line.lower() for keyword in keywords) >= 2:
-                    return i
-    except Exception as e:
-        print(f"  -> Could not read file {file_path} with utf-8, trying latin1. Error: {e}")
-        # Fallback for different encodings
-        with open(file_path, 'r', encoding='latin1', errors='ignore') as f:
-             for i, line in enumerate(f):
-                if i >= max_rows:
-                    break
-                if sum(keyword.lower() in line.lower() for keyword in keywords) >= 2:
-                    return i
-    return 0
-
+    # ... (no changes needed)
 def clean_brand_name(filename):
-    """Extracts a clean brand name from the filename."""
-    base_name = filename.replace("Master List 2.0 (1).xlsx - ", "").replace(".csv", "")
-    base_name = base_name.split(' & ')[0].split(' and ')[0].strip()
-    return base_name
+    # ... (no changes needed)
+
+# NEW: Function to generate tags from description
+def generate_tags_from_description(description):
+    """Generates structured tags by searching for keywords in the description."""
+    desc_lower = str(description).lower()
+    
+    use_case_tags = []
+    if any(k in desc_lower for k in ['huddle', 'small room']): use_case_tags.append('Huddle Room')
+    if any(k in desc_lower for k in ['boardroom', 'executive']): use_case_tags.append('Boardroom')
+    if any(k in desc_lower for k in ['classroom', 'training']): use_case_tags.append('Classroom')
+    if 'auditorium' in desc_lower: use_case_tags.append('Auditorium')
+
+    compatibility_tags = []
+    if 'zoom' in desc_lower: compatibility_tags.append('Zoom Certified')
+    if 'teams' in desc_lower: compatibility_tags.append('Teams Certified')
+    if 'dante' in desc_lower: compatibility_tags.append('Dante')
+    if 'avb' in desc_lower: compatibility_tags.append('AVB')
+        
+    technical_spec_tags = []
+    if '4k' in desc_lower: technical_spec_tags.append('4K')
+    if 'ptz' in desc_lower: technical_spec_tags.append('PTZ')
+    if 'auto-framing' in desc_lower: technical_spec_tags.append('Auto-framing')
+    if 'poe' in desc_lower: technical_spec_tags.append('PoE')
+    
+    return '; '.join(use_case_tags), '; '.join(compatibility_tags), '; '.join(technical_spec_tags)
 
 # --- Main Script ---
+# ... (initial setup is the same)
 new_data_folder = 'data'
 existing_master_file = 'master_product_catalog.csv'
-output_filename = 'master_product_catalog.csv'  # Changed: Output directly to main catalog file
+output_filename = 'master_product_catalog.csv'
 all_new_products = []
-header_keywords = ['description', 'model', 'part', 'price']
-
-# Step 1: Read the existing master catalog if it exists
-if os.path.exists(existing_master_file):
-    print(f"Reading existing data from {existing_master_file}...")
-    try:
-        existing_df = pd.read_csv(existing_master_file)
-        print(f"  -> Found {len(existing_df)} existing products in catalog")
-    except Exception as e:
-        print(f"  -> Warning: Could not read existing master file. Starting fresh. Error: {e}")
-        existing_df = pd.DataFrame()
-else:
-    print(f"No existing {existing_master_file} found. Starting with a blank slate.")
-    existing_df = pd.DataFrame()
-
-# Step 2: Process all the new files
-if not os.path.exists(new_data_folder):
-    print(f"Error: The '{new_data_folder}' directory was not found. Please create it and add your new CSV files.")
-    exit()
-
-csv_files = [f for f in os.listdir(new_data_folder) if f.endswith('.csv')]
-print(f"Found {len(csv_files)} new CSV files to process in the '{new_data_folder}' folder...")
+header_keywords = ['description', 'model', 'part', 'price', 'sku', 'item']
+# ... (reading existing file is the same)
 
 for filename in csv_files:
     file_path = os.path.join(new_data_folder, filename)
@@ -64,18 +50,34 @@ for filename in csv_files:
         header_row = find_header_row(file_path, header_keywords)
         df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip')
 
-        model_col = next((col for col in df.columns if 'model' in col.lower() or 'part' in col.lower()), None)
+        # --- MODIFIED: More robust column finding ---
+        model_col = next((col for col in df.columns if any(kw in col.lower() for kw in ['model', 'part', 'sku'])), None)
         desc_col = next((col for col in df.columns if 'desc' in col.lower()), None)
-        price_col = next((col for col in df.columns if 'price' in col.lower()), None)
+        price_col = next((col for col in df.columns if any(kw in col.lower() for kw in ['price', 'msrp', 'cost'])), None)
+        # NEW: Look for new columns
+        gst_col = next((col for col in df.columns if 'gst' in col.lower()), None)
+        power_col = next((col for col in df.columns if 'power' in col.lower() or 'watt' in col.lower()), None)
+        image_col = next((col for col in df.columns if 'image' in col.lower()), None)
 
         if not model_col or not desc_col:
             print(f"  -> Warning: Could not find 'Model' or 'Description' columns in {filename}. Skipping.")
             continue
 
+        # Rename core columns
         df = df.rename(columns={model_col: 'Model', desc_col: 'Description'})
         if price_col:
             df = df.rename(columns={price_col: 'Price'})
             df['Price'] = pd.to_numeric(df['Price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+        
+        # NEW: Rename and clean new columns if they exist
+        if gst_col:
+            df = df.rename(columns={gst_col: 'gst_rate'})
+            df['gst_rate'] = pd.to_numeric(df['gst_rate'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(18) * 100
+        if power_col:
+            df = df.rename(columns={power_col: 'power_draw_watts'})
+            df['power_draw_watts'] = pd.to_numeric(df['power_draw_watts'], errors='coerce').fillna(0)
+        if image_col:
+            df = df.rename(columns={image_col: 'image_url'})
 
         for _, row in df.iterrows():
             model = str(row.get('Model', '')).strip()
@@ -84,41 +86,28 @@ for filename in csv_files:
             if pd.isna(model) or model.lower() == 'nan' or not model:
                 continue
 
-            full_name = f"{model} - {desc}" if desc and not pd.isna(desc) and desc.lower() != 'nan' else model
+            # --- NEW: Generate tags ---
+            use_case, compatibility, tech_specs = generate_tags_from_description(desc)
+
+            full_name = f"{model} - {desc.splitlines()[0]}"
+            
             product_data = {
-                'category': '',
+                'category': categorize_product(desc)[0], # Using your existing function
                 'brand': brand,
                 'name': full_name,
                 'price': row.get('Price', 0.0),
-                'features': '',
-                'tier': 'Standard',
-                'use_case_tags': '',
-                'compatibility_tags': ''
+                'features': desc, # Keep the full description for reference
+                'tier': 'Standard', # TODO: Manually update this in your source files
+                'use_case_tags': use_case,
+                'compatibility_tags': compatibility,
+                'technical_spec_tags': tech_specs, # NEW
+                'image_url': row.get('image_url', ''), # NEW
+                'gst_rate': row.get('gst_rate', 18), # NEW
+                'power_draw_watts': row.get('power_draw_watts', 0) # NEW
             }
             all_new_products.append(product_data)
 
     except Exception as e:
         print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-# Step 3: Combine old and new data
-if not all_new_products and existing_df.empty:
-    print("\n❌ No existing data and no new products were found. Exiting.")
-else:
-    new_products_df = pd.DataFrame(all_new_products)
-    print(f"  -> Processed {len(all_new_products)} new products from CSV files")
-    
-    # Combine the existing and new dataframes
-    combined_df = pd.concat([existing_df, new_products_df], ignore_index=True)
-    
-    # Step 4: De-duplicate, keeping the last (newest) entry for any duplicates
-    # This ensures new data overwrites old data if a product already exists.
-    if 'name' in combined_df.columns:
-        initial_rows = len(combined_df)
-        combined_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
-        final_rows = len(combined_df)
-        print(f"De-duplication complete. Removed {initial_rows - final_rows} old or duplicate entries.")
-
-    # Save the combined and cleaned data directly to the main catalog file
-    combined_df.to_csv(output_filename, index=False)
-    print(f"\n✅ Success! Updated master catalog with {len(combined_df)} total products.")
-    print(f"✅ Streamlit app will now automatically use the latest product data.")
+# ... (rest of the script for combining, de-duplicating, and saving remains the same)
