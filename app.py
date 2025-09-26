@@ -150,7 +150,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -417,19 +417,15 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
 
 # --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Enhanced BOQ generation that uses structured data for better AI performance."""
+    """Generates a more logical BOQ with a stricter, clearer prompt."""
     
-    # Create a structured, text-based representation of relevant products
+    # Create a simplified and structured catalog for the AI
     product_catalog_string = ""
     for category in ['Displays', 'Audio', 'Video Conferencing', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
         product_catalog_string += f"\n--- CATEGORY: {category.upper()} ---\n"
-        cat_df = product_df[product_df['category'] == category].head(20)
+        cat_df = product_df[product_df['category'] == category].head(25) # Limit to 25 products per category
         for _, row in cat_df.iterrows():
-            product_info = (
-                f"  - Name: {row['name']} | Brand: {row['brand']} | Price: ${row.get('price', 0):.0f} | "
-                f"Use Cases: {row.get('use_case_tags', '')} | Compatibility: {row.get('compatibility_tags', '')} | "
-                f"Tech Specs: {row.get('technical_spec_tags', '')}"
-            )
+            product_info = f"  - Name: {row['name']} | Brand: {row['brand']} | Price: ${row.get('price', 0):.0f}"
             product_catalog_string += product_info + "\n"
 
     length = room_area**0.5 if room_area > 0 else 0
@@ -438,48 +434,35 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
 
+    # --- NEW, STRICTER PROMPT ---
     enhanced_prompt = f"""
-You are a Professional AV Systems Engineer with AVIXA CTS certification and 15+ years of experience in the Indian market. Your company is AllWave AV. Create a production-ready BOQ following AVIXA DISCAS standards.
+You are an expert AV Systems Engineer. Your task is to create a LOGICAL and COST-EFFECTIVE Bill of Quantities (BOQ).
+
+**CRITICAL RULES:**
+1.  **MUST Include Core Components:** The BOQ **MUST** include a primary display, an audio solution (like speakers/mics), and a control system. Do not forget these.
+2.  **Match Components Logically:** Select components that work together. For example, if you choose a specific display, select a mount that is compatible with it.
+3.  **Adhere to Budget:** The budget is '{budget_tier}'. Do not select excessively expensive products unless required. Be price-conscious.
+4.  **Use ONLY Products from Catalog:** Do not invent products. Select ONLY from the provided catalog.
+5.  **Sanity Check Prices:** Before finalizing, review the total price. If it seems absurdly high for a single room, you have made a mistake. Re-evaluate your product choices.
 
 **PROJECT SPECIFICATIONS:**
 - Room Type: {room_type}
-- Room Area: {room_area:.0f} sq ft
 - Budget Tier: {budget_tier}
 - Special Requirements: {features}
-- Infrastructure: {technical_reqs}
 
-**AVIXA TECHNICAL CALCULATIONS:**
-- Display Size (Detailed Viewing): {avixa_calcs['detailed_viewing_display_size']}" (based on {avixa_calcs['max_viewing_distance']:.1f}ft viewing distance)
-- Audio Power Required: {avixa_calcs['audio_power_needed']}W minimum
-- Microphone Coverage Zones: {avixa_calcs['microphone_coverage_zones']}
-- Total Power Load: {avixa_calcs['total_power_load_watts']}W
-- UPS Requirement: {avixa_calcs['ups_va_required']}VA, {avixa_calcs['ups_runtime_minutes']} minutes runtime
+**TECHNICAL REQUIREMENTS (Select products to meet these):**
+- Required Display Size: ~{equipment_reqs['displays']['size_inches']} inches
+- Required Display Quantity: {equipment_reqs['displays']['quantity']}
+- Required Audio System Type: {equipment_reqs['audio_system']['type']}
 
-**EQUIPMENT SELECTION REQUIREMENTS (Use tags from catalog to match these):**
-- Displays: {equipment_reqs['displays']['type']} - {equipment_reqs['displays']['size_inches']}" x {equipment_reqs['displays']['quantity']}
-- Audio System: {equipment_reqs['audio_system']['type']}
-- Microphones: {equipment_reqs['audio_system']['microphones']}
-- Camera System: {equipment_reqs['video_system']['camera_type']}
-- Control System: {equipment_reqs['control_system']['type']}
-- Infrastructure: {equipment_reqs['infrastructure']['equipment_rack']} ({equipment_reqs['infrastructure']['rack_size']})
-
-**MANDATORY REQUIREMENTS:**
-1. ONLY use products from the provided product catalog sample. Use the tags to find the best fit.
-2. Include ALL necessary infrastructure (Cables, Mounts, UPS).
-3. Add standard service line items (Installation, Warranty, Project Management).
-4. For EACH product, provide exactly 3 specific reasons in the 'Remarks' column formatted as: "1) [Technical reason] 2) [Business benefit] 3) [User experience benefit]"
-
-**OUTPUT FORMAT REQUIREMENT:**
-Start with a System Design Summary, then provide the BOQ in a Markdown table:
+**OUTPUT FORMAT:**
+Provide the BOQ in a Markdown table. Do not include a summary or any other text.
 | Category | Make | Model No. | Specifications | Quantity | Unit Price (USD) | Remarks |
 
-**PRODUCT CATALOG SAMPLE (Use tags for intelligent selection):**
+**PRODUCT CATALOG SAMPLE:**
 {product_catalog_string}
 
-**AVIXA GUIDELINES:**
-{guidelines}
-
-Generate the detailed AVIXA-compliant BOQ:
+Generate the BOQ:
 """
     
     try:
@@ -858,7 +841,7 @@ def create_advanced_requirements():
     }
 
 
-# --- Multi-Room Interface ---
+# --- ★★★ BUG FIX IS HERE ★★★ ---
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
     st.subheader("Multi-Room Project Management")
@@ -906,10 +889,13 @@ def create_multi_room_interface():
         st.markdown("---")
         st.write("**Current Project Rooms:**")
 
-        # Save state before switching rooms
+        # --- FIX: SAVE STATE BEFORE SWITCHING ---
+        # Before rendering the selectbox, we save the current editor state (st.session_state.boq_items)
+        # back into the correct room in our project list. This prevents data loss on switching rooms.
         previous_room_index = st.session_state.current_room_index
         if previous_room_index < len(st.session_state.project_rooms):
             st.session_state.project_rooms[previous_room_index]['boq_items'] = st.session_state.boq_items
+        # --- END FIX ---
 
         room_options = [room['name'] for room in st.session_state.project_rooms]
         
@@ -934,6 +920,7 @@ def create_multi_room_interface():
         new_index = room_options.index(selected_room_name)
         if new_index != st.session_state.current_room_index:
             st.session_state.current_room_index = new_index
+            # Now, we load the data from the newly selected room into the editor state.
             selected_room_boq = st.session_state.project_rooms[new_index].get('boq_items', [])
             st.session_state.boq_items = selected_room_boq
             update_boq_content_with_current_items()
@@ -944,6 +931,7 @@ def create_multi_room_interface():
         
         if st.button(f"🗑️ Remove '{selected_room['name']}' from Project", type="secondary"):
             st.session_state.project_rooms.pop(st.session_state.current_room_index)
+            # Reset index and clear the editor to avoid errors
             st.session_state.current_room_index = 0
             if st.session_state.project_rooms:
                 st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
@@ -959,6 +947,7 @@ def update_boq_content_with_current_items():
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items added yet."
         return
     
+    # Using the new AI response format for consistency
     boq_content = "## Bill of Quantities\n\n"
     boq_content += "| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |\n"
     boq_content += "|---|---|---|---|---|---|---|\n"
@@ -1198,7 +1187,7 @@ def product_search_interface(product_df, currency):
                         st.success(f"Added {add_qty}x {product['name']}!")
                         st.rerun()
 
-# --- COMPANY STANDARD EXCEL GENERATION ---
+# --- NEW: COMPANY STANDARD EXCEL GENERATION ---
 def _define_styles():
     """Defines reusable styles for the Excel sheet."""
     return {
@@ -1238,10 +1227,12 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
             sheet.row_dimensions[row_num].height = 60
             
     except Exception as e:
+        # Don't print to console in production, could log this instead
+        # print(f"Failed to add image {image_url}: {e}")
         sheet[f'{column}{row_num}'] = "Image unavailable"
 
 def _populate_company_boq_sheet(sheet, items, room_name, styles):
-    """Helper function to populate a single Excel sheet with BOQ data."""
+    """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
     
     # Static Headers
     sheet.merge_cells('A3:P3')
@@ -1454,6 +1445,7 @@ def add_proposal_summary_sheet(workbook, rooms_data, styles):
     grand_total_with_tax = 0
     for i, room in enumerate(rooms_data, 1):
         if room.get('boq_items'):
+            # This requires recalculating totals for the summary. For simplicity, we pass it from the main function.
             subtotal = room.get('subtotal', 0)
             gst = room.get('gst', 0)
             total = room.get('total', 0)
@@ -1484,6 +1476,8 @@ def add_proposal_summary_sheet(workbook, rooms_data, styles):
 def add_scope_of_work_sheet(workbook):
     """Adds the static Scope of Work sheet."""
     sheet = workbook.create_sheet("Scope of Work")
+    # This can be populated with the static content from the provided CSV file.
+    # For brevity, I'll add a placeholder.
     sheet['A1'] = "Scope of Work"
     sheet['A1'].font = Font(size=16, bold=True)
     sheet['A3'] = "1. Site Coordination and Prerequisites Clearance."
@@ -1528,6 +1522,24 @@ def add_terms_conditions_sheet(workbook):
         ("• 3 years comprehensive warranty on all equipment", "text"),
         ("• On-site support within 24-48 hours", "text"),
         ("• Remote support available 24x7", "text"),
+        ("", ""),
+        ("5. SCOPE INCLUSIONS", "section"),
+        ("• Supply of all listed equipment", "text"),
+        ("• Professional installation & commissioning", "text"),
+        ("• User training (up to 4 hours)", "text"),
+        ("• System documentation & as-built drawings", "text"),
+        ("", ""),
+        ("6. SCOPE EXCLUSIONS", "section"),
+        ("• Civil work, false ceiling, electrical work", "text"),
+        ("• Furniture & interior modifications", "text"),
+        ("• Network infrastructure beyond AV requirements", "text"),
+        ("• Permits & approvals from authorities", "text"),
+        ("", ""),
+        ("7. ADDITIONAL TERMS", "section"),
+        ("• Prices are ex-works and exclude transportation", "text"),
+        ("• All taxes as applicable will be charged extra", "text"),
+        ("• Any changes to scope will be charged separately", "text"),
+        ("• Force majeure conditions applicable", "text"),
     ]
     
     styles = _define_styles()
@@ -1607,7 +1619,18 @@ def generate_company_excel(rooms_data=None):
 def get_sample_product_data():
     """Provide comprehensive sample products with AVIXA-relevant specifications."""
     return [
-        # ... (Sample data can be kept for fallback purposes) ...
+        # Displays
+        {
+            'name': 'Samsung 55" QM55R 4K Display',
+            'brand': 'Samsung',
+            'category': 'Displays',
+            'price': 1200,
+            'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
+            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm55r/qm55r_001_front_black.png',
+            'gst_rate': 18,
+            'power_draw': 180
+        },
+        # ... more sample data can be added here
     ]
 
 def show_login_page():
@@ -1627,6 +1650,8 @@ def show_login_page():
             submit = st.form_submit_button("Login", type="primary", use_container_width=True)
             
             if submit:
+                # --- CHANGE IS HERE ---
+                # Now checks if the email ends with EITHER of the domains in the tuple.
                 if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
@@ -1639,6 +1664,7 @@ def show_login_page():
         st.info("Phase 1 Internal Tool - Contact IT for access issues")
 
 def main():
+    # Simple authentication for Phase 1
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
         
@@ -1646,6 +1672,7 @@ def main():
         show_login_page()
         return
     
+    # Page config for main app
     st.set_page_config(
         page_title="Professional AV BOQ Generator",
         page_icon="⚡",
@@ -1794,6 +1821,7 @@ def main():
             display_boq_results(st.session_state.boq_content, st.session_state.validation_results, project_id, quote_valid_days, product_df)
 
     with tab5:
+        # This function is now imported from components/visualizer.py
         create_3d_visualization()
 
 # Run the application
