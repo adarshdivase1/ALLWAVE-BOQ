@@ -136,7 +136,7 @@ def load_and_validate_data():
 def setup_gemini():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel('gemini-1.5-flash-002')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         return model
     except Exception as e:
         st.error(f"Gemini API configuration failed: {e}")
