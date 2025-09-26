@@ -26,28 +26,27 @@ def clean_brand_name(filename):
     base_name = re.sub(r'Master List 2\.0.*-|\.csv', '', filename).strip()
     return base_name
 
-# NEW: Function to categorize products
+# MODIFIED: Corrected category names to be plural to match your app
 def categorize_product(description):
     """Analyzes the description to determine category."""
     description_lower = str(description).lower()
     
-    # Define keywords for each category
+    # These keys now EXACTLY match your Streamlit app's essential_categories list
     category_keywords = {
-        'Display': ['display', 'screen', 'monitor', 'touch', 'led wall', 'projector'],
+        'Displays': ['display', 'screen', 'monitor', 'touch', 'led wall', 'projector', 'interactive'],
         'Audio': ['audio', 'microphone', 'speaker', 'sound', 'headset', 'mixer', 'amplifier'],
-        'Camera': ['camera', 'ptz', 'video bar'],
-        'Mounting': ['mount', 'wall mount', 'trolley', 'stand', 'bracket', 'rack'],
-        'Cable & Adapter': ['cable', 'adapter', 'extender', 'hdmi', 'connector'],
-        'Collaboration': ['collaboration', 'conferencing', 'presentation', 'podium', 'interactive'],
-        'Infrastructure': ['switch', 'controller', 'processor', 'ups', 'pdu']
+        'Video Conferencing': ['camera', 'ptz', 'video bar', 'conferencing', 'codec'],
+        'Control': ['control', 'processor', 'switch', 'matrix', 'touch panel', 'controller'],
+        'Mounts': ['mount', 'wall mount', 'trolley', 'stand', 'bracket', 'rack'],
+        'Cables': ['cable', 'adapter', 'extender', 'hdmi', 'connector'],
+        'Infrastructure': ['ups', 'pdu', 'infrastructure']
     }
 
-    # Determine category
     for cat, keywords in category_keywords.items():
         if any(keyword in description_lower for keyword in keywords):
             return cat
             
-    return 'Uncategorized' # Default if no keywords match
+    return 'General' # Default if no keywords match
 
 
 # --- Main Script ---
@@ -86,7 +85,6 @@ for filename in csv_files:
         header_row = find_header_row(file_path, header_keywords)
         df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip')
 
-        # Find columns more robustly
         model_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['model', 'part', 'sku', 'item no'])), None)
         desc_col = next((col for col in df.columns if 'desc' in str(col).lower()), None)
         price_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['price', 'msrp', 'cost', 'rate'])), None)
@@ -125,7 +123,7 @@ for filename in csv_files:
     except Exception as e:
         print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-# Step 3: Combine old and new data
+# Step 3 & 4: Combine, De-duplicate, and Save
 if not all_new_products and existing_df.empty:
     print("\n❌ No existing data and no new products were found. Exiting.")
 else:
@@ -134,7 +132,6 @@ else:
     
     combined_df = pd.concat([existing_df, new_products_df], ignore_index=True)
     
-    # Step 4: De-duplicate
     if 'name' in combined_df.columns:
         initial_rows = len(combined_df)
         combined_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
