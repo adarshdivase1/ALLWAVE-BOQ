@@ -415,7 +415,6 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
 # app.py -> Replace the existing function with this one
 
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
