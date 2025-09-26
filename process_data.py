@@ -24,14 +24,13 @@ def find_header_row(file_path, keywords, max_rows=20):
 def clean_brand_name(filename):
     """Extracts a clean brand name from the filename."""
     base_name = re.sub(r'Master List 2\.0.*-|\.csv', '', filename).strip()
-    return base_name
+    # Handle multi-brand files by taking the first one
+    return base_name.split('&')[0].split(' and ')[0].strip()
 
-# MODIFIED: Corrected category names to be plural to match your app
 def categorize_product(description):
     """Analyzes the description to determine category."""
     description_lower = str(description).lower()
     
-    # These keys now EXACTLY match your Streamlit app's essential_categories list
     category_keywords = {
         'Displays': ['display', 'screen', 'monitor', 'touch', 'led wall', 'projector', 'interactive'],
         'Audio': ['audio', 'microphone', 'speaker', 'sound', 'headset', 'mixer', 'amplifier'],
@@ -46,8 +45,7 @@ def categorize_product(description):
         if any(keyword in description_lower for keyword in keywords):
             return cat
             
-    return 'General' # Default if no keywords match
-
+    return 'General'
 
 # --- Main Script ---
 new_data_folder = 'data'
@@ -56,7 +54,6 @@ output_filename = 'master_product_catalog.csv'
 all_new_products = []
 header_keywords = ['description', 'model', 'part', 'price', 'sku', 'item']
 
-# Step 1: Read the existing master catalog if it exists
 if os.path.exists(existing_master_file):
     print(f"Reading existing data from {existing_master_file}...")
     try:
@@ -69,7 +66,6 @@ else:
     print(f"No existing {existing_master_file} found. Starting with a blank slate.")
     existing_df = pd.DataFrame()
 
-# Step 2: Process all the new files
 if not os.path.exists(new_data_folder):
     print(f"Error: The '{new_data_folder}' directory was not found. Please create it and add your new CSV files.")
     exit()
@@ -83,26 +79,33 @@ for filename in csv_files:
     print(f"Processing: {filename} (Brand: {brand})")
     try:
         header_row = find_header_row(file_path, header_keywords)
-        df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip')
+        df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip', dtype=str)
 
+        # --- PRICE LOGIC FIX ---
+        # Prioritize finding the 'USD' column for accurate pricing.
         model_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['model', 'part', 'sku', 'item no'])), None)
         desc_col = next((col for col in df.columns if 'desc' in str(col).lower()), None)
-        price_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['price', 'msrp', 'cost', 'rate'])), None)
+        price_col_usd = next((col for col in df.columns if 'usd' in str(col).lower()), None) # Explicitly look for USD
+
+        # Fallback if no USD column is found
+        if not price_col_usd:
+            price_col_generic = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['price', 'rate'])), None)
+            price_col = price_col_generic
+        else:
+            price_col = price_col_usd
 
         if not model_col or not desc_col:
             print(f"  -> Warning: Could not find 'Model' or 'Description' columns in {filename}. Skipping.")
             continue
 
-        df = df.rename(columns={model_col: 'Model', desc_col: 'Description'})
-        if price_col:
-            df = df.rename(columns={price_col: 'Price'})
-            df['Price'] = pd.to_numeric(df['Price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+        df = df.rename(columns={model_col: 'Model', desc_col: 'Description', price_col: 'Price'})
+        df['Price'] = pd.to_numeric(df['Price'], errors='coerce').fillna(0)
 
         for _, row in df.iterrows():
             model = str(row.get('Model', '')).strip()
             desc = str(row.get('Description', '')).strip()
 
-            if pd.isna(model) or model.lower() in ['nan', ''] or not model:
+            if not model or model.lower() == 'nan':
                 continue
 
             category = categorize_product(desc)
@@ -116,14 +119,14 @@ for filename in csv_files:
                 'features': desc,
                 'tier': 'Standard',
                 'use_case_tags': '',
-                'compatibility_tags': ''
+                'compatibility_tags': '',
+                'technical_spec_tags': ''
             }
             all_new_products.append(product_data)
 
     except Exception as e:
         print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-# Step 3 & 4: Combine, De-duplicate, and Save
 if not all_new_products and existing_df.empty:
     print("\n❌ No existing data and no new products were found. Exiting.")
 else:
