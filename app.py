@@ -152,15 +152,17 @@ def clean_and_validate_product_data(product_df):
         'Audio: Amplifiers': 'Audio',
         'Video Conferencing': 'Video Conferencing',
         'Control Systems & Processing': 'Control',
-        'AV over IP': 'Control',
+        'AV over IP & Streaming': 'Control',
+        'Control, Matrix & Extenders': 'Control',
         'Video Equipment': 'Control',
         'Mounts & Racks': 'Mounts',
         'Cables & Connectivity': 'Cables',
         'Networking': 'Infrastructure',
+        'Network Switches (AV-friendly)': 'Infrastructure',
         'Installation & Services': 'Services',
         'Wireless Presentation': 'Control',
-        'Room Scheduling': 'Control',
-        'Digital Signage': 'Displays',
+        'Room Scheduling & Touch Panels': 'Control',
+        'Digital Signage Players & CMS': 'Displays',
         'Projection Screens': 'Displays'
     }
 
@@ -1157,6 +1159,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
 
     return components
 
+
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
                                     required_components, product_df, budget_tier):
     """Build detailed AI prompt with all product options."""
@@ -1363,7 +1366,7 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     st.write(f"Total products in catalog: {len(clean_product_df)}")
     st.write(f"Categories in catalog: {clean_product_df['category'].nunique()}")
     st.write(f"Categories: {sorted(clean_product_df['category'].unique())}")
-    
+
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
@@ -1383,15 +1386,19 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
             category = comp_spec['category']
             available = len(product_df[product_df['category'] == category])
             st.write(f"**{comp_key}** ({category}): {available} products available")
-            
+
     # Enhanced debug output
     with st.expander("📊 Detailed Product Catalog Analysis", expanded=False):
         st.write("### Available Products by Category:")
         for cat in product_df['category'].unique():
             cat_count = len(product_df[product_df['category'] == cat])
-            cat_price_range = product_df[product_df['category'] == cat]['price'].agg(['min', 'max'])
-            st.write(f"**{cat}**: {cat_count} products (${cat_price_range['min']:.0f} - ${cat_price_range['max']:.0f})")
-        
+            if cat_count > 0:
+                cat_price_range = product_df[product_df['category'] == cat]['price'].agg(['min', 'max'])
+                st.write(f"**{cat}**: {cat_count} products (${cat_price_range['min']:.0f} - ${cat_price_range['max']:.0f})")
+            else:
+                st.write(f"**{cat}**: 0 products")
+
+
         st.write(f"\n### Required vs Available:")
         for comp_key, comp_spec in required_components.items():
             category = comp_spec['category']
@@ -1416,7 +1423,7 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
         boq_items = _build_boq_from_ai_selection(
             ai_selection, required_components, clean_product_df, equipment_reqs, room_type
         )
-        
+
         # CRITICAL: Show what AI actually selected
         with st.expander("🤖 AI Selection Results", expanded=True):
             st.json(ai_selection)
