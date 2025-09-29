@@ -2,24 +2,17 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Assuming these components are in your project structure as discussed
 try:
     from components.visualizer import ROOM_SPECS
-except ImportError:
-    # Provide a fallback if visualizer isn't found, to prevent crashes
-    ROOM_SPECS = {'Standard Conference Room (6-8 People)': {'area_sqft': (250, 400)}}
-try:
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
-except ImportError:
-    # Define dummy functions if utils isn't found
-    def get_usd_to_inr_rate(): return 83.5
-    def convert_currency(amount_usd, to_currency="INR"): return amount_usd * 83.5 if to_currency == "INR" else amount_usd
-    def format_currency(amount, currency="USD"): return f"₹{amount:,.0f}" if currency == "INR" else f"${amount:,.2f}"
-try:
     from components.excel_generator import generate_company_excel
 except ImportError:
+    ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
+    def get_usd_to_inr_rate(): return 83.5
+    def convert_currency(amount, to_currency="INR"): return amount * 83.5 if to_currency == "INR" else amount
+    def format_currency(amount, currency="INR"): return f"₹{amount:,.0f}" if currency == "INR" else f"${amount:,.2f}"
     def generate_company_excel(*args, **kwargs):
-        st.error("Excel generation component is unavailable.")
+        st.error("Excel component unavailable.")
         return None
 
 # --- Main UI Section Builders ---
@@ -83,21 +76,19 @@ def create_multi_room_interface():
     with col1:
         room_name = st.text_input("New Room Name", value=f"Room {len(st.session_state.project_rooms) + 1}")
     with col2:
-        st.write(""); st.write("") # Spacer
+        st.write(""); st.write("")
         if st.button("➕ Add New Room to Project", type="primary", use_container_width=True):
             new_room = {
                 'name': room_name,
                 'type': st.session_state.get('room_type_select', list(ROOM_SPECS.keys())[0]),
                 'area': st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
-                'boq_items': [],
-                'features': st.session_state.get('features_text_area', ''),
-                'technical_reqs': {}
+                'boq_items': [], 'features': st.session_state.get('features_text_area', ''), 'technical_reqs': {}
             }
             st.session_state.project_rooms.append(new_room)
             st.success(f"Added '{room_name}' to the project.")
             st.rerun()
     with col3:
-        st.write(""); st.write("") # Spacer
+        st.write(""); st.write("")
         if st.session_state.project_rooms:
             project_details = {
                 'project_name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
@@ -105,8 +96,7 @@ def create_multi_room_interface():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
             excel_data = generate_company_excel(
-                project_details=project_details,
-                rooms_data=st.session_state.project_rooms,
+                project_details=project_details, rooms_data=st.session_state.project_rooms,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             if excel_data:
@@ -129,8 +119,7 @@ def create_multi_room_interface():
         current_index = st.session_state.current_room_index if st.session_state.current_room_index < len(room_options) else 0
 
         selected_room_name = st.selectbox(
-            "Select a room to view or edit its BOQ:", options=room_options,
-            index=current_index, key="room_selector"
+            "Select a room to view or edit:", options=room_options, index=current_index, key="room_selector"
         )
 
         new_index = room_options.index(selected_room_name)
@@ -141,9 +130,9 @@ def create_multi_room_interface():
             st.rerun()
 
         selected_room = st.session_state.project_rooms[st.session_state.current_room_index]
-        st.info(f"You are currently editing **{selected_room['name']}**. Any generated or edited BOQ will be saved for this room.")
+        st.info(f"You are currently editing **{selected_room['name']}**.")
 
-        if st.button(f"🗑️ Remove '{selected_room['name']}' from Project", type="secondary"):
+        if st.button(f"🗑️ Remove '{selected_room['name']}'", type="secondary"):
             st.session_state.project_rooms.pop(st.session_state.current_room_index)
             st.session_state.current_room_index = 0
             st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', []) if st.session_state.project_rooms else []
@@ -153,8 +142,8 @@ def create_multi_room_interface():
 
 def update_boq_content_with_current_items():
     """Update the BOQ content in session state to reflect current items."""
-    if 'boq_items' not in st.session_state or not st.session_state.boq_items:
-        st.session_state.boq_content = "## Bill of Quantities\n\nNo items added yet."
+    if not st.session_state.get('boq_items'):
+        st.session_state.boq_content = "## Bill of Quantities\n\nNo items generated yet."
         return
 
     boq_content = "## Bill of Quantities\n\n"
@@ -162,30 +151,35 @@ def update_boq_content_with_current_items():
     boq_content += "|---|---|---|---|---|---|---|\n"
 
     for item in st.session_state.boq_items:
+        remarks = item.get('justification', '')
+        # ★★★ NEW: Check for and display warnings from the validation layer ★★★
+        if item.get('warning'):
+            remarks = f"⚠️ **{item['warning']}**<br>{remarks}"
+
         boq_content += (
             f"| {item.get('category', 'N/A')} | {item.get('brand', 'N/A')} "
             f"| {item.get('name', 'N/A')} | {item.get('specifications', '')} "
             f"| {item.get('quantity', 1)} | ${item.get('price', 0):,.2f} "
-            f"| {item.get('justification', '')} |\n"
+            f"| {remarks} |\n"
         )
     st.session_state.boq_content = boq_content
 
 def display_boq_results(product_df):
     """Display BOQ results with interactive editing capabilities."""
     boq_content = st.session_state.get('boq_content')
-    validation_results = st.session_state.get('validation_results')
+    validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
     st.subheader(f"Generated Bill of Quantities ({item_count} items)")
 
-    if validation_results and validation_results.get('issues'):
+    if validation_results.get('issues'):
         st.error("Critical Issues Found:")
         for issue in validation_results['issues']: st.write(f"- {issue}")
-    if validation_results and validation_results.get('warnings'):
+    if validation_results.get('warnings'):
         st.warning("Technical Recommendations & Compliance Notes:")
         for warning in validation_results['warnings']: st.write(f"- {warning}")
 
     if boq_content:
-        st.markdown(boq_content)
+        st.markdown(boq_content, unsafe_allow_html=True)
     else:
         st.info("No BOQ content generated yet. Use the interactive editor below.")
 
@@ -193,10 +187,7 @@ def display_boq_results(product_df):
         currency = st.session_state.get('currency', 'USD')
         total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
         display_total = convert_currency(total_cost * 1.30, currency)
-        st.metric(
-            "Estimated Project Total", format_currency(display_total, currency),
-            help="Includes installation, warranty, and contingency"
-        )
+        st.metric("Estimated Project Total", format_currency(display_total, currency), help="Includes installation, warranty, and contingency")
     
     st.markdown("---")
     create_interactive_boq_editor(product_df)
@@ -285,7 +276,12 @@ def add_products_interface(product_df, currency):
             st.warning("No products found for this category.")
             return
         selected_product_str = st.selectbox("Select Product", product_options, key="add_product_select")
-        selected_product = filtered_df[filtered_df.apply(lambda row: f"{row['brand']} - {row['name']}" == selected_product_str, axis=1)].iloc[0]
+        selected_product_series = filtered_df[filtered_df.apply(lambda row: f"{row['brand']} - {row['name']}" == selected_product_str, axis=1)]
+        if selected_product_series.empty:
+            st.error("Selected product not found.")
+            return
+        selected_product = selected_product_series.iloc[0]
+
     with col2:
         quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
         base_price = float(selected_product.get('price', 0))
