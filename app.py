@@ -2431,7 +2431,7 @@ def get_sample_product_data():
     ]
 
 def show_login_page():
-    """Simple login page for internal users."""
+    ""Simple login page for internal users.""
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="⚡")
     
     col1, col2, col3 = st.columns([1, 2, 1])
