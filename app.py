@@ -18,6 +18,7 @@ import requests
 from PIL import Image as PILImage
 
 # --- Import from components directory ---
+# --- Import from components directory ---
 try:
     from components.visualizer import create_3d_visualization, ROOM_SPECS
 except ImportError:
@@ -96,6 +97,7 @@ except ImportError:
     }
     def create_3d_visualization():
         st.info("3D Visualization component not found.")
+
 
 
 # --- Page Configuration (Moved to login) ---
@@ -2683,7 +2685,8 @@ def main():
         room_type_key = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
         budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
 
-        room_spec = ROOM_SPECS[room_type_key]
+        # Safely get the room spec using the key from the selectbox
+        room_spec = ROOM_SPECS.get(st.session_state.room_type_select, {})
         st.markdown("#### Room Guidelines")
         st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
         st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
@@ -2711,7 +2714,6 @@ def main():
             # Add a container for debug info to make the state clear
             with st.container(border=True):
                 st.markdown("##### ⚙️ Current Generation Settings")
-                # This debug info will make it obvious if the state is correct BEFORE you click generate
                 try:
                     current_type = st.session_state.room_type_select
                     current_spec = ROOM_SPECS.get(current_type, {})
@@ -2739,7 +2741,7 @@ def main():
                             selected_features,      # Use the guaranteed correct value
                             technical_reqs, 
                             room_area_val
-                        ) # <<< The closing parenthesis is now here, correctly.
+                        )
 
                         if boq_items:
                             st.session_state.boq_items = boq_items
@@ -2750,7 +2752,7 @@ def main():
                                 st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
 
                             avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, selected_room_type)
-                            issues, warnings = [], [] # Placeholder for older validator
+                            issues, warnings = [], [] # Placeholder
 
                             avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
 
