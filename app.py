@@ -623,10 +623,16 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
     """Create comprehensive fallback BOQ based on room complexity."""
     fallback_items = []
 
+    # Determine minimum components based on room size
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
 
-    # Get required components
+    # --- ADD THIS SAFEGUARD BLOCK ---
+    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
+        st.warning(f"**Warning:** A complex room type ('{room_type}') resulted in a 'SIMPLE' complexity. This usually indicates a typo or character mismatch in the `ROOM_SPECS` dictionary keys.")
+    # --- END SAFEGUARD BLOCK ---
+
+    # Enhanced required components structure
     required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
 
     st.info(f"Fallback: Generating {len(required_components)}-component system")
