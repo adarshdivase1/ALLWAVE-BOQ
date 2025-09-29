@@ -199,21 +199,44 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
 # --- ★★★ NEW: PRODUCTION-READY VALIDATION & CORRECTION LAYER ★★★ ---
 
 def _remove_duplicate_core_components(boq_items):
-    """Finds and removes duplicate core items like video codecs."""
-    core_components = {}
+    """
+    Finds and removes duplicate core items based on category.
+    Keeps the most expensive item, assuming it's the primary system.
+    """
     final_items = []
-    core_keywords = ['G7500', 'Room Kit', 'Codec', 'Crestron Flex']
-
+    # Core categories where only one primary system should exist
+    core_categories = ['Video Conferencing', 'Control']
+    
+    # Handle non-core items first
     for item in boq_items:
-        is_core = any(keyword in item['name'] for keyword in core_keywords)
-        if is_core:
-            if item['name'] not in core_components:
-                core_components[item['name']] = item
-                final_items.append(item)
-            else:
-                st.warning(f"🗑️ Removed duplicate core component: {item['name']}")
-        else:
+        if item.get('category') not in core_categories:
             final_items.append(item)
+
+    # Handle core categories by finding the best candidate
+    for category in core_categories:
+        candidates = [item for item in boq_items if item.get('category') == category]
+        if len(candidates) > 1:
+            st.warning(f"Multiple items found for core category '{category}'. Consolidating to one.")
+            # Keep the most expensive item, assuming it's the main system/codec
+            best_candidate = max(candidates, key=lambda x: x.get('price', 0))
+            final_items.append(best_candidate)
+        elif len(candidates) == 1:
+            final_items.append(candidates[0])
+            
+    # Special handling for Audio (can have mics and speakers, but usually one DSP/Mixer)
+    audio_items = [item for item in boq_items if item.get('category') == 'Audio']
+    dsp_mixer_keywords = ['DSP', 'Mixer', 'Processor']
+    core_audio_items = [item for item in audio_items if any(kw in item['name'] for kw in dsp_mixer_keywords)]
+    other_audio_items = [item for item in audio_items if not any(kw in item['name'] for kw in dsp_mixer_keywords)]
+    
+    final_items.extend(other_audio_items) # Add back mics, speakers, etc.
+    if len(core_audio_items) > 1:
+        st.warning("Multiple DSPs/Mixers found. Consolidating to one.")
+        best_core_audio = max(core_audio_items, key=lambda x: x.get('price', 0))
+        final_items.append(best_core_audio)
+    elif len(core_audio_items) == 1:
+        final_items.append(core_audio_items[0])
+        
     return final_items
 
 def _validate_and_correct_mounts(boq_items):
