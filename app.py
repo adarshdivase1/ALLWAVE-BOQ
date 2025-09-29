@@ -2701,7 +2701,7 @@ def main():
         st.subheader("Professional BOQ Generation")
         col1, col2 = st.columns([2, 1])
 
-        with col1:
+    with col1:
             # Add a container for debug info to make the state clear
 with st.container(border=True):
     st.markdown("##### ⚙️ Current Generation Settings")
