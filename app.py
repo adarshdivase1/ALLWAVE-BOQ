@@ -144,9 +144,31 @@ def clean_and_validate_product_data(product_df):
     # Clean price data - remove unrealistic prices
     df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
 
-    # Filter out products with unrealistic prices (likely test data)
-    # Keep products with prices between $100 and $50,000
-    df = df[(df['price'] >= 100) & (df['price'] <= 50000)]
+    # ★★★ FIX 3: RELAXED PRICE FILTERING ★★★
+    # REPLACE THIS:
+    # df = df[(df['price'] >= 100) & (df['price'] <= 50000)]
+    
+    # WITH THIS (category-specific):
+    price_filters = {
+        'Cables': (10, 500),
+        'Mounts': (30, 1000),
+        'Displays': (500, 20000),
+        'Audio': (50, 5000),
+        'Video Conferencing': (200, 10000),
+        'Control': (100, 8000),
+        'Infrastructure': (100, 5000)
+    }
+    
+    def is_valid_price(row):
+        category = row['category']
+        price = row['price']
+        if category in price_filters:
+            min_p, max_p = price_filters[category]
+            return min_p <= price <= max_p
+        return 100 <= price <= 50000  # Default range
+    
+    df = df[df.apply(is_valid_price, axis=1)]
+    # ★★★ END FIX 3 ★★★
 
     # Clean category names - standardize to match your expected categories
     category_mapping = {
@@ -301,7 +323,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -1072,6 +1094,17 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
     Define required components using explicit blueprints for each complexity level.
     This is a more robust method than additive logic.
     """
+    # ★★★ FIX 2: ADD DIAGNOSTICS AND CORRECTION ★★★
+    import streamlit as st
+    st.write(f"🔍 _get_required_components called with:")
+    st.write(f"   - complexity: '{complexity}'")
+    st.write(f"   - room_type: '{room_type}'")
+    
+    # Existing validation check
+    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
+        st.error(f"❌ MISMATCH: Room type '{room_type}' should NOT be 'simple' complexity!")
+        complexity = 'advanced'  # Force correct complexity
+    # ★★★ END FIX 2 ★★★
     
     # --- 1. Define ALL possible component blueprints ---
     component_definitions = {
@@ -1147,10 +1180,16 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
             'speakers', 'dsp', 'control', 'network_switch', 'amplifier', 'ups'
         ]
     }
-
-    # --- 3. Select the correct list of keys based on complexity ---
-    required_keys = complexity_map.get(complexity, complexity_map['simple']) # Default to simple
     
+    # ★★★ FIX 5: ADD COMPLEXITY KEY VALIDATION ★★★
+    if complexity not in complexity_map:
+        st.error(f"❌ Unknown complexity: '{complexity}' - using 'moderate' as fallback")
+        complexity = 'moderate'
+    
+    required_keys = complexity_map[complexity]
+    st.info(f"✓ Selected {len(required_keys)} components for '{complexity}' complexity")
+    # ★★★ END FIX 5 ★★★
+
     # --- 4. Build the final dictionary from the selected keys ---
     final_components = {key: component_definitions[key] for key in required_keys}
 
@@ -1158,7 +1197,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
 
 
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
-                                     required_components, product_df, budget_tier):
+                                    required_components, product_df, budget_tier):
     """Build detailed AI prompt with all product options."""
 
     budget_filters = {
@@ -1311,6 +1350,34 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
                 })
 
     st.info(f"Matched {matched_count}/{len(required_components)} components from AI selection")
+    
+    # ★★★ FIX 4: ENFORCE COMPONENT COUNT ★★★
+    if len(boq_items) < len(required_components):
+        st.error(f"❌ AI returned {len(boq_items)}/{len(required_components)} components!")
+        
+        # Find missing components
+        added_categories = {item['category'] for item in boq_items}
+        for comp_key, comp_spec in required_components.items():
+            if comp_spec['category'] not in added_categories:
+                st.warning(f"   Missing: {comp_key} ({comp_spec['category']})")
+                
+                # Auto-add fallback
+                fallback = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
+                if fallback:
+                    boq_items.append({
+                        'category': fallback['category'],
+                        'name': fallback['name'],
+                        'brand': fallback['brand'],
+                        'quantity': comp_spec['quantity'],
+                        'price': float(fallback['price']),
+                        'justification': f"{comp_spec['justification']} (auto-added)",
+                        'specifications': fallback.get('features', ''),
+                        'image_url': fallback.get('image_url', ''),
+                        'gst_rate': fallback.get('gst_rate', 18),
+                        'matched': False
+                    })
+    # ★★★ END FIX 4 ★★★
+    
     return boq_items
 
 def _get_fallback_product(category, product_df, comp_spec):
@@ -1325,10 +1392,13 @@ def _get_fallback_product(category, product_df, comp_spec):
     # Fallback to substring
     if len(matching) == 0:
         matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-
+    
+    # ★★★ FIX 6: ADD BETTER ERROR HANDLING ★★★
     if len(matching) == 0:
-        st.warning(f"No products found for category: {category}")
+        st.error(f"❌ CRITICAL: No products in catalog for category '{category}'!")
+        st.write(f"   Available categories: {sorted(product_df['category'].unique())}")
         return None
+    # ★★★ END FIX 6 ★★★
 
     # For displays, try to match size requirement
     if 'display' in category.lower() and 'size_requirement' in comp_spec:
@@ -1352,17 +1422,31 @@ def _get_fallback_product(category, product_df, comp_spec):
 
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced multi-shot AI system with comprehensive product selection."""
+    
+    # ★★★ IMMEDIATE FIX: ADD DIAGNOSTIC BLOCK ★★★
+    st.write("### 🔬 PRE-GENERATION DIAGNOSTICS")
+    st.write(f"1. **Room Type Received:** `{room_type}`")
+    
+    if room_type in ROOM_SPECS:
+        spec = ROOM_SPECS[room_type]
+        st.success(f"   ✓ Found in ROOM_SPECS")
+        st.write(f"   - Complexity: **{spec['complexity']}**")
+        st.write(f"   - Area: {spec['area_sqft']} sq ft")
+    else:
+        st.error(f"   ❌ NOT FOUND in ROOM_SPECS!")
+        st.write(f"   Available keys:")
+        for key in ROOM_SPECS.keys():
+            st.write(f"   - '{key}'")
+    
+    st.write(f"2. **Budget Tier:** `{budget_tier}`")
+    st.write(f"3. **Room Area:** `{room_area}` sq ft")
+    st.write(f"4. **Product Catalog:** {len(product_df)} items")
+    # ★★★ END IMMEDIATE FIX ★★★
 
     clean_product_df = clean_and_validate_product_data(product_df)
     if clean_product_df is None or len(clean_product_df) == 0:
         st.error("No valid products in catalog.")
         return None, [], None, None
-
-    # TEMPORARY DIAGNOSTIC
-    st.write("### 🧪 PRE-FLIGHT CHECK")
-    st.write(f"Total products in catalog: {len(clean_product_df)}")
-    st.write(f"Categories in catalog: {clean_product_df['category'].nunique()}")
-    st.write(f"Categories: {sorted(clean_product_df['category'].unique())}")
 
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
@@ -2294,12 +2378,20 @@ def main():
 
         room_type_key = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
         budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
-
-        # Safely get the room spec using the key from the selectbox
-        room_spec = ROOM_SPECS.get(st.session_state.room_type_select, {})
+        
         st.markdown("#### Room Guidelines")
-        st.caption(f"Area: {room_spec['area_sqft'][0]}-{room_spec['area_sqft'][1]} sq ft")
-        st.caption(f"Display: {room_spec['recommended_display_size'][0]}\"-{room_spec['recommended_display_size'][1]}\"")
+        # ★★★ FIX 1: ADD EXACT KEY VALIDATION ★★★
+        if room_type_key not in ROOM_SPECS:
+            st.error(f"CRITICAL: Room type '{room_type_key}' not found in ROOM_SPECS dictionary!")
+            st.write("Available keys:", list(ROOM_SPECS.keys()))
+        else:
+            room_spec = ROOM_SPECS[room_type_key]
+            # Safely get the room spec using the key from the selectbox
+            st.caption(f"Area: {room_spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{room_spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft")
+            st.caption(f"Display: {room_spec.get('recommended_display_size', ('N/A', 'N/A'))[0]}\"-{room_spec.get('recommended_display_size', ('N/A', 'N/A'))[1]}\"")
+            st.caption(f"Complexity: {room_spec.get('complexity', 'N/A')}")
+        # ★★★ END FIX 1 ★★★
+
 
     # --- Main Content Tabs ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Multi-Room Project", "Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
