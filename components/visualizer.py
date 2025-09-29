@@ -6,6 +6,7 @@ import re
 import json
 
 # --- Enhanced Room Specifications Database (Also needed by the visualizer) ---
+# --- Enhanced Room Specifications Database (Also needed by the visualizer) ---
 ROOM_SPECS = {
     "Small Huddle Room (2-3 People)": {
         "area_sqft": (40, 80),
@@ -19,7 +20,8 @@ ROOM_SPECS = {
         "furniture_config": "small_huddle",
         "table_size": [4, 2.5],
         "chair_count": 3,
-        "chair_arrangement": "casual"
+        "chair_arrangement": "casual",
+        "complexity": "simple"  # ADDED
     },
     "Medium Huddle Room (4-6 People)": {
         "area_sqft": (80, 150),
@@ -33,7 +35,8 @@ ROOM_SPECS = {
         "furniture_config": "medium_huddle",
         "table_size": [6, 3],
         "chair_count": 6,
-        "chair_arrangement": "round_table"
+        "chair_arrangement": "round_table",
+        "complexity": "simple"  # ADDED
     },
     "Standard Conference Room (6-8 People)": {
         "area_sqft": (150, 250),
@@ -47,7 +50,8 @@ ROOM_SPECS = {
         "furniture_config": "standard_conference",
         "table_size": [10, 4],
         "chair_count": 8,
-        "chair_arrangement": "rectangular"
+        "chair_arrangement": "rectangular",
+        "complexity": "moderate"  # ADDED
     },
     "Large Conference Room (8-12 People)": {
         "area_sqft": (300, 450),
@@ -61,7 +65,8 @@ ROOM_SPECS = {
         "furniture_config": "large_conference",
         "table_size": [16, 5],
         "chair_count": 12,
-        "chair_arrangement": "rectangular"
+        "chair_arrangement": "rectangular",
+        "complexity": "moderate"  # ADDED
     },
     "Executive Boardroom (10-16 People)": {
         "area_sqft": (400, 700),
@@ -75,7 +80,8 @@ ROOM_SPECS = {
         "furniture_config": "executive_boardroom",
         "table_size": [20, 6],
         "chair_count": 16,
-        "chair_arrangement": "oval"
+        "chair_arrangement": "oval",
+        "complexity": "advanced"  # ADDED
     },
     "Training Room (15-25 People)": {
         "area_sqft": (500, 800),
@@ -89,7 +95,8 @@ ROOM_SPECS = {
         "furniture_config": "training_room",
         "table_size": [10, 4],
         "chair_count": 25,
-        "chair_arrangement": "classroom"
+        "chair_arrangement": "classroom",
+        "complexity": "advanced"  # ADDED
     },
     "Large Training/Presentation Room (25-40 People)": {
         "area_sqft": (800, 1200),
@@ -103,7 +110,8 @@ ROOM_SPECS = {
         "furniture_config": "large_training",
         "table_size": [12, 4],
         "chair_count": 40,
-        "chair_arrangement": "theater"
+        "chair_arrangement": "theater",
+        "complexity": "complex"  # ADDED
     },
     "Multipurpose Event Room (40+ People)": {
         "area_sqft": (1200, 2000),
@@ -117,7 +125,8 @@ ROOM_SPECS = {
         "furniture_config": "multipurpose_event",
         "table_size": [16, 6],
         "chair_count": 50,
-        "chair_arrangement": "flexible"
+        "chair_arrangement": "flexible",
+        "complexity": "complex"  # ADDED
     },
     "Video Production Studio": {
         "area_sqft": (400, 600),
@@ -131,7 +140,8 @@ ROOM_SPECS = {
         "furniture_config": "production_studio",
         "table_size": [12, 5],
         "chair_count": 6,
-        "chair_arrangement": "production"
+        "chair_arrangement": "production",
+        "complexity": "complex"  # ADDED
     },
     "Telepresence Suite": {
         "area_sqft": (350, 500),
@@ -145,7 +155,8 @@ ROOM_SPECS = {
         "furniture_config": "telepresence",
         "table_size": [14, 4],
         "chair_count": 8,
-        "chair_arrangement": "telepresence"
+        "chair_arrangement": "telepresence",
+        "complexity": "advanced"  # ADDED
     }
 }
 
