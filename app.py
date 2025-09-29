@@ -276,7 +276,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -1041,6 +1041,69 @@ def _strict_product_match(product_name, product_df, category):
     # Fallback to first product in category
     return filtered.iloc[0].to_dict() if len(filtered) > 0 else None
 
+def _generate_justification(category_key, equipment_reqs, room_type):
+    """Context-aware justification generation."""
+    justifications = {
+        'display': f"Primary {equipment_reqs['displays']['size_inches']}\" display for {room_type}",
+        'video_system': f"Video conferencing with {equipment_reqs['video_system']['camera_type']}",
+        'microphones': f"Professional microphone array providing {equipment_reqs['audio_system'].get('microphone_coverage_zones', 2)}-zone coverage",
+        'ceiling_mic': "Ceiling-mounted microphone for clean audio capture",
+        'speakers': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_zones_required', 2)} zones",
+        'dsp': "Digital signal processor for echo cancellation and audio mixing",
+        'control': f"{equipment_reqs['control_system']['type']} for system automation",
+        'mount': "Professional display mounting hardware",
+        'cables': "High-speed AV connectivity infrastructure"
+    }
+    return justifications.get(category_key, f"Essential {category_key} component for {room_type}")
+
+def _add_essential_missing_components(boq_items, equipment_reqs, product_df, complexity):
+    """Enhanced rule-based fallback with complexity awareness."""
+    categories_present = {item['category'] for item in boq_items}
+    
+    essential_additions = []
+    
+    # Simple rooms
+    if 'Displays' not in categories_present:
+        essential_additions.append(('Displays', 'Primary display'))
+    if 'Video Conferencing' not in categories_present:
+        essential_additions.append(('Video Conferencing', 'Video conferencing solution'))
+    
+    # Moderate+ rooms
+    if complexity in ['moderate', 'advanced', 'complex']:
+        if not any('Microphone' in cat or 'Audio' in cat for cat in categories_present):
+            essential_additions.append(('Audio: Microphones & Conferencing', 'Ceiling microphone array'))
+        if not any('Speaker' in cat or 'Audio' in cat for cat in categories_present):
+            essential_additions.append(('Audio: Speakers', 'Room speakers'))
+        if not any('Control' in cat for cat in categories_present):
+            essential_additions.append(('Control Systems & Processing', 'Room control system'))
+    
+    # Advanced+ rooms
+    if complexity in ['advanced', 'complex']:
+        if not any('DSP' in cat or 'Processor' in cat for cat in categories_present):
+            essential_additions.append(('Audio: DSP', 'Audio processor with DSP'))
+        if not any('Camera' in cat or 'PTZ' in cat for cat in categories_present):
+            essential_additions.append(('PTZ & Pro Video Cameras', 'PTZ camera'))
+    
+    # Add missing components
+    for category, justification in essential_additions:
+        matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
+        if len(matching) > 0:
+            product = matching.iloc[0]
+            boq_items.append({
+                'category': product['category'],
+                'name': product['name'],
+                'brand': product['brand'],
+                'quantity': 1,
+                'price': float(product['price']),
+                'justification': f'{justification} (system-added for completeness)',
+                'specifications': product.get('features', ''),
+                'image_url': product.get('image_url', ''),
+                'gst_rate': product.get('gst_rate', 18),
+                'matched': True
+            })
+    
+    return boq_items
+
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Multi-shot AI system with strict product selection."""
     
@@ -1086,12 +1149,12 @@ ROOM SPECIFICATIONS:
 - Complexity: {complexity.upper()}
 
 SYSTEM REQUIREMENTS (MANDATORY):
-Display: {equipment_reqs['displays']['size_inches']} (Qty: {equipment_reqs['displays']['quantity']})
-Video: {equipment_reqs['video_system']['camera_type']} (Qty: {equipment_reqs['video_system']['camera_count']})
-Audio Microphones: {equipment_reqs['audio_system'].get('microphone_count', 2)} zones required
-Audio Speakers: {equipment_reqs['audio_system'].get('speaker_count', 2)} zones required
-DSP: {"REQUIRED" if equipment_reqs['audio_system'].get('dsp_required') else "Optional"}
-Control: {equipment_reqs['control_system']['type']}
+Display: {display_size}" (Qty: {display_qty})
+Video: {video_type} (Qty: {video_qty})
+Audio Microphones: {mic_zones} zones required
+Audio Speakers: {speaker_zones} zones required
+DSP: {dsp_req}
+Control: {control_type}
 
 AVAILABLE PRODUCTS (SELECT FROM THESE ONLY):
 {_build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier, room_type)}
@@ -1102,13 +1165,13 @@ You MUST include ALL of these keys in your JSON response:
 
 RESPONSE FORMAT (valid JSON only, no explanations):
 {{
-  "display": {{"name": "exact product name from list", "qty": {equipment_reqs['displays']['quantity']}}},
+  "display": {{"name": "exact product name from list", "qty": {display_qty}}},
   "video_bar": {{"name": "exact product name from list", "qty": 1}},
-  "ceiling_mic": {{"name": "exact product name from list", "qty": {equipment_reqs['audio_system'].get('microphone_count', 2)}}},
-  "speakers": {{"name": "exact product name from list", "qty": {equipment_reqs['audio_system'].get('speaker_count', 2)}}},
+  "ceiling_mic": {{"name": "exact product name from list", "qty": {mic_zones}}},
+  "speakers": {{"name": "exact product name from list", "qty": {speaker_zones}}},
   "dsp": {{"name": "exact product name from list", "qty": 1}},
   "control": {{"name": "exact product name from list", "qty": 1}},
-  "mount": {{"name": "exact product name from list", "qty": {equipment_reqs['displays']['quantity']}}},
+  "mount": {{"name": "exact product name from list", "qty": {display_qty}}},
   "cables": {{"name": "exact product name from list", "qty": 2}}
 }}
 
@@ -1190,6 +1253,11 @@ CRITICAL RULES:
         
         return None, corrected_items, avixa_calcs, equipment_reqs
         
+    except Exception as e:
+        st.error(f"Multi-shot generation failed: {str(e)}")
+        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+        return None, fallback_items, avixa_calcs, equipment_reqs
+
 def validate_against_avixa(model, guidelines, boq_items):
     """Use AI to validate the BOQ against AVIXA standards."""
     if not guidelines or not boq_items or not model:
@@ -2245,7 +2313,7 @@ def add_terms_conditions_sheet(workbook):
     sheet.column_dimensions['A'].width = 80
 
 def generate_company_excel(rooms_data=None):
-    """Generate Excel file in the new company standard format."""  # ✅ 3 quotes
+    """Generate Excel file in the new company standard format."""
     if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
         st.error("No BOQ items to export. Generate a BOQ first.")
         return None
@@ -2300,7 +2368,7 @@ def generate_company_excel(rooms_data=None):
 
 # --- Main Application ---
 def get_sample_product_data():
-    """Provide comprehensive sample products with AVIXA-relevant specifications."""  # ✅ 3 quotes
+    """Provide comprehensive sample products with AVIXA-relevant specifications."""
     return [
         # Displays
         {
@@ -2317,7 +2385,7 @@ def get_sample_product_data():
     ]
 
 def show_login_page():
-    """Simple login page for internal users."""  # ✅ 3 quotes
+    """Simple login page for internal users."""
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="⚡")
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -2462,8 +2530,11 @@ def main():
                                 st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                             
                             avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs)
-                            validator = BOQValidator(ROOM_SPECS, product_df)
-                            issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
+                            # The BOQValidator class is not defined. These lines are commented out to prevent an error.
+                            # validator = BOQValidator(ROOM_SPECS, product_df)
+                            # issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
+                            issues, warnings = [], [] # Placeholder
+                            
                             avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
                             
                             all_issues = issues + avixa_validation['avixa_issues']
