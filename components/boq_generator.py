@@ -1,5 +1,3 @@
-# components/boq_generator.py
-
 import streamlit as st
 import pandas as pd
 import re
@@ -26,18 +24,16 @@ except ImportError as e:
 def _parse_ai_product_selection(ai_response_text):
     """Extract JSON from AI response."""
     try:
-        cleaned = ai_response_text.strip()
-        if "```json" in cleaned:
-            cleaned = cleaned.split("```json")[1].split("```")[0]
-        elif "```" in cleaned:
-            cleaned = cleaned.split("```")[1].split("```")[0]
+        cleaned = ai_response_text.strip().replace("`", "")
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
         return json.loads(cleaned)
     except Exception as e:
         st.warning(f"Failed to parse AI JSON: {e}")
         return {}
 
-def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier):
-    """Build detailed AI prompt with all product options."""
+def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier, features):
+    """Build detailed AI prompt incorporating client needs and AVIXA principles."""
     budget_filters = {
         'Economy': (0, 2000), 'Standard': (500, 4000),
         'Premium': (2000, 8000), 'Enterprise': (5000, 15000)
@@ -58,25 +54,23 @@ def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calc
                 matching_products = budget_filtered
         product_catalog[comp_key] = matching_products.head(20)
 
-    prompt = f"""You are an AVIXA-certified AV system designer. Design a complete system for: {room_type}
+    prompt = f"""You are an AVIXA CTS-D certified AV system designer. Your task is to create a complete, logical, and standards-compliant Bill of Quantities (BOQ).
 
-ROOM SPECIFICATIONS:
-- Area: {room_area} sq ft
-- Capacity: {avixa_calcs['estimated_occupancy']} people
-- Complexity Level: {complexity.upper()}
-- Budget Tier: {budget_tier}
+# PROJECT BRIEF
+- **Room Type:** {room_type}
+- **Complexity Level:** {complexity.upper()}
+- **Budget Tier:** {budget_tier}
+- **Client Needs/Features:** {features if features else 'Standard functionality for this room type.'}
 
-AVIXA CALCULATIONS:
-- Display Size Required: {equipment_reqs['displays']['size_inches']}" (Qty: {equipment_reqs['displays']['quantity']})
-- Camera System: {equipment_reqs['video_system']['camera_type']} (Qty: {equipment_reqs['video_system']['camera_count']})
-- Microphone Zones: {equipment_reqs['audio_system'].get('microphone_count', 2)}
-- Speaker Zones: {equipment_reqs['audio_system'].get('speaker_count', 2)}
-- DSP Required: {'YES' if equipment_reqs['audio_system'].get('dsp_required') else 'NO'}
-- Control System: {equipment_reqs['control_system']['type']}
-- Network Bandwidth: {avixa_calcs['recommended_bandwidth_mbps']} Mbps
-- Power Load: {avixa_calcs['total_power_load_watts']}W
+# AVIXA-BASED DESIGN PARAMETERS
+- **Area:** {room_area:.0f} sq ft
+- **Capacity:** {avixa_calcs.get('estimated_occupancy', 'N/A')} people
+- **Required Display Size (DISCAS):** {equipment_reqs.get('displays', {}).get('size_inches', 'N/A')}"
+- **Required System Type:** {equipment_reqs.get('audio_system', {}).get('type', 'Standard Audio')}
+- **Required Control Type:** {equipment_reqs.get('control_system', {}).get('type', 'Standard Control')}
 
-MANDATORY COMPONENTS ({len(required_components)} items):
+# MANDATORY SYSTEM COMPONENTS ({len(required_components)} items)
+You must select one product for each of the following roles. Use the product lists provided below.
 """
     for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
         prompt += f"\n{comp_key.upper()} (Category: {comp_spec['category']}, Qty: {comp_spec['quantity']}):\n"
@@ -98,18 +92,12 @@ OUTPUT FORMAT (STRICT JSON - NO TEXT BEFORE OR AFTER):
     prompt += f"""}}
 
 CRITICAL RULES:
-1. Output ONLY valid JSON - no markdown, no explanations.
-2. Use EXACT product names from the lists above.
-3. You MUST include ALL {len(required_components)} components.
-4. Match display size requirements ({equipment_reqs['displays']['size_inches']}" minimum).
-5. Select products appropriate for {budget_tier} budget tier.
-6. Prefer known brands (Samsung, LG, Poly, Shure, QSC, Crestron).
+1. Output ONLY valid JSON. 2. Use EXACT product names from the lists. 3. Include ALL {len(required_components)} components. 4. Match display size requirements.
 """
     return prompt
 
 
 # --- Product Matching and BOQ Assembly ---
-
 def _strict_product_match(product_name, product_df, category):
     """Enhanced fuzzy matching with fallback logic."""
     if product_df is None or len(product_df) == 0: return None
@@ -168,7 +156,7 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
     
     if len(boq_items) < len(required_components):
         st.warning(f"AI returned {len(boq_items)}/{len(required_components)} components. Adding missing items.")
-        boq_items = _add_essential_missing_components(boq_items, equipment_reqs, product_df, required_components)
+        boq_items = _add_essential_missing_components(boq_items, product_df, required_components)
         
     return boq_items
 
@@ -208,7 +196,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
     required_keys = complexity_map[complexity]
     return {key: component_definitions[key] for key in required_keys}
 
-# --- ★★★ NEW: VALIDATION AND CORRECTION LAYER ★★★ ---
+# --- ★★★ NEW: PRODUCTION-READY VALIDATION & CORRECTION LAYER ★★★ ---
 
 def _remove_duplicate_core_components(boq_items):
     """Finds and removes duplicate core items like video codecs."""
@@ -219,7 +207,6 @@ def _remove_duplicate_core_components(boq_items):
     for item in boq_items:
         is_core = any(keyword in item['name'] for keyword in core_keywords)
         if is_core:
-            # If we haven't seen this core component, add it. Otherwise, skip.
             if item['name'] not in core_components:
                 core_components[item['name']] = item
                 final_items.append(item)
@@ -250,15 +237,17 @@ def _ensure_system_completeness(boq_items, product_df):
     has_speakers = any("Speaker" in item['name'] for item in boq_items)
 
     if has_amplifier and not has_speakers:
-        st.warning(" amplifier found but no speakers. Adding default speakers.")
-        # Find a suitable speaker from the product catalog to add
-        speaker_products = product_df[product_df['name'].str.contains("Speaker", case=False)]
+        st.warning("System Incomplete: Amplifier found but no speakers. Adding appropriate ceiling speakers.")
+        speaker_products = product_df[
+            (product_df['category'] == 'Audio') & 
+            (product_df['name'].str.contains("Ceiling Speaker", case=False))
+        ]
         if not speaker_products.empty:
-            speaker_product = speaker_products.iloc[0]
+            speaker_product = speaker_products.iloc[0].to_dict()
             boq_items.append({
                 'category': 'Audio', 'name': speaker_product['name'], 'brand': speaker_product['brand'],
                 'quantity': 4, 'price': float(speaker_product['price']),
-                'justification': 'Required speakers for the audio amplifier (auto-added).',
+                'justification': 'Required speakers for the audio amplifier (auto-added for system completeness).',
                 'specifications': speaker_product.get('features', ''), 'image_url': speaker_product.get('image_url', ''),
                 'gst_rate': speaker_product.get('gst_rate', 18), 'matched': True,
                 'power_draw': estimate_power_draw('Audio', speaker_product['name'])
@@ -274,17 +263,21 @@ def _flag_hallucinated_models(boq_items):
     return boq_items
 
 def _correct_quantities(boq_items):
-    """Ensures all quantities are integers."""
+    """Ensures all quantities are integers and logical (e.g., 1 codec per room)."""
+    core_keywords = ['G7500', 'Room Kit', 'Codec', 'Crestron Flex']
     for item in boq_items:
         try:
-            # Convert float quantities like 7.0 to integer 7
             item['quantity'] = int(float(item.get('quantity', 1)))
+            is_core = any(keyword in item['name'] for keyword in core_keywords)
+            if is_core and item['quantity'] > 1:
+                st.warning(f"Correcting quantity of core component '{item['name']}' from {item['quantity']} to 1.")
+                item['quantity'] = 1
         except (ValueError, TypeError):
             item['quantity'] = 1
     return boq_items
 
-# --- Fallback and Validation Logic ---
 
+# --- Fallback and Validation Logic ---
 def _get_fallback_product(category, product_df, comp_spec):
     """Get best fallback product for a category."""
     matching = product_df[product_df['category'] == category]
@@ -305,7 +298,7 @@ def _get_fallback_product(category, product_df, comp_spec):
     index = int(len(matching_sorted) * 0.4) if len(matching_sorted) > 5 else len(matching_sorted) // 2
     return matching_sorted.iloc[index].to_dict()
 
-def _add_essential_missing_components(boq_items, equipment_reqs, product_df, required_components):
+def _add_essential_missing_components(boq_items, product_df, required_components):
     """Add missing components if AI fails to provide a complete list."""
     added_categories = {item['category'] for item in boq_items}
     for comp_key, comp_spec in required_components.items():
@@ -357,7 +350,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
                 size = int(size_match.group(1))
                 recommended_size = avixa_calcs.get('detailed_viewing_display_size', 75)
                 if abs(size - recommended_size) > 10:
-                    warnings.append(f"Display size ({size}\") deviates from AVIXA recommendation ({recommended_size}\").")
+                    warnings.append(f"Display size ({size}\") deviates from AVIXA DISCAS recommendation ({recommended_size}\").")
 
     has_dsp = any('dsp' in item.get('name', '').lower() for item in boq_items)
     room_spec = ROOM_SPECS.get(room_type, {})
@@ -380,7 +373,6 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
         'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
     }
 
-
 # --- Core AI Generation Function ---
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """The core function to get the BOQ from the AI, with fallback logic."""
@@ -391,7 +383,10 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
     required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
-    prompt = _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier)
+    prompt = _build_comprehensive_boq_prompt(
+        room_type, complexity, room_area, avixa_calcs, equipment_reqs, 
+        required_components, product_df, budget_tier, features
+    )
     
     try:
         response = generate_with_retry(model, prompt)
@@ -404,27 +399,3 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         st.error(f"AI generation failed: {str(e)}")
         fallback_items = create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs)
         return fallback_items, avixa_calcs, equipment_reqs
-
-# --- Main Pipeline Function ---
-def run_boq_generation_pipeline(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """
-    The main public function that runs the full generation and validation pipeline.
-    """
-    st.info("Step 1: Generating initial BOQ with AI...")
-    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
-        model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area
-    )
-
-    if not boq_items:
-        return [], avixa_calcs, equipment_reqs
-
-    st.info("Step 2: Running production validation and correction rules...")
-    
-    processed_boq = _remove_duplicate_core_components(boq_items)
-    processed_boq = _validate_and_correct_mounts(processed_boq)
-    processed_boq = _ensure_system_completeness(processed_boq, product_df)
-    processed_boq = _flag_hallucinated_models(processed_boq)
-    processed_boq = _correct_quantities(processed_boq)
-    
-    st.success("✅ BOQ pipeline complete.")
-    return processed_boq, avixa_calcs, equipment_reqs
