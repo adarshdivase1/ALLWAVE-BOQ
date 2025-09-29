@@ -24,11 +24,78 @@ try:
     from components.visualizer import create_3d_visualization, ROOM_SPECS
 except ImportError:
     st.warning("Could not import 3D visualizer. Assuming dummy data for ROOM_SPECS.")
+    # ★★★ ROOM_SPECS REPLACED ★★★
     ROOM_SPECS = {
-        'Small Huddle Room (2-4 People)': {'area_sqft': (100, 200), 'recommended_display_size': (55, 65)},
-        'Standard Conference Room (6-8 People)': {'area_sqft': (200, 400), 'recommended_display_size': (65, 75)},
-        'Large Boardroom (10-16 People)': {'area_sqft': (400, 700), 'recommended_display_size': (75, 98)},
-        'Training Room (20+ People)': {'area_sqft': (700, 1200), 'recommended_display_size': (86, 110)},
+        'Small Huddle Room (2-3 People)': {
+            'area_sqft': (80, 150),
+            'recommended_display_size': (43, 55),
+            'video_solution': 'integrated_soundbar',
+            'audio_type': 'integrated',
+            'complexity': 'simple'
+        },
+        'Medium Huddle Room (4-6 People)': {
+            'area_sqft': (150, 250),
+            'recommended_display_size': (55, 65),
+            'video_solution': 'video_bar',
+            'audio_type': 'integrated',
+            'complexity': 'simple'
+        },
+        'Standard Conference Room (6-8 People)': {
+            'area_sqft': (250, 400),
+            'recommended_display_size': (65, 75),
+            'video_solution': 'video_bar_pro',
+            'audio_type': 'ceiling_mics',
+            'complexity': 'moderate'
+        },
+        'Large Conference Room (8-12 People)': {
+            'area_sqft': (400, 600),
+            'recommended_display_size': (75, 86),
+            'video_solution': 'camera_plus_codec',
+            'audio_type': 'ceiling_array',
+            'complexity': 'moderate'
+        },
+        'Executive Boardroom (10-16 People)': {
+            'area_sqft': (500, 800),
+            'recommended_display_size': (86, 98),
+            'video_solution': 'dual_camera_system',
+            'audio_type': 'distributed_ceiling',
+            'complexity': 'advanced'
+        },
+        'Training Room (15-25 People)': {
+            'area_sqft': (600, 1000),
+            'recommended_display_size': (86, 98),
+            'video_solution': 'ptz_camera',
+            'audio_type': 'ceiling_array_with_reinforcement',
+            'complexity': 'advanced'
+        },
+        'Large Training/Presentation Room (25-40 People)': {
+            'area_sqft': (1000, 1500),
+            'recommended_display_size': (98, 110),
+            'video_solution': 'multi_camera_system',
+            'audio_type': 'line_array',
+            'complexity': 'complex'
+        },
+        'Multipurpose Event Room (40+ People)': {
+            'area_sqft': (1500, 3000),
+            'recommended_display_size': (98, 150),
+            'video_solution': 'broadcast_system',
+            'audio_type': 'professional_pa',
+            'complexity': 'complex'
+        },
+        'Video Production Studio': {
+            'area_sqft': (400, 1000),
+            'recommended_display_size': (55, 75),
+            'video_solution': 'broadcast_cameras',
+            'audio_type': 'studio_grade',
+            'complexity': 'complex'
+        },
+        'Telepresence Suite': {
+            'area_sqft': (300, 600),
+            'recommended_display_size': (75, 98),
+            'video_solution': 'telepresence_codec',
+            'audio_type': 'spatial_audio',
+            'complexity': 'advanced'
+        }
     }
     def create_3d_visualization():
         st.info("3D Visualization component not found.")
@@ -210,7 +277,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -841,110 +908,243 @@ def validate_boq_pricing_and_logic(boq_items, product_df):
     return corrected_items, issues, warnings
 
 
+# --- ★★★ HELPER FUNCTIONS FOR MULTI-SHOT BOQ (ADDED) ★★★ ---
+def _build_categorized_product_list(product_df, equipment_reqs, budget_tier):
+    """Build focused product list based on requirements."""
+    
+    budget_filters = {
+        'Economy': (0, 2000),
+        'Standard': (500, 4000),
+        'Premium': (2000, 8000),
+        'Enterprise': (5000, 15000)
+    }
+    price_range = budget_filters.get(budget_tier, (0, 10000))
+    
+    output = ""
+    
+    # Displays
+    target_size = equipment_reqs['displays']['size_inches']
+    displays = product_df[
+        (product_df['category'] == 'Displays') &
+        (product_df['price'] >= price_range[0]) &
+        (product_df['price'] <= price_range[1])
+    ]
+    output += "\n=== DISPLAYS ===\n"
+    for _, prod in displays.head(5).iterrows():
+        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    
+    # Video Conferencing
+    vc_products = product_df[
+        (product_df['category'] == 'Video Conferencing') &
+        (product_df['price'] >= price_range[0]) &
+        (product_df['price'] <= price_range[1])
+    ]
+    output += "\n=== VIDEO CONFERENCING ===\n"
+    for _, prod in vc_products.head(5).iterrows():
+        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    
+    # Mounts (always budget-friendly)
+    mounts = product_df[product_df['category'] == 'Mounts']
+    output += "\n=== MOUNTS ===\n"
+    for _, prod in mounts.head(3).iterrows():
+        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    
+    # Cables
+    cables = product_df[product_df['category'] == 'Cables']
+    output += "\n=== CABLES ===\n"
+    for _, prod in cables.head(3).iterrows():
+        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    
+    return output
+
+def _parse_ai_product_selection(ai_response_text):
+    """Extract JSON from AI response."""
+    try:
+        # Remove markdown code blocks if present
+        cleaned = ai_response_text.strip()
+        if "```json" in cleaned:
+            cleaned = cleaned.split("```json")[1].split("```")[0]
+        elif "```" in cleaned:
+            cleaned = cleaned.split("```")[1].split("```")[0]
+        
+        return json.loads(cleaned)
+    except Exception as e:
+        st.warning(f"Failed to parse AI JSON: {e}")
+        return {}
+
+category_map = {
+    'display': 'Displays',
+    'video_bar': 'Video Conferencing',
+    'mount': 'Mounts',
+    'cables': 'Cables',
+    'audio': 'Audio',
+    'control': 'Control'
+}
+
+def _strict_product_match(product_name, product_df, category):
+    """Strict fuzzy matching with category filter."""
+    filtered = product_df[product_df['category'] == category]
+    
+    if len(filtered) == 0:
+        return None
+    
+    # Try exact match first
+    exact = filtered[filtered['name'].str.lower() == product_name.lower()]
+    if len(exact) > 0:
+        return exact.iloc[0].to_dict()
+    
+    # Try substring match on first 3 words
+    search_terms = product_name.lower().split()[:3]
+    for term in search_terms:
+        if len(term) > 3:
+            matches = filtered[filtered['name'].str.lower().str.contains(term, na=False)]
+            if len(matches) > 0:
+                return matches.iloc[0].to_dict()
+    
+    # Fallback to first product in category
+    return filtered.iloc[0].to_dict() if len(filtered) > 0 else None
+
+def _generate_justification(category_key, equipment_reqs):
+    """Generate technical justification based on requirements."""
+    justifications = {
+        'display': f"Primary display meeting {equipment_reqs['displays']['resolution']} requirement for optimal viewing",
+        'video_bar': f"Video conferencing solution with {equipment_reqs['video_system']['camera_type']}",
+        'mount': "Professional mounting solution meeting load and safety requirements",
+        'cables': "High-speed connectivity cables for AV signal transmission",
+        'audio': f"Audio system providing {equipment_reqs['audio_system']['type']} coverage",
+        'control': "Room control and automation system"
+    }
+    return justifications.get(category_key, "Essential AV system component")
+
+def _add_essential_missing_components(boq_items, equipment_reqs, product_df):
+    """Rule-based fallback to ensure complete system."""
+    categories_present = {item['category'] for item in boq_items}
+    
+    # Ensure display
+    if 'Displays' not in categories_present:
+        display = product_df[product_df['category'] == 'Displays'].iloc[0]
+        boq_items.append({
+            'category': 'Displays',
+            'name': display['name'],
+            'brand': display['brand'],
+            'quantity': 1,
+            'price': float(display['price']),
+            'justification': 'Primary display (added by system)',
+            'specifications': display.get('features', ''),
+            'image_url': display.get('image_url', ''),
+            'gst_rate': display.get('gst_rate', 18),
+            'matched': True
+        })
+    
+    # Ensure video conferencing
+    if 'Video Conferencing' not in categories_present:
+        vc = product_df[product_df['category'] == 'Video Conferencing'].iloc[0]
+        boq_items.append({
+            'category': 'Video Conferencing',
+            'name': vc['name'],
+            'brand': vc['brand'],
+            'quantity': 1,
+            'price': float(vc['price']),
+            'justification': 'Video conferencing system (added by system)',
+            'specifications': vc.get('features', ''),
+            'image_url': vc.get('image_url', ''),
+            'gst_rate': vc.get('gst_rate', 18),
+            'matched': True
+        })
+    
+    return boq_items
+
 # --- ★★★ BOQ GENERATION FUNCTION (REPLACED) ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Enhanced BOQ generation with comprehensive validation and correction."""
+    """Multi-shot AI system with strict product selection."""
     
-    # Clean the product data first
     clean_product_df = clean_and_validate_product_data(product_df)
-    
     if clean_product_df is None or len(clean_product_df) == 0:
-        st.error("No valid products found in catalog after cleaning.")
+        st.error("No valid products in catalog.")
         return None, [], None, None
     
-    # Validate catalog coverage before generation
-    catalog_issues = validate_catalog_coverage(clean_product_df)
-    if catalog_issues:
-        st.warning("Product catalog coverage issues:")
-        for issue in catalog_issues:
-            st.write(f"- {issue}")
-    
-    # Calculate AVIXA recommendations
+    # Calculate requirements
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
-    # Get curated products with better selection
-    essential_categories = ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables']
-    curated_catalog = ""
-    
-    for category in essential_categories:
-        curated_products = get_curated_products_by_category(clean_product_df, category, max_products=10)
-        if len(curated_products) > 0:
-            curated_catalog += f"\n--- {category.upper()} PRODUCTS ---\n"
-            for _, product in curated_products.iterrows():
-                curated_catalog += f"• {product['brand']} - {product['name']} - ${product['price']:.0f}\n"
-                curated_catalog += f"  Features: {str(product.get('features', ''))[:60]}...\n"
-    
-    # More restrictive prompt
-    enhanced_prompt = f"""
-You are creating a BOQ for a {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
+    # --- SHOT 1: Get room-specific product IDs ---
+    product_selection_prompt = f"""You are selecting products for a {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
 
-CRITICAL: You MUST select products using the EXACT names from this list:
-
-{curated_catalog}
+AVAILABLE PRODUCTS (USE EXACT NAMES):
+{_build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier)}
 
 REQUIREMENTS:
-- Display: {equipment_reqs['displays']['size_inches']}" for optimal viewing
-- Video conferencing for {avixa_calcs['estimated_occupancy']} people
-- Professional mounts and cables
-- Budget tier: {budget_tier}
+- Display: {equipment_reqs['displays']['size_inches']}" recommended
+- Video System: {equipment_reqs['video_system']['camera_type']}
+- Audio: {equipment_reqs['audio_system']['type']}
+- Budget: {budget_tier}
 
-STRICT RULES:
-1. Use EXACT product names as shown above
-2. Use EXACT pricing as shown above  
-3. Do NOT create new model numbers
-4. Keep cable prices under $100 each
-5. Focus on functionality over fancy features
+OUTPUT FORMAT (respond ONLY with this JSON structure):
+{{
+  "display": {{"name": "exact product name", "qty": 1}},
+  "video_bar": {{"name": "exact product name", "qty": 1}},
+  "mount": {{"name": "exact product name", "qty": 1}},
+  "cables": {{"name": "exact product name", "qty": 1}}
+}}
 
-Create a functional AV system table:
-| Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |
-|---|---|---|---|---|---|---|
-"""
-    
+RULES:
+1. Use EXACT product names from the list above
+2. Select products that match the budget tier
+3. Display size must be within ±10" of {equipment_reqs['displays']['size_inches']}"
+4. Respond with JSON only, no explanations"""
+
     try:
-        response = generate_with_retry(model, enhanced_prompt)
-        if response and response.text:
-            boq_content = response.text.strip()
-            boq_items = extract_enhanced_boq_items(boq_content, clean_product_df)
+        response = generate_with_retry(model, product_selection_prompt)
+        if not response or not response.text:
+            raise Exception("AI returned empty response")
+        
+        # Parse AI selection
+        ai_selection = _parse_ai_product_selection(response.text)
+        
+        # --- SHOT 2: Validate and match products ---
+        boq_items = []
+        for category_key, selection in ai_selection.items():
+            matched_product = _strict_product_match(
+                selection['name'], 
+                clean_product_df,
+                category_map[category_key]
+            )
             
-            # ENHANCED: Validate and correct pricing with stricter rules
-            corrected_items, price_issues, price_warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
-            
-            if price_issues:
-                st.error("BOQ contains critical pricing/product issues:")
-                for issue in price_issues:
-                    st.write(f"- {issue}")
-                st.write("**Consider regenerating the BOQ or manually reviewing the products.**")
-            
-            if price_warnings:
-                st.info("BOQ corrections applied:")
-                for warning in price_warnings:
-                    st.write(f"- {warning}")
-            
-            # Use corrected items
-            boq_items = corrected_items
-            
-            # Validate essential components
-            if not validate_essential_components(boq_items):
-                st.warning("Adding missing essential components...")
-                fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-                corrected_fallback, _, _ = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
-                boq_items.extend(corrected_fallback)
-            
-            # Remove duplicates
-            boq_items = remove_duplicate_boq_items(boq_items)
-            
-            return boq_content, boq_items, avixa_calcs, equipment_reqs
-            
-        return None, [], None, None
+            if matched_product is not None:
+                boq_items.append({
+                    'category': matched_product['category'],
+                    'name': matched_product['name'],
+                    'brand': matched_product['brand'],
+                    'quantity': selection['qty'],
+                    'price': float(matched_product['price']),
+                    'justification': _generate_justification(category_key, equipment_reqs),
+                    'specifications': matched_product.get('features', ''),
+                    'image_url': matched_product.get('image_url', ''),
+                    'gst_rate': matched_product.get('gst_rate', 18),
+                    'matched': True
+                })
+            else:
+                st.warning(f"Could not match AI selection: {selection['name']}")
+        
+        # --- SHOT 3: Fill gaps with rule-based fallbacks ---
+        boq_items = _add_essential_missing_components(boq_items, equipment_reqs, clean_product_df)
+        
+        # Final validation
+        corrected_items, issues, warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
+        
+        if len(corrected_items) < 3:
+            st.error("Insufficient valid products selected. Using fallback.")
+            fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+            corrected_items = fallback_items
+        
+        return None, corrected_items, avixa_calcs, equipment_reqs
         
     except Exception as e:
-        st.error(f"BOQ generation failed: {str(e)}")
+        st.error(f"Multi-shot generation failed: {str(e)}")
         fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-        corrected_fallback, _, _ = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
-        return None, corrected_fallback, avixa_calcs, equipment_reqs
+        return None, fallback_items, avixa_calcs, equipment_reqs
         
 # --- BOQ Validation & Data Extraction ---
 class BOQValidator:
@@ -1034,7 +1234,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
     
     # Audio System Compliance
     has_dsp = any('dsp' in item.get('name', '').lower() or 'processor' in item.get('name', '').lower() 
-                    for item in boq_items)
+                  for item in boq_items)
     if equipment_reqs['audio_system'].get('dsp_required') and not has_dsp:
         issues.append("CRITICAL: DSP required but not found in BOQ")
     
