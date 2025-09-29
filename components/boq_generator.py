@@ -92,7 +92,11 @@ OUTPUT FORMAT (STRICT JSON - NO TEXT BEFORE OR AFTER):
     prompt += f"""}}
 
 CRITICAL RULES:
-1. Output ONLY valid JSON. 2. Use EXACT product names from the lists. 3. Include ALL {len(required_components)} components. 4. Match display size requirements.
+1. Output ONLY valid JSON.
+2. Use EXACT product names from the lists.
+3. Include ALL {len(required_components)} components.
+4. Match display size requirements.
+5. For audio, prioritize a single integrated system (like a DSP with microphones) over multiple separate components if possible. Do not select multiple redundant items for the same task.
 """
     return prompt
 
@@ -196,18 +200,27 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
     required_keys = complexity_map[complexity]
     return {key: component_definitions[key] for key in required_keys}
 
-# --- ★★★ NEW: PRODUCTION-READY VALIDATION & CORRECTION LAYER ★★★ ---
+# --- PRODUCTION-READY VALIDATION & CORRECTION LAYER ---
+
+def _remove_exact_duplicates(boq_items):
+    """Removes items that are exact duplicates based on their name."""
+    seen = set()
+    unique_items = []
+    for item in boq_items:
+        item_key = item.get('name')
+        if item_key not in seen:
+            seen.add(item_key)
+            unique_items.append(item)
+        else:
+            st.warning(f"🧹 Removed exact duplicate item: {item_key}")
+    return unique_items
 
 def _remove_duplicate_core_components(boq_items):
-    """
-    Finds and removes duplicate core items based on category.
-    Keeps the most expensive item, assuming it's the primary system.
-    """
+    """Finds and removes duplicate core items based on category, keeping the best one."""
     final_items = []
-    # Core categories where only one primary system should exist
     core_categories = ['Video Conferencing', 'Control']
     
-    # Handle non-core items first
+    # Handle non-core and audio items first
     for item in boq_items:
         if item.get('category') not in core_categories:
             final_items.append(item)
@@ -217,41 +230,13 @@ def _remove_duplicate_core_components(boq_items):
         candidates = [item for item in boq_items if item.get('category') == category]
         if len(candidates) > 1:
             st.warning(f"Multiple items found for core category '{category}'. Consolidating to one.")
-            # Keep the most expensive item, assuming it's the main system/codec
             best_candidate = max(candidates, key=lambda x: x.get('price', 0))
             final_items.append(best_candidate)
         elif len(candidates) == 1:
             final_items.append(candidates[0])
             
-    # Special handling for Audio (can have mics and speakers, but usually one DSP/Mixer)
-    audio_items = [item for item in boq_items if item.get('category') == 'Audio']
-    dsp_mixer_keywords = ['DSP', 'Mixer', 'Processor']
-    core_audio_items = [item for item in audio_items if any(kw in item['name'] for kw in dsp_mixer_keywords)]
-    other_audio_items = [item for item in audio_items if not any(kw in item['name'] for kw in dsp_mixer_keywords)]
-    
-    final_items.extend(other_audio_items) # Add back mics, speakers, etc.
-    if len(core_audio_items) > 1:
-        st.warning("Multiple DSPs/Mixers found. Consolidating to one.")
-        best_core_audio = max(core_audio_items, key=lambda x: x.get('price', 0))
-        final_items.append(best_core_audio)
-    elif len(core_audio_items) == 1:
-        final_items.append(core_audio_items[0])
-        
-    return final_items
-
-def _remove_exact_duplicates(boq_items):
-    """Removes items that are exact duplicates based on their name."""
-    seen = set()
-    unique_items = []
-    for item in boq_items:
-        # Create a unique key for each item based on its name
-        item_key = item.get('name')
-        if item_key not in seen:
-            seen.add(item_key)
-            unique_items.append(item)
-        else:
-            st.warning(f"🧹 Removed exact duplicate item: {item_key}")
-    return unique_items
+    # Remove duplicates from the final list one last time to be safe
+    return _remove_exact_duplicates(final_items)
 
 def _validate_and_correct_mounts(boq_items):
     """Ensures the mount is for the display, not a hallway sign."""
@@ -409,6 +394,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
         'avixa_warnings': warnings,
         'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
     }
+
 
 # --- Core AI Generation Function ---
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
