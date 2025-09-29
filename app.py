@@ -165,7 +165,7 @@ def clean_and_validate_product_data(product_df):
         if category in price_filters:
             min_p, max_p = price_filters[category]
             return min_p <= price <= max_p
-        return 100 <= price <= 50000 # Default range
+        return 100 <= price <= 50000  # Default range
     
     df = df[df.apply(is_valid_price, axis=1)]
     # ★★★ END FIX 3 ★★★
@@ -647,51 +647,35 @@ def remove_duplicate_boq_items(boq_items):
 
     return unique_items
 
-# ★★★ UPDATE 4: Enhanced fallback with stricter category matching ★★★
+# ★★★ FALLBACK BOQ FUNCTION REPLACED ★★★
 def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs):
     """Create comprehensive fallback BOQ based on room complexity."""
     fallback_items = []
+
+    # Determine minimum components based on room size
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
-    
+
+    # --- ADD THIS SAFEGUARD BLOCK ---
+    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
+        st.warning(f"**Warning:** A complex room type ('{room_type}') resulted in a 'SIMPLE' complexity. This usually indicates a typo or character mismatch in the `ROOM_SPECS` dictionary keys.")
+    # --- END SAFEGUARD BLOCK ---
+
+    # Enhanced required components structure
     required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
-    
+
     st.info(f"Fallback: Generating {len(required_components)}-component system")
 
     try:
         for comp_key, comp_spec in required_components.items():
             category = comp_spec['category']
             quantity = comp_spec['quantity']
-            
-            # UPDATED: Try exact match first, then substring, then related categories
-            category_products = product_df[product_df['category'] == category]
-            
+
+            # Get products for this category
+            category_products = get_curated_products_by_category(product_df, category, 15)
+
             if len(category_products) == 0:
-                # Try substring match
-                category_products = product_df[
-                    product_df['category'].str.contains(category, case=False, na=False)
-                ]
-            
-            if len(category_products) == 0:
-                # Try related category mapping
-                related_categories = {
-                    'Audio: DSP': ['Audio: DSP & Processing', 'Control Systems & Processing'],
-                    'PTZ & Pro Video Cameras': ['Video Conferencing', 'UC & Collaboration Devices'],
-                    'Control Systems & Processing': ['Control, Matrix & Extenders'],
-                }
-                for alt_cat in related_categories.get(category, []):
-                    category_products = product_df[product_df['category'] == alt_cat]
-                    if len(category_products) > 0:
-                        break
-            
-            # Filter out invalid products
-            category_products = category_products[
-                (~category_products['features'].astype(str).str.contains('Auto-generated', na=False)) &
-                (category_products['features'].astype(str).str.len() > 10)
-            ]
-            
-            if len(category_products) == 0:
-                st.error(f"CRITICAL: No valid products for '{category}' - BOQ incomplete")
+                st.warning(f"No products found for {category}")
                 continue
 
             # Special handling for displays
@@ -746,7 +730,6 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
     except Exception as e:
         st.error(f"Fallback generation failed: {str(e)}")
         return []
-
 
 # --- ★★★ NEW HELPER AND VALIDATION FUNCTIONS (ADDED) ★★★ ---
 def extract_display_size_from_items(boq_items):
@@ -997,27 +980,21 @@ def _parse_ai_product_selection(ai_response_text):
         st.warning(f"Failed to parse AI JSON: {e}")
         return {}
 
-# ★★★ UPDATE 2: Fix _strict_product_match() to filter invalid specs ★★★
 def _strict_product_match(product_name, product_df, category):
-    """Enhanced matching with specification validation."""
-    
-    # Filter out products with invalid specifications
-    filtered = product_df[
-        (product_df['category'] == category) &
-        (~product_df['features'].astype(str).str.contains('Auto-generated', na=False)) &
-        (product_df['features'].astype(str).str.len() > 10)  # At least 10 chars
-    ]
-    
+    """Enhanced fuzzy matching with fallback logic."""
+    # Try exact category first
+    filtered = product_df[product_df['category'] == category]
+
+    # If no exact match, try substring
     if len(filtered) == 0:
-        # Fallback: try substring category match
         filtered = product_df[
-            product_df['category'].str.contains(category, case=False, na=False) &
-            (~product_df['features'].astype(str).str.contains('Auto-generated', na=False))
+            product_df['category'].str.contains(category, case=False, na=False)
         ]
-    
+
+    # Still nothing? Try broader search across all products
     if len(filtered) == 0:
-        st.warning(f"No valid products found for category '{category}'")
-        return None
+        st.warning(f"No products found for category '{category}' - searching all categories")
+        filtered = product_df
 
     if len(filtered) == 0:
         return None
@@ -1112,107 +1089,115 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
 
 # --- ★★★ COMPREHENSIVE BOQ GENERATION HELPERS ★★★ ---
 
-# ★★★ UPDATE 1: Fix _get_required_components_by_complexity() ★★★
 def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
-    """Define required components with NO DUPLICATES."""
+    """
+    Define required components using explicit blueprints for each complexity level.
+    This is a more robust method than additive logic.
+    """
+    # ★★★ FIX 2: ADD DIAGNOSTICS AND CORRECTION ★★★
+    import streamlit as st
+    st.write(f"🔍 _get_required_components called with:")
+    st.write(f"   - complexity: '{complexity}'")
+    st.write(f"   - room_type: '{room_type}'")
     
+    # Existing validation check
+    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
+        st.error(f"❌ MISMATCH: Room type '{room_type}' should NOT be 'simple' complexity!")
+        complexity = 'advanced'  # Force correct complexity
+    # ★★★ END FIX 2 ★★★
+    
+    # --- 1. Define ALL possible component blueprints ---
     component_definitions = {
         'display': {
-            'category': 'Displays',
-            'quantity': equipment_reqs['displays']['quantity'],
-            'size_requirement': equipment_reqs['displays']['size_inches'],
-            'priority': 1,
+            'category': 'Displays', 'quantity': equipment_reqs['displays']['quantity'],
+            'size_requirement': equipment_reqs['displays']['size_inches'], 'priority': 1,
             'justification': f"Primary display meeting AVIXA DISCAS standards for {room_type}"
         },
         'mount': {
-            'category': 'Mounts',
-            'quantity': equipment_reqs['displays']['quantity'],
-            'priority': 5,
+            'category': 'Mounts', 'quantity': equipment_reqs['displays']['quantity'], 'priority': 5,
             'justification': 'Professional display mounting hardware'
         },
         'cables': {
-            'category': 'Cables',
-            'quantity': 4,
-            'priority': 6,
-            'justification': 'Essential AV connectivity infrastructure'
+            'category': 'Cables', 'quantity': 4, 'priority': 6, # Increased base quantity
+            'justification': 'Essential AV connectivity infrastructure (HDMI, USB, Network)'
         },
         'video_bar': {
-            'category': 'Video Conferencing',
-            'quantity': 1,  # FIXED: Always 1 video bar
-            'priority': 2,
-            'justification': 'All-in-one video conferencing solution'
+            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
+            'justification': 'All-in-one video conferencing solution with integrated audio'
         },
         'camera': {
-            'category': 'PTZ & Pro Video Cameras',  # FIXED: More specific category
-            'quantity': equipment_reqs['video_system']['camera_count'],
-            'priority': 2,
-            'justification': f"{equipment_reqs['video_system']['camera_type']}"
+            'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system']['camera_count'], 'priority': 2,
+            'justification': f"{equipment_reqs['video_system']['camera_type']} for executive-level video conferencing"
+        },
+        'codec': {
+            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
+            'justification': 'Professional 4K video codec for high-quality conferencing'
         },
         'microphones': {
-            'category': 'Audio: Microphones & Conferencing',  # FIXED: More specific
-            'quantity': equipment_reqs['audio_system'].get('microphone_count', 2),
-            'priority': 3,
-            'justification': f"Ceiling microphone array with {equipment_reqs['audio_system'].get('microphone_count', 2)} zones"
+            'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 3,
+            'justification': f"{equipment_reqs['audio_system'].get('microphone_count', 2)}-zone professional microphone coverage"
         },
         'speakers': {
-            'category': 'Audio: Speakers',  # FIXED: More specific
-            'quantity': equipment_reqs['audio_system'].get('speaker_count', 2),
-            'priority': 3,
-            'justification': f"Distributed ceiling speaker system"
-        },
-        'dsp': {
-            'category': 'Audio: DSP',  # FIXED: More specific
-            'quantity': 1,
-            'priority': 3,
-            'justification': 'Digital Signal Processor with acoustic echo cancellation'
-        },
-        'amplifier': {
-            'category': 'Audio: Amplifiers',  # FIXED: More specific
-            'quantity': 1,
-            'priority': 4,
-            'justification': 'Multi-zone power amplifier'
+            'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 3,
+            'justification': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_count', 2)} zones"
         },
         'control': {
-            'category': 'Control Systems & Processing',  # FIXED: More specific
-            'quantity': 1,
-            'priority': 4,
-            'justification': 'System control processor with touch panel'
+            'category': 'Control', 'quantity': 1, 'priority': 4,
+            'justification': f"{equipment_reqs['control_system']['type']} for system management and automation"
+        },
+        'dsp': {
+            'category': 'Audio', 'quantity': 1, 'priority': 3,
+            'justification': 'Digital Signal Processor for advanced echo cancellation and audio mixing'
         },
         'network_switch': {
-            'category': 'Network Switches (AV-friendly)',  # FIXED: More specific
-            'quantity': 1,
-            'priority': 5,
-            'justification': f"Managed AV network switch"
+            'category': 'Infrastructure', 'quantity': 1, 'priority': 5,
+            'justification': f"Managed network switch to support {avixa_calcs['recommended_bandwidth_mbps']}Mbps AV traffic"
+        },
+        'amplifier': {
+            'category': 'Audio', 'quantity': 1, 'priority': 4,
+            'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W distributed audio system"
         },
         'ups': {
-            'category': 'Infrastructure',  # Keep this one generic
-            'quantity': 1,
-            'priority': 6,
-            'justification': f"Uninterruptible Power Supply with {avixa_calcs.get('ups_runtime_minutes', 15)}min runtime"
+            'category': 'Infrastructure', 'quantity': 1, 'priority': 6,
+            'justification': f"UPS for power protection providing {avixa_calcs.get('ups_runtime_minutes', 15)} min backup"
         }
     }
 
-    # CRITICAL FIX: Define complexity blueprints WITHOUT duplicates
+    # --- 2. Create explicit lists of required component KEYS for each level ---
     complexity_map = {
-        'simple': ['display', 'mount', 'cables', 'video_bar'],
-        'moderate': ['display', 'mount', 'cables', 'video_bar', 'microphones', 'speakers', 'control'],
+        'simple': [
+            'display', 'mount', 'cables', 'video_bar'
+        ],
+        'moderate': [
+            'display', 'mount', 'cables', 'video_bar', 'microphones', 'speakers', 'control'
+        ],
         'advanced': [
-            'display', 'mount', 'cables', 'camera',  # NOT video_bar + camera
-            'microphones', 'speakers', 'dsp', 'amplifier', 'control', 'network_switch'
+            'display', 'mount', 'cables', 'camera', 'codec', 'microphones', 
+            'speakers', 'dsp', 'control', 'network_switch'
         ],
         'complex': [
-            'display', 'mount', 'cables', 'camera',
-            'microphones', 'speakers', 'dsp', 'amplifier', 'control', 
-            'network_switch', 'ups'
+            'display', 'mount', 'cables', 'camera', 'codec', 'microphones', 
+            'speakers', 'dsp', 'control', 'network_switch', 'amplifier', 'ups'
         ]
     }
     
-    required_keys = complexity_map.get(complexity, complexity_map['moderate'])
-    return {key: component_definitions[key] for key in required_keys}
+    # ★★★ FIX 5: ADD COMPLEXITY KEY VALIDATION ★★★
+    if complexity not in complexity_map:
+        st.error(f"❌ Unknown complexity: '{complexity}' - using 'moderate' as fallback")
+        complexity = 'moderate'
+    
+    required_keys = complexity_map[complexity]
+    st.info(f"✓ Selected {len(required_keys)} components for '{complexity}' complexity")
+    # ★★★ END FIX 5 ★★★
+
+    # --- 4. Build the final dictionary from the selected keys ---
+    final_components = {key: component_definitions[key] for key in required_keys}
+
+    return final_components
 
 
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
-                                     required_components, product_df, budget_tier):
+                                    required_components, product_df, budget_tier):
     """Build detailed AI prompt with all product options."""
 
     budget_filters = {
@@ -1374,7 +1359,7 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
         added_categories = {item['category'] for item in boq_items}
         for comp_key, comp_spec in required_components.items():
             if comp_spec['category'] not in added_categories:
-                st.warning(f"    Missing: {comp_key} ({comp_spec['category']})")
+                st.warning(f"   Missing: {comp_key} ({comp_spec['category']})")
                 
                 # Auto-add fallback
                 fallback = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
@@ -1393,37 +1378,6 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
                     })
     # ★★★ END FIX 4 ★★★
     
-    # ★★★ UPDATE 3: Add component validation before returning BOQ ★★★
-    validation_errors = []
-    
-    # Check for duplicates
-    seen_categories = {}
-    for item in boq_items:
-        cat = item['category']
-        if cat in seen_categories:
-            if cat not in ['Cables', 'Mounts', 'Audio: Speakers', 'Audio: Microphones & Conferencing']:
-                validation_errors.append(f"DUPLICATE: Multiple items in '{cat}' category")
-        seen_categories[cat] = seen_categories.get(cat, 0) + 1
-    
-    # Check for invalid specs
-    for item in boq_items:
-        specs = item.get('specifications', '')
-        if 'Auto-generated' in specs or len(specs) < 10:
-            validation_errors.append(f"INVALID SPECS: {item['name']} has placeholder data")
-    
-    # Check for logical conflicts
-    has_video_bar = any('video bar' in item['name'].lower() for item in boq_items)
-    has_separate_camera = any('camera' in item['category'].lower() and 'video bar' not in item['name'].lower() for item in boq_items)
-    
-    if has_video_bar and has_separate_camera:
-        validation_errors.append("LOGIC ERROR: Both video bar AND separate camera system selected")
-    
-    if validation_errors:
-        st.error("### BOQ Generation Issues:")
-        for err in validation_errors:
-            st.write(f"- {err}")
-        st.warning("Attempting automatic correction...")
-
     return boq_items
 
 def _get_fallback_product(category, product_df, comp_spec):
@@ -1433,7 +1387,7 @@ def _get_fallback_product(category, product_df, comp_spec):
 
     # Try exact match first
     matching = product_df[product_df['category'] == category]
-    st.write(f"    Exact matches: {len(matching)}")
+    st.write(f"   Exact matches: {len(matching)}")
 
     # Fallback to substring
     if len(matching) == 0:
@@ -1442,7 +1396,7 @@ def _get_fallback_product(category, product_df, comp_spec):
     # ★★★ FIX 6: ADD BETTER ERROR HANDLING ★★★
     if len(matching) == 0:
         st.error(f"❌ CRITICAL: No products in catalog for category '{category}'!")
-        st.write(f"    Available categories: {sorted(product_df['category'].unique())}")
+        st.write(f"   Available categories: {sorted(product_df['category'].unique())}")
         return None
     # ★★★ END FIX 6 ★★★
 
@@ -1475,14 +1429,14 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     
     if room_type in ROOM_SPECS:
         spec = ROOM_SPECS[room_type]
-        st.success(f"    ✓ Found in ROOM_SPECS")
-        st.write(f"    - Complexity: **{spec['complexity']}**")
-        st.write(f"    - Area: {spec['area_sqft']} sq ft")
+        st.success(f"   ✓ Found in ROOM_SPECS")
+        st.write(f"   - Complexity: **{spec['complexity']}**")
+        st.write(f"   - Area: {spec['area_sqft']} sq ft")
     else:
-        st.error(f"    ❌ NOT FOUND in ROOM_SPECS!")
-        st.write(f"    Available keys:")
+        st.error(f"   ❌ NOT FOUND in ROOM_SPECS!")
+        st.write(f"   Available keys:")
         for key in ROOM_SPECS.keys():
-            st.write(f"    - '{key}'")
+            st.write(f"   - '{key}'")
     
     st.write(f"2. **Budget Tier:** `{budget_tier}`")
     st.write(f"3. **Room Area:** `{room_area}` sq ft")
