@@ -9,15 +9,14 @@ import streamlit.components.v1 as components
 from io import BytesIO
 import io # Required for image handling
 
-# --- New Dependencies ---
+# --- New Dependencies (for main script) ---
+# Note: openpyxl, requests, and PIL are now primarily used in the component
+# but might be needed here for other reasons. Keeping them for safety is fine.
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
-from openpyxl.drawing.image import Image as ExcelImage
 import requests
 from PIL import Image as PILImage
 
-# --- Import from components directory ---
+
 # --- Import from components directory ---
 try:
     from components.visualizer import create_3d_visualization, ROOM_SPECS
@@ -98,9 +97,15 @@ except ImportError:
     def create_3d_visualization():
         st.info("3D Visualization component not found.")
 
-
-
-# --- Page Configuration (Moved to login) ---
+# ★★★ NEW: Import the Excel generator component ★★★
+try:
+    from components.excel_generator import generate_company_excel
+except ImportError:
+    st.error("Excel generator component not found. Please ensure 'components/excel_generator.py' exists.")
+    # Define a dummy function to prevent crashes
+    def generate_company_excel(*args, **kwargs):
+        st.error("Excel generation is currently unavailable.")
+        return None
 
 # --- Currency Conversion ---
 @st.cache_data(ttl=3600) # Cache for 1 hour
@@ -296,7 +301,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -1153,7 +1158,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
 
 
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
-                                    required_components, product_df, budget_tier):
+                                     required_components, product_df, budget_tier):
     """Build detailed AI prompt with all product options."""
 
     budget_filters = {
@@ -1841,18 +1846,33 @@ def create_multi_room_interface():
         st.write("")
         st.write("")
         if st.session_state.project_rooms:
-            excel_data = generate_company_excel(rooms_data=st.session_state.project_rooms)
-            project_name = st.session_state.get('project_name_input', 'Multi_Room_Project')
-            filename = f"{project_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            # ★★★ UPDATED CALL ★★★
+            # 1. Prepare project details dictionary
+            project_details = {
+                'project_name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
+                'client_name': st.session_state.get('client_name_input', 'Valued Client'),
+                'gst_rates': st.session_state.get('gst_rates', {})
+            }
+            # 2. Get the currency rate
+            usd_to_inr_rate = get_usd_to_inr_rate()
 
-            st.download_button(
-                label="📊 Download Full Project BOQ",
-                data=excel_data,
-                file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                type="secondary"
+            # 3. Call the new component function
+            excel_data = generate_company_excel(
+                project_details=project_details,
+                rooms_data=st.session_state.project_rooms,
+                usd_to_inr_rate=usd_to_inr_rate
             )
+
+            if excel_data:
+                filename = f"{project_details['project_name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                st.download_button(
+                    label="📊 Download Full Project BOQ",
+                    data=excel_data,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary"
+                )
 
     # Display current rooms
     if st.session_state.project_rooms:
@@ -2155,416 +2175,6 @@ def product_search_interface(product_df, currency):
                         st.success(f"Added {add_qty}x {product['name']}!")
                         st.rerun()
 
-# --- COMPANY STANDARD EXCEL GENERATION ---
-def _define_styles():
-    """Defines reusable styles for the Excel sheet."""
-    return {
-        "header": Font(size=16, bold=True, color="FFFFFF"),
-        "header_fill": PatternFill(start_color="002060", end_color="002060", fill_type="solid"),
-        "table_header": Font(bold=True, color="FFFFFF"),
-        "table_header_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
-        "bold": Font(bold=True),
-        "group_header_fill": PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid"),
-        "total_fill": PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"),
-        "grand_total_font": Font(size=12, bold=True, color="FFFFFF"),
-        "grand_total_fill": PatternFill(start_color="002060", end_color="002060", fill_type="solid"),
-        "currency_format": "₹ #,##0",
-        "thin_border": Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    }
-
-def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
-    """Add product image to Excel cell if URL is valid."""
-    if not image_url or not isinstance(image_url, str) or image_url.strip() == '':
-        return
-
-    try:
-        response = requests.get(image_url, timeout=5)
-        if response.status_code == 200:
-            pil_image = PILImage.open(io.BytesIO(response.content))
-            pil_image.thumbnail((100, 100), PILImage.Resampling.LANCZOS)
-
-            img_buffer = io.BytesIO()
-            pil_image.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
-
-            excel_img = ExcelImage(img_buffer)
-            excel_img.width = 80
-            excel_img.height = 80
-
-            sheet.add_image(excel_img, f'{column}{row_num}')
-            sheet.row_dimensions[row_num].height = 60
-
-    except Exception as e:
-        # Don't print to console in production, could log this instead
-        # print(f"Failed to add image {image_url}: {e}")
-        sheet[f'{column}{row_num}'] = "Image unavailable"
-
-def _populate_company_boq_sheet(sheet, items, room_name, styles):
-    """Helper function to populate a single Excel sheet with BOQ data in the new company format."""
-
-    # Static Headers
-    sheet.merge_cells('A3:P3')
-    header_cell = sheet['A3']
-    header_cell.value = "All Wave AV Systems Pvt. Ltd."
-    header_cell.font = styles["header"]
-    header_cell.fill = styles["header_fill"]
-    header_cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    # Project Info
-    sheet['C5'] = "Room Name / Room Type"
-    sheet['E5'] = room_name
-    sheet['C6'] = "Floor"
-    sheet['C7'] = "Number of Seats"
-    sheet['C8'] = "Number of Rooms"
-
-    # Table Headers
-    headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
-    headers2 = [None, None, None, None, None, None, None, None, 'Rate', 'Amt', 'Rate', 'Amt', None, None, None, None]
-
-    sheet.append(headers1)
-    sheet.append(headers2)
-    header_start_row = sheet.max_row - 1
-
-    # Merge header cells
-    sheet.merge_cells(start_row=header_start_row, start_column=9, end_row=header_start_row, end_column=10) # SGST
-    sheet.merge_cells(start_row=header_start_row, start_column=11, end_row=header_start_row, end_column=12) # CGST
-
-    for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row, min_col=1, max_col=len(headers1)):
-        for cell in row:
-            cell.font = styles["table_header"]
-            cell.fill = styles["table_header_fill"]
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-    # Group items by category
-    grouped_items = {}
-    for item in items:
-        cat = item.get('category', 'General')
-        if cat not in grouped_items:
-            grouped_items[cat] = []
-        grouped_items[cat].append(item)
-
-    # Add Items
-    total_before_gst_hardware = 0
-    total_gst_hardware = 0
-    item_s_no = 1
-
-    category_letters = [chr(ord('A') + i) for i in range(len(grouped_items))]
-
-    for i, (category, cat_items) in enumerate(grouped_items.items()):
-        # Category Header
-        cat_header_row = [f"{category_letters[i]}", category]
-        sheet.append(cat_header_row)
-        cat_row_idx = sheet.max_row
-        sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
-        sheet[f'A{cat_row_idx}'].font = styles['bold']
-        sheet[f'B{cat_row_idx}'].font = styles['bold']
-        sheet[f'A{cat_row_idx}'].fill = styles['group_header_fill']
-        sheet[f'B{cat_row_idx}'].fill = styles['group_header_fill']
-
-        for item in cat_items:
-            unit_price_inr = convert_currency(item.get('price', 0), 'INR')
-            subtotal = unit_price_inr * item.get('quantity', 1)
-            gst_rate = item.get('gst_rate', 18)
-            sgst_rate = gst_rate / 2
-            cgst_rate = gst_rate / 2
-            sgst_amount = subtotal * (sgst_rate / 100)
-            cgst_amount = subtotal * (cgst_rate / 100)
-            total_tax = sgst_amount + cgst_amount
-            total_with_gst = subtotal + total_tax
-
-            total_before_gst_hardware += subtotal
-            total_gst_hardware += total_tax
-
-            row_data = [
-                item_s_no,
-                None, # Description filled by category
-                item.get('specifications', item.get('name', '')),
-                item.get('brand', 'Unknown'),
-                item.get('name', 'Unknown'),
-                item.get('quantity', 1),
-                unit_price_inr,
-                subtotal,
-                f"{sgst_rate}%",
-                sgst_amount,
-                f"{cgst_rate}%",
-                cgst_amount,
-                total_tax,
-                total_with_gst,
-                item.get('justification', ''),
-                None # Placeholder for image
-            ]
-            sheet.append(row_data)
-            current_row = sheet.max_row
-            _add_product_image_to_excel(sheet, current_row, item.get('image_url', ''), 'P')
-            item_s_no += 1
-
-    # Add Services
-    services = [
-        ("Installation & Commissioning", 0.15),
-        ("System Warranty (3 Years)", 0.05),
-        ("Project Management", 0.10)
-    ]
-
-    services_letter = chr(ord('A') + len(grouped_items))
-    if services and total_before_gst_hardware > 0:
-        sheet.append([services_letter, "Services"])
-        cat_row_idx = sheet.max_row
-        sheet.merge_cells(start_row=cat_row_idx, start_column=2, end_row=cat_row_idx, end_column=16)
-        sheet[f'A{cat_row_idx}'].font = styles['bold']
-        sheet[f'B{cat_row_idx}'].font = styles['bold']
-        sheet[f'A{cat_row_idx}'].fill = styles['group_header_fill']
-        sheet[f'B{cat_row_idx}'].fill = styles['group_header_fill']
-
-    total_before_gst_services = 0
-    total_gst_services = 0
-
-    services_gst_rate = st.session_state.gst_rates.get('Services', 18)
-
-    for service_name, percentage in services:
-        if total_before_gst_hardware > 0:
-            service_amount_inr = total_before_gst_hardware * percentage
-            sgst_rate = services_gst_rate / 2
-            cgst_rate = services_gst_rate / 2
-            service_sgst = service_amount_inr * (sgst_rate / 100)
-            service_cgst = service_amount_inr * (cgst_rate / 100)
-            service_total_tax = service_sgst + service_cgst
-            service_total = service_amount_inr + service_total_tax
-
-            total_before_gst_services += service_amount_inr
-            total_gst_services += service_total_tax
-
-            sheet.append([
-                item_s_no, None, "Certified professional service for system deployment", "AllWave AV", service_name, 1,
-                service_amount_inr, service_amount_inr,
-                f"{sgst_rate}%", service_sgst,
-                f"{cgst_rate}%", service_cgst,
-                service_total_tax, service_total, "As per standard terms", ""
-            ])
-            item_s_no += 1
-
-    # Totals Section
-    sheet.append([]) # Spacer
-
-    # Hardware Total
-    hardware_total_row = ["", "Total for Hardware (A)", "", "", "", "", "", total_before_gst_hardware, "", "", "", "", total_gst_hardware, total_before_gst_hardware + total_gst_hardware]
-    sheet.append(hardware_total_row)
-    for cell in sheet[sheet.max_row]:
-        cell.font = styles['bold']
-        cell.fill = styles['total_fill']
-
-    # Services Total
-    if total_before_gst_services > 0:
-        services_total_row = ["", f"Total for Services ({services_letter})", "", "", "", "", "", total_before_gst_services, "", "", "", "", total_gst_services, total_before_gst_services + total_gst_services]
-        sheet.append(services_total_row)
-        for cell in sheet[sheet.max_row]:
-            cell.font = styles['bold']
-            cell.fill = styles['total_fill']
-
-    # Grand Total
-    grand_total = (total_before_gst_hardware + total_gst_hardware) + (total_before_gst_services + total_gst_services)
-    sheet.append([]) # Spacer
-    grand_total_row_idx = sheet.max_row + 1
-    sheet[f'M{grand_total_row_idx}'] = "Grand Total (INR)"
-    sheet[f'N{grand_total_row_idx}'] = grand_total
-
-    sheet[f'M{grand_total_row_idx}'].font = styles["grand_total_font"]
-    sheet[f'N{grand_total_row_idx}'].font = styles["grand_total_font"]
-    sheet[f'M{grand_total_row_idx}'].fill = styles["grand_total_fill"]
-    sheet[f'N{grand_total_row_idx}'].fill = styles["grand_total_fill"]
-    sheet[f'M{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
-    sheet[f'N{grand_total_row_idx}'].alignment = Alignment(horizontal='center')
-
-    # Final Formatting
-    column_widths = {'A': 8, 'B': 35, 'C': 45, 'D': 20, 'E': 30, 'F': 6, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 18, 'O': 40, 'P': 20}
-    for col, width in column_widths.items():
-        sheet.column_dimensions[col].width = width
-
-    # Apply borders and number formats
-    for row in sheet.iter_rows(min_row=header_start_row + 2, max_row=sheet.max_row):
-        for cell in row:
-            if cell.value is not None:
-                cell.border = styles['thin_border']
-            if cell.column >= 7 and cell.column <= 14: # Currency columns
-                cell.number_format = styles['currency_format']
-
-    return total_before_gst_hardware + total_before_gst_services, total_gst_hardware + total_gst_services, grand_total
-
-def add_proposal_summary_sheet(workbook, rooms_data, styles):
-    """Adds the Proposal Summary sheet."""
-    sheet = workbook.create_sheet("Proposal Summary")
-
-    # Header
-    sheet.merge_cells('A3:H3')
-    header_cell = sheet['A3']
-    header_cell.value = "Proposal Summary"
-    header_cell.font = styles["header"]
-    header_cell.fill = styles["header_fill"]
-    header_cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    # Table Header
-    headers = ["Sr. No", "Description", "Total Qty", "Rate w/o TAX", "Amount w/o TAX", "Total TAX Amount", "Amount with Tax"]
-    sheet.append(headers)
-    header_row = sheet.max_row
-    for cell in sheet[header_row]:
-        cell.font = styles["bold"]
-        cell.fill = styles["group_header_fill"]
-
-    # Populate with room data
-    grand_total_with_tax = 0
-    for i, room in enumerate(rooms_data, 1):
-        if room.get('boq_items'):
-            # This requires recalculating totals for the summary. For simplicity, we pass it from the main function.
-            subtotal = room.get('subtotal', 0)
-            gst = room.get('gst', 0)
-            total = room.get('total', 0)
-            grand_total_with_tax += total
-
-            sheet.append([i, room['name'], 1, subtotal, subtotal, gst, total])
-
-    # Grand Total
-    total_row = sheet.max_row + 2
-    sheet[f'F{total_row}'] = "GRAND TOTAL (INR)"
-    sheet[f'G{total_row}'] = grand_total_with_tax
-    sheet[f'F{total_row}'].font = styles["grand_total_font"]
-    sheet[f'G{total_row}'].font = styles["grand_total_font"]
-    sheet[f'F{total_row}'].fill = styles["grand_total_fill"]
-    sheet[f'G{total_row}'].fill = styles["grand_total_fill"]
-
-    # Add Commercial Terms (simplified from CSV)
-    terms_start_row = sheet.max_row + 3
-    sheet[f'B{terms_start_row}'] = "Commercial Terms"
-    sheet[f'B{terms_start_row}'].font = Font(size=14, bold=True)
-    # ... Add more static terms as needed
-
-    # Formatting
-    for col in ['D', 'E', 'F', 'G']:
-        for cell in sheet[col]:
-            cell.number_format = styles['currency_format']
-
-def add_scope_of_work_sheet(workbook):
-    """Adds the static Scope of Work sheet."""
-    sheet = workbook.create_sheet("Scope of Work")
-    # This can be populated with the static content from the provided CSV file.
-    # For brevity, I'll add a placeholder.
-    sheet['A1'] = "Scope of Work"
-    sheet['A1'].font = Font(size=16, bold=True)
-    sheet['A3'] = "1. Site Coordination and Prerequisites Clearance."
-    sheet['A4'] = "2. Detailed schematic drawings according to the design."
-    # ... and so on.
-
-def add_version_control_sheet(workbook, project_name, client_name):
-    """Adds the Version Control sheet."""
-    sheet = workbook.create_sheet("Version Control")
-    sheet['B4'] = "Version Control"
-    sheet['E4'] = "Contact Details"
-    sheet['B6'] = "Date of First Draft"
-    sheet['C6'] = datetime.now().strftime('%Y-%m-%d')
-    sheet['E6'] = "Design Engineer"
-    sheet['E8'] = "Client Name"
-    sheet['F8'] = client_name
-    sheet['B10'] = "Version No."
-    sheet['C10'] = "1.0"
-    # ... and so on.
-
-def add_terms_conditions_sheet(workbook):
-    """Add Terms & Conditions sheet with standard clauses."""
-    sheet = workbook.create_sheet("Terms & Conditions")
-
-    terms_content = [
-        ("COMMERCIAL TERMS & CONDITIONS", "header"),
-        ("", ""),
-        ("1. VALIDITY", "section"),
-        ("This quotation is valid for 30 days from the date of issue.", "text"),
-        ("", ""),
-        ("2. PAYMENT TERMS", "section"),
-        ("• 30% advance payment with purchase order", "text"),
-        ("• 40% payment on material delivery at site", "text"),
-        ("• 30% payment on completion of installation & commissioning", "text"),
-        ("", ""),
-        ("3. DELIVERY & INSTALLATION", "section"),
-        ("• Delivery: 4-6 weeks from receipt of advance payment", "text"),
-        ("• Installation will be completed within 2 weeks of delivery", "text"),
-        ("• Site readiness as per AllWave AV specifications required", "text"),
-        ("", ""),
-        ("4. WARRANTY", "section"),
-        ("• 3 years comprehensive warranty on all equipment", "text"),
-        ("• On-site support within 24-48 hours", "text"),
-        ("• Remote support available 24x7", "text"),
-    ]
-
-    styles = _define_styles()
-
-    for i, (content, style_type) in enumerate(terms_content, 1):
-        cell = sheet[f'A{i}']
-        cell.value = content
-
-        if style_type == "header":
-            cell.font = Font(size=16, bold=True, color="FFFFFF")
-            cell.fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
-            cell.alignment = Alignment(horizontal='center')
-        elif style_type == "section":
-            cell.font = Font(size=12, bold=True, color="002060")
-        elif style_type == "text":
-            cell.font = Font(size=11)
-
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
-
-    sheet.column_dimensions['A'].width = 80
-
-def generate_company_excel(rooms_data=None):
-    """Generate Excel file in the new company standard format."""
-    if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
-        st.error("No BOQ items to export. Generate a BOQ first.")
-        return None
-
-    workbook = openpyxl.Workbook()
-    styles = _define_styles()
-
-    project_name = st.session_state.get('project_name_input', 'AV Installation')
-    client_name = st.session_state.get('client_name_input', 'Valued Client')
-
-    summary_data = []
-
-    if rooms_data:
-        # Multi-room project
-        for room in rooms_data:
-            if room.get('boq_items'):
-                safe_room_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:30]
-                room_sheet = workbook.create_sheet(title=safe_room_name)
-                subtotal, gst, total = _populate_company_boq_sheet(room_sheet, room['boq_items'], room['name'], styles)
-                room['subtotal'] = subtotal
-                room['gst'] = gst
-                room['total'] = total
-
-        add_proposal_summary_sheet(workbook, rooms_data, styles)
-
-    else: # Single room mode
-        sheet = workbook.active
-        room_name = "BOQ"
-        if st.session_state.project_rooms:
-            room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
-        sheet.title = re.sub(r'[\\/*?:"<>|]', '', room_name)[:30]
-        subtotal, gst, total = _populate_company_boq_sheet(sheet, st.session_state.boq_items, room_name, styles)
-
-        # Create a dummy rooms_data for summary sheet
-        single_room_summary = [{'name': room_name, 'subtotal': subtotal, 'gst': gst, 'total': total, 'boq_items': True}]
-        add_proposal_summary_sheet(workbook, single_room_summary, styles)
-
-    # Add other standard sheets
-    add_scope_of_work_sheet(workbook)
-    add_version_control_sheet(workbook, project_name, client_name)
-    add_terms_conditions_sheet(workbook)
-
-    # Remove the default sheet created by openpyxl
-    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
-        del workbook["Sheet"]
-
-    excel_buffer = BytesIO()
-    workbook.save(excel_buffer)
-    excel_buffer.seek(0)
-
-    return excel_buffer.getvalue()
-
 # --- Main Application ---
 def get_sample_product_data():
     """Provide comprehensive sample products with AVIXA-relevant specifications."""
@@ -2736,9 +2346,9 @@ def main():
                         
                         boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
                             model, product_df, guidelines, 
-                            selected_room_type,     # Use the guaranteed correct value
+                            selected_room_type,   # Use the guaranteed correct value
                             selected_budget_tier,   # Use the guaranteed correct value
-                            selected_features,      # Use the guaranteed correct value
+                            selected_features,    # Use the guaranteed correct value
                             technical_reqs, 
                             room_area_val
                         )
@@ -2771,21 +2381,43 @@ def main():
                             st.error("Failed to generate BOQ. The AI model did not return a valid list of items and the fallback also failed. Please check the product catalog.")
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
-                excel_data = generate_company_excel()
-                room_name = "CurrentRoom"
+                # ★★★ UPDATED CALL ★★★
+                # 1. Prepare data for a single room
+                current_room_name = "Current Room"
                 if st.session_state.project_rooms:
-                    room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+                    current_room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+                
+                single_room_data = [{
+                    'name': current_room_name,
+                    'boq_items': st.session_state.boq_items
+                }]
+                
+                # 2. Prepare project details dictionary
+                project_details = {
+                    'project_name': st.session_state.get('project_name_input', 'Project'),
+                    'client_name': st.session_state.get('client_name_input', 'Valued Client'),
+                    'gst_rates': st.session_state.get('gst_rates', {})
+                }
+                # 3. Get the currency rate
+                usd_to_inr_rate = get_usd_to_inr_rate()
 
-                filename = f"{project_name or 'Project'}_{room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
-
-                st.download_button(
-                    label="📊 Download Current Room BOQ",
-                    data=excel_data,
-                    file_name=filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="secondary"
+                # 4. Call the new component function
+                excel_data = generate_company_excel(
+                    project_details=project_details,
+                    rooms_data=single_room_data,
+                    usd_to_inr_rate=usd_to_inr_rate
                 )
+                
+                if excel_data:
+                    filename = f"{project_details['project_name']}_{current_room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                    st.download_button(
+                        label="📊 Download Current Room BOQ",
+                        data=excel_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="secondary"
+                    )
 
         if st.session_state.boq_content or st.session_state.boq_items:
             st.markdown("---")
