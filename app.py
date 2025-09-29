@@ -2701,39 +2701,39 @@ def main():
         st.subheader("Professional BOQ Generation")
         col1, col2 = st.columns([2, 1])
 
-    with col1:
+        with col1:
             # Add a container for debug info to make the state clear
-with st.container(border=True):
-    st.markdown("##### ⚙️ Current Generation Settings")
-    # This debug info will make it obvious if the state is correct BEFORE you click generate
-    try:
-        current_type = st.session_state.room_type_select
-        current_spec = ROOM_SPECS.get(current_type, {})
-        current_complexity = current_spec.get('complexity', 'simple')
-        st.info(f"**Room Type Selected:** `{current_type}` → **Complexity Level:** `{current_complexity.upper()}`")
-    except Exception as e:
-        st.warning("Could not read current room type selection yet.")
+            with st.container(border=True):
+                st.markdown("##### ⚙️ Current Generation Settings")
+                # This debug info will make it obvious if the state is correct BEFORE you click generate
+                try:
+                    current_type = st.session_state.room_type_select
+                    current_spec = ROOM_SPECS.get(current_type, {})
+                    current_complexity = current_spec.get('complexity', 'simple')
+                    st.info(f"**Room Type Selected:** `{current_type}` → **Complexity Level:** `{current_complexity.upper()}`")
+                except Exception as e:
+                    st.warning("Could not read current room type selection yet.")
 
-if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
-    if not model:
-        st.error("AI Model is not available. Please check API key.")
-    else:
-        with st.spinner("Generating and validating professional BOQ..."):
-            # --- CRITICAL FIX: Read the LATEST value from session_state ---
-            selected_room_type = st.session_state.room_type_select 
-            selected_budget_tier = st.session_state.budget_tier_slider
-            selected_features = st.session_state.features_text_area
+            if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
+                if not model:
+                    st.error("AI Model is not available. Please check API key.")
+                else:
+                    with st.spinner("Generating and validating professional BOQ..."):
+                        # --- CRITICAL FIX: Read the LATEST value from session_state ---
+                        selected_room_type = st.session_state.room_type_select 
+                        selected_budget_tier = st.session_state.budget_tier_slider
+                        selected_features = st.session_state.features_text_area
 
-            room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-            
-            boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
-                model, product_df, guidelines, 
-                selected_room_type, # Use the guaranteed correct value
-                selected_budget_tier, # Use the guaranteed correct value
-                selected_features, # Use the guaranteed correct value
-                technical_reqs, 
-                room_area_val
-            )
+                        room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
+                        
+                        boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
+                            model, product_df, guidelines, 
+                            selected_room_type, # Use the guaranteed correct value
+                            selected_budget_tier, # Use the guaranteed correct value
+                            selected_features, # Use the guaranteed correct value
+                            technical_reqs, 
+                            room_area_val
+                        )
 
                         if boq_items:
                             st.session_state.boq_items = boq_items
@@ -2743,11 +2743,8 @@ if st.button("🚀 Generate BOQ with Justifications", type="primary", use_contai
                             if st.session_state.project_rooms:
                                 st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
 
-                            avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type_key)
-                            # The BOQValidator class is not defined. These lines are commented out to prevent an error.
-                            # validator = BOQValidator(ROOM_SPECS, product_df)
-                            # issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
-                            issues, warnings = [], [] # Placeholder
+                            avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, selected_room_type)
+                            issues, warnings = [], [] # Placeholder for older validator
 
                             avixa_warnings_old = validate_against_avixa(model, guidelines, boq_items)
 
@@ -2764,7 +2761,6 @@ if st.button("🚀 Generate BOQ with Justifications", type="primary", use_contai
                             st.rerun()
                         else:
                             st.error("Failed to generate BOQ. The AI model did not return a valid list of items and the fallback also failed. Please check the product catalog.")
-
         with col2:
             if 'boq_items' in st.session_state and st.session_state.boq_items:
                 excel_data = generate_company_excel()
