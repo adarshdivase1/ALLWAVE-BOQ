@@ -274,7 +274,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -926,7 +926,7 @@ def _parse_ai_product_selection(ai_response_text):
         return {}
 
 def _strict_product_match(product_name, product_df, category):
-    """Strict fuzzy matching with category filter."""
+    """Enhanced fuzzy matching with fallback logic."""
     # Try exact category first
     filtered = product_df[product_df['category'] == category]
 
@@ -935,6 +935,11 @@ def _strict_product_match(product_name, product_df, category):
         filtered = product_df[
             product_df['category'].str.contains(category, case=False, na=False)
         ]
+
+    # Still nothing? Try broader search across all products
+    if len(filtered) == 0:
+        st.warning(f"No products found for category '{category}' - searching all categories")
+        filtered = product_df
 
     if len(filtered) == 0:
         return None
@@ -996,10 +1001,17 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
         has_component = any(category.lower() in cat_key for cat_key in components_present.keys())
 
         if not has_component:
-            # Find a product for this category
-            matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
+            # Find a product for this category - try exact first
+            matching = product_df[product_df['category'] == category]
+
+            # Fallback to substring search
+            if len(matching) == 0:
+                matching = product_df[
+                    product_df['category'].str.contains(category, case=False, na=False)
+                ]
 
             if len(matching) > 0:
+                st.info(f"Auto-adding {comp_spec['category']} ({len(matching)} options available)")
                 product = matching.iloc[0]
                 boq_items.append({
                     'category': product['category'],
@@ -1174,17 +1186,18 @@ def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calc
                 product_df['category'].str.contains(category, case=False, na=False)
             ]
 
-        # Apply budget filter only if we have enough products
+        # Apply budget filter ONLY if we have 20+ products
         if len(matching_products) > 20:
             budget_filtered = matching_products[
                 (matching_products['price'] >= price_range[0]) &
                 (matching_products['price'] <= price_range[1])
             ]
+            # Only use budget filter if it still gives us 5+ products
             if len(budget_filtered) >= 5:
                 matching_products = budget_filtered
 
-        # Provide 15 options instead of 8 for better selection
-        product_catalog[comp_key] = matching_products.head(15)
+        # Provide MORE options (20 instead of 15)
+        product_catalog[comp_key] = matching_products.head(20)
 
     # Build prompt sections
     prompt = f"""You are an AVIXA-certified AV system designer. Design a complete system for: {room_type}
@@ -1306,8 +1319,12 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
 
 def _get_fallback_product(category, product_df, comp_spec):
     """Get best fallback product for a category."""
+    # CRITICAL: Log what we're searching for
+    st.write(f"🔍 Searching fallback for category: {category}")
+
     # Try exact match first
     matching = product_df[product_df['category'] == category]
+    st.write(f"   Exact matches: {len(matching)}")
 
     # Fallback to substring
     if len(matching) == 0:
@@ -1345,6 +1362,12 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
         st.error("No valid products in catalog.")
         return None, [], None, None
 
+    # TEMPORARY DIAGNOSTIC
+    st.write("### 🧪 PRE-FLIGHT CHECK")
+    st.write(f"Total products in catalog: {len(clean_product_df)}")
+    st.write(f"Categories in catalog: {clean_product_df['category'].nunique()}")
+    st.write(f"Categories: {sorted(clean_product_df['category'].unique())}")
+    
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
@@ -1364,6 +1387,21 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
             category = comp_spec['category']
             available = len(product_df[product_df['category'] == category])
             st.write(f"**{comp_key}** ({category}): {available} products available")
+            
+    # Enhanced debug output
+    with st.expander("📊 Detailed Product Catalog Analysis", expanded=False):
+        st.write("### Available Products by Category:")
+        for cat in product_df['category'].unique():
+            cat_count = len(product_df[product_df['category'] == cat])
+            cat_price_range = product_df[product_df['category'] == cat]['price'].agg(['min', 'max'])
+            st.write(f"**{cat}**: {cat_count} products (${cat_price_range['min']:.0f} - ${cat_price_range['max']:.0f})")
+        
+        st.write(f"\n### Required vs Available:")
+        for comp_key, comp_spec in required_components.items():
+            category = comp_spec['category']
+            exact_match = len(product_df[product_df['category'] == category])
+            substring_match = len(product_df[product_df['category'].str.contains(category, case=False, na=False)])
+            st.write(f"- **{comp_key}** needs '{category}': {exact_match} exact / {substring_match} partial matches")
 
     # Build comprehensive product selection prompt
     product_selection_prompt = _build_comprehensive_boq_prompt(
@@ -1378,15 +1416,15 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
 
         ai_selection = _parse_ai_product_selection(response.text)
 
-        # Validate minimum component count
-        if len(ai_selection) < len(required_components):
-            st.warning(f"AI only returned {len(ai_selection)}/{len(required_components)} required components. Using fallback...")
-            raise Exception(f"Insufficient components from AI")
-
         # Enhanced product matching and BOQ building
         boq_items = _build_boq_from_ai_selection(
             ai_selection, required_components, clean_product_df, equipment_reqs, room_type
         )
+        
+        # CRITICAL: Show what AI actually selected
+        with st.expander("🤖 AI Selection Results", expanded=True):
+            st.json(ai_selection)
+            st.write(f"AI returned {len(ai_selection)} components (needed {len(required_components)})")
 
         # Validate system completeness
         if len(boq_items) < len(required_components):
