@@ -61,12 +61,72 @@ def format_currency(amount, currency="USD"):
     else:
         return f"${amount:,.2f}"
 
+# --- ★★★ NEW: DATA CLEANING FUNCTION ★★★ ---
+def clean_and_validate_product_data(product_df):
+    """Clean and validate product data before using in BOQ generation."""
+    if product_df is None or len(product_df) == 0:
+        return product_df
+    
+    # Create a copy to avoid modifying original
+    df = product_df.copy()
+    
+    # Clean price data - remove unrealistic prices
+    df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+    
+    # Filter out products with unrealistic prices (likely test data)
+    # Keep products with prices between $100 and $50,000
+    df = df[(df['price'] >= 100) & (df['price'] <= 50000)]
+    
+    # Clean category names - standardize to match your expected categories
+    category_mapping = {
+        'Displays & Projectors': 'Displays',
+        'UC & Collaboration Devices': 'Video Conferencing', 
+        'PTZ & Pro Video Cameras': 'Video Conferencing',
+        'Audio: Microphones & Conferencing': 'Audio',
+        'Audio: Speakers': 'Audio',
+        'Audio: DSP': 'Audio',
+        'Audio: Amplifiers': 'Audio',
+        'Video Conferencing': 'Video Conferencing',
+        'Control Systems & Processing': 'Control',
+        'AV over IP': 'Control',
+        'Video Equipment': 'Control',
+        'Mounts & Racks': 'Mounts',
+        'Cables & Connectivity': 'Cables',
+        'Networking': 'Infrastructure',
+        'Installation & Services': 'Services',
+        'Wireless Presentation': 'Control',
+        'Room Scheduling': 'Control',
+        'Digital Signage': 'Displays',
+        'Projection Screens': 'Displays'
+    }
+    
+    df['category'] = df['category'].map(category_mapping).fillna(df['category'])
+    
+    # Clean brand names - remove test data patterns
+    test_patterns = ['Generated Model', 'Extracted from Project']
+    for pattern in test_patterns:
+        df = df[~df['features'].astype(str).str.contains(pattern, na=False)]
+    
+    # Ensure required columns exist
+    required_columns = ['name', 'brand', 'category', 'price', 'features']
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = 'Unknown' if col != 'price' else 0
+    
+    # Remove duplicate products (same name + brand combination)
+    df = df.drop_duplicates(subset=['name', 'brand'], keep='first')
+    
+    return df.reset_index(drop=True)
+
 # --- Enhanced Data Loading with Validation (UPDATED) ---
 @st.cache_data
 def load_and_validate_data():
     """Enhanced loads and validates with image URLs and GST data."""
     try:
         df = pd.read_csv("master_product_catalog.csv")
+
+        # --- ★★★ NEW: Integrate data cleaning ★★★ ---
+        df = clean_and_validate_product_data(df)
         
         # --- Existing validation code ---
         validation_issues = []
@@ -150,7 +210,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -159,17 +219,17 @@ def setup_gemini():
         st.error(f"Gemini API configuration failed: {e}")
         return None
 
-# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
+# --- Gemini Content Generation ---
 def generate_with_retry(model, prompt, max_retries=3):
     """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
         try:
             # --- NEW: Add safety settings to prevent blocking ---
             safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             response = model.generate_content(prompt, safety_settings=safety_settings)
             return response
@@ -423,49 +483,121 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     
     return requirements
 
-# --- ★★★ IMPROVEMENT IS HERE ★★★ ---
-def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Generates a more logical BOQ with a refined, collaborative prompt."""
+# --- ★★★ NEW HELPER FUNCTIONS FOR ENHANCED BOQ GENERATION ★★★ ---
+def get_curated_products_by_category(product_df, category, max_products=15):
+    """Get curated, realistic products for a specific category."""
+    if product_df is None or len(product_df) == 0:
+        return pd.DataFrame()
     
-    product_catalog_string = ""
-    for category in ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables', 'Infrastructure']:
-        product_catalog_string += f"\n--- CATEGORY: {category.upper()} ---\n"
-        cat_df = product_df[product_df['category'] == category].head(30)
-        for _, row in cat_df.iterrows():
-            product_info = f"  - Name: {row['name']} | Brand: {row['brand']} | Price: ${row.get('price', 0):.0f}"
-            product_catalog_string += product_info + "\n"
+    # Filter by category
+    cat_df = product_df[product_df['category'] == category].copy()
+    
+    if len(cat_df) == 0:
+        return pd.DataFrame()
+    
+    # Prefer products from known brands
+    known_brands = ['Samsung', 'LG', 'Sony', 'Poly', 'Logitech', 'Cisco', 'Shure', 
+                    'QSC', 'Extron', 'Crestron', 'Chief', 'Kramer', 'Biamp']
+    
+    # Sort by brand preference, then by price
+    cat_df['brand_score'] = cat_df['brand'].apply(
+        lambda x: known_brands.index(x) if x in known_brands else 999
+    )
+    cat_df = cat_df.sort_values(['brand_score', 'price'])
+    
+    return cat_df.head(max_products)
 
-    length = room_area**0.5 if room_area > 0 else 0
-    width = room_area / length if length > 0 else 0
+def validate_essential_components(boq_items):
+    """Validate that BOQ has essential components for a functional AV system."""
+    if not boq_items:
+        return False
+    
+    categories_found = [item.get('category', '').lower() for item in boq_items]
+    
+    # Check for essential components
+    has_display = any('display' in cat for cat in categories_found)
+    has_video_conf = any(term in cat for cat in categories_found for term in ['video', 'conferencing'])
+    has_audio = any('audio' in cat for cat in categories_found)
+    
+    return has_display and (has_video_conf or has_audio)
 
+def remove_duplicate_boq_items(boq_items):
+    """Remove duplicate items from BOQ based on name and brand."""
+    seen = set()
+    unique_items = []
+    
+    for item in boq_items:
+        item_key = (item.get('name', '').lower(), item.get('brand', '').lower())
+        if item_key not in seen:
+            seen.add(item_key)
+            unique_items.append(item)
+    
+    return unique_items
+
+# --- ★★★ REPLACED: ENHANCED BOQ GENERATION ★★★ ---
+def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """Enhanced BOQ generation with proper product curation and realistic logic."""
+    
+    # Clean the product data first
+    clean_product_df = clean_and_validate_product_data(product_df)
+    
+    if clean_product_df is None or len(clean_product_df) == 0:
+        st.error("No valid products found in catalog after cleaning.")
+        return None, [], None, None
+    
+    # Calculate AVIXA recommendations
+    length = room_area**0.5 if room_area > 0 else 20
+    width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
-
-    # --- NEW, COLLABORATIVE PROMPT ---
+    
+    # Get curated products for each category
+    essential_categories = ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables']
+    curated_catalog = ""
+    
+    for category in essential_categories:
+        curated_products = get_curated_products_by_category(clean_product_df, category)
+        if len(curated_products) > 0:
+            curated_catalog += f"\n--- {category.upper()} PRODUCTS ---\n"
+            for _, product in curated_products.iterrows():
+                curated_catalog += f"• {product['brand']} {product['name']} - ${product['price']:.0f}\n"
+                curated_catalog += f"  Features: {product.get('features', 'N/A')[:100]}...\n"
+    
+    # Enhanced prompt with specific requirements
     enhanced_prompt = f"""
 You are an AV systems engineer creating a Bill of Quantities for a professional installation.
 
-**Project Details:**
+**Room Requirements:**
 - Room Type: {room_type}
+- Room Area: {room_area} sq ft  
 - Budget Tier: {budget_tier}
-- Required Display Size: Around {equipment_reqs['displays']['size_inches']} inches
-- Room Area: {room_area} sq ft
+- Recommended Display Size: {equipment_reqs['displays']['size_inches']}" 
+- Estimated Occupancy: {avixa_calcs['estimated_occupancy']} people
 
-**Available Products:**
-{product_catalog_string}
+**Technical Requirements:**
+{json.dumps(equipment_reqs, indent=2)}
 
-**Instructions:**
-1. Select products ONLY from the catalog above
-2. Create a complete functional AV system
-3. Include at minimum: 1 display, audio solution, and basic control
-4. Format your response as a markdown table starting immediately with the header row
-5. Use this exact format:
+**Available Products (SELECT ONLY FROM THIS LIST):**
+{curated_catalog}
+
+**CRITICAL INSTRUCTIONS:**
+1. You MUST select products ONLY from the catalog above
+2. Create a complete, functional AV system including:
+   - Primary display (around {equipment_reqs['displays']['size_inches']}" based on room size)
+   - Video conferencing solution (camera, microphones, speakers OR all-in-one system)
+   - Basic control system
+   - Necessary mounts and cables
+3. Match product names EXACTLY as shown in the catalog
+4. Consider the budget tier: Economy = basic products, Standard = mid-tier, Premium/Enterprise = high-end
+
+**OUTPUT FORMAT:**
+Respond with ONLY a markdown table in this exact format:
 
 | Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |
 |---|---|---|---|---|---|---|
-| Displays | Samsung | QM55R | 55" 4K Display | 1 | 1200.00 | Primary presentation display |
+| Displays | Samsung | QM55C 55" UHD Professional Display | 4K UHD, 500 nits | 1 | 1100.00 | Primary presentation display |
 
-Generate the BOQ table now:
+Generate the complete BOQ table now:
 """
     
     try:
@@ -473,66 +605,145 @@ Generate the BOQ table now:
         if response and response.text:
             boq_content = response.text.strip()
             
-            # More robust table detection
-            lines = boq_content.split('\n')
-            table_start = -1
+            # Extract BOQ items with enhanced validation
+            boq_items = extract_enhanced_boq_items(boq_content, clean_product_df)
             
-            for i, line in enumerate(lines):
-                if '| Category |' in line or ('|' in line and 'category' in line.lower()):
-                    table_start = i
-                    break
+            # Validate the BOQ has essential components
+            if not validate_essential_components(boq_items):
+                st.warning("Generated BOQ missing essential components. Adding fallback items.")
+                fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+                boq_items.extend(fallback_items)
             
-            if table_start >= 0:
-                boq_content = '\n'.join(lines[table_start:])
+            # Remove duplicate items
+            boq_items = remove_duplicate_boq_items(boq_items)
             
-            boq_items = extract_enhanced_boq_items(boq_content, product_df)
             return boq_content, boq_items, avixa_calcs, equipment_reqs
+            
         return None, [], None, None
+        
     except Exception as e:
-        st.error(f"Enhanced BOQ generation failed: {str(e)}")
-        return None, [], None, None
+        st.error(f"BOQ generation failed: {str(e)}")
+        # Return smart fallback
+        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+        return None, fallback_items, avixa_calcs, equipment_reqs
 
-def create_fallback_boq(product_df, room_type, equipment_reqs):
-    """Create a basic fallback BOQ if AI generation fails."""
+# --- ★★★ REPLACED: NEW SMART FALLBACK BOQ ★★★ ---
+def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs):
+    """Create an intelligent fallback BOQ based on room requirements."""
     fallback_items = []
     
     try:
-        # Get a basic display
-        displays = product_df[product_df['category'].str.contains('Display', case=False, na=False)]
-        if len(displays) > 0:
-            display = displays.iloc[0]
+        # Get the best display for the room size
+        displays = get_curated_products_by_category(product_df, 'Displays', 10)
+        target_size = equipment_reqs['displays']['size_inches']
+        
+        best_display = None
+        min_size_diff = float('inf')
+        
+        for _, display in displays.iterrows():
+            # Extract size from product name
+            size_match = re.search(r'(\d+)"', display['name'])
+            if size_match:
+                size = int(size_match.group(1))
+                size_diff = abs(size - target_size)
+                if size_diff < min_size_diff:
+                    min_size_diff = size_diff
+                    best_display = display
+        
+        if best_display is not None:
             fallback_items.append({
                 'category': 'Displays',
-                'name': display.get('name', 'Standard Display'),
-                'brand': display.get('brand', 'Unknown'),
+                'name': best_display['name'],
+                'brand': best_display['brand'],
                 'quantity': 1,
-                'price': float(display.get('price', 1000)),
-                'justification': 'Primary presentation display',
-                'specifications': display.get('features', ''),
-                'image_url': display.get('image_url', ''),
-                'gst_rate': display.get('gst_rate', 18),
+                'price': float(best_display['price']),
+                'justification': f'Primary {target_size}" display for {room_type}',
+                'specifications': best_display.get('features', ''),
+                'image_url': best_display.get('image_url', ''),
+                'gst_rate': best_display.get('gst_rate', 18),
                 'matched': True
             })
         
-        # Get basic audio
-        audio = product_df[product_df['category'].str.contains('Audio', case=False, na=False)]
-        if len(audio) > 0:
-            audio_item = audio.iloc[0]
+        # Get video conferencing solution based on room size
+        vc_products = get_curated_products_by_category(product_df, 'Video Conferencing', 10)
+        occupancy = avixa_calcs['estimated_occupancy']
+        
+        best_vc = None
+        if occupancy <= 6:
+            # Small room - look for huddle solutions
+            for _, vc in vc_products.iterrows():
+                if any(term in vc['name'].lower() for term in ['huddle', 'x30', 'rally bar huddle']):
+                    best_vc = vc
+                    break
+        elif occupancy <= 12:
+            # Medium room - standard solutions
+            for _, vc in vc_products.iterrows():
+                if any(term in vc['name'].lower() for term in ['x52', 'rally bar', 'a30']):
+                    best_vc = vc
+                    break
+        else:
+            # Large room - premium solutions
+            for _, vc in vc_products.iterrows():
+                if any(term in vc['name'].lower() for term in ['x70', 'rally plus', 'codec']):
+                    best_vc = vc
+                    break
+        
+        # Fallback to first available VC product
+        if best_vc is None and len(vc_products) > 0:
+            best_vc = vc_products.iloc[0]
+        
+        if best_vc is not None:
             fallback_items.append({
-                'category': 'Audio',
-                'name': audio_item.get('name', 'Audio System'),
-                'brand': audio_item.get('brand', 'Unknown'),
+                'category': 'Video Conferencing',
+                'name': best_vc['name'],
+                'brand': best_vc['brand'],
                 'quantity': 1,
-                'price': float(audio_item.get('price', 500)),
-                'justification': 'Room audio system',
-                'specifications': audio_item.get('features', ''),
-                'image_url': audio_item.get('image_url', ''),
-                'gst_rate': audio_item.get('gst_rate', 18),
+                'price': float(best_vc['price']),
+                'justification': f'Video conferencing solution for {occupancy}-person room',
+                'specifications': best_vc.get('features', ''),
+                'image_url': best_vc.get('image_url', ''),
+                'gst_rate': best_vc.get('gst_rate', 18),
+                'matched': True
+            })
+        
+        # Add essential mounts and cables
+        mounts = get_curated_products_by_category(product_df, 'Mounts', 5)
+        if len(mounts) > 0:
+            mount = mounts.iloc[0]
+            fallback_items.append({
+                'category': 'Mounts',
+                'name': mount['name'],
+                'brand': mount['brand'],
+                'quantity': 1,
+                'price': float(mount['price']),
+                'justification': 'Display mounting solution',
+                'specifications': mount.get('features', ''),
+                'image_url': mount.get('image_url', ''),
+                'gst_rate': mount.get('gst_rate', 18),
+                'matched': True
+            })
+        
+        cables = get_curated_products_by_category(product_df, 'Cables', 5)
+        if len(cables) > 0:
+            cable = cables.iloc[0]
+            fallback_items.append({
+                'category': 'Cables',
+                'name': cable['name'],
+                'brand': cable['brand'],
+                'quantity': 1,
+                'price': float(cable['price']),
+                'justification': 'Essential connectivity cables',
+                'specifications': cable.get('features', ''),
+                'image_url': cable.get('image_url', ''),
+                'gst_rate': cable.get('gst_rate', 18),
                 'matched': True
             })
         
         return fallback_items
-    except:
+        
+    except Exception as e:
+        # If even fallback fails, return empty list
+        st.error(f"Fallback BOQ creation failed: {str(e)}")
         return []
 
 # --- BOQ Validation & Data Extraction ---
@@ -779,9 +990,9 @@ def extract_enhanced_boq_items(boq_content, product_df):
     
     return items
 
-# --- ★★★ BUG FIX IS HERE ★★★ ---
+# --- ★★★ REPLACED: ENHANCED PRODUCT MATCHING ★★★ ---
 def match_product_in_database(product_name, brand, product_df):
-    """Try to match a product name and brand with the database."""
+    """Enhanced product matching with better validation."""
     if product_df is None or len(product_df) == 0:
         return None
     
@@ -793,35 +1004,46 @@ def match_product_in_database(product_name, brand, product_df):
         if not safe_product_name and not safe_brand:
             return None
         
-        # Try exact brand match first
-        if safe_brand:
-            brand_mask = product_df['brand'].astype(str).str.contains(
-                re.escape(safe_brand), case=False, na=False, regex=True
-            )
-            brand_matches = product_df[brand_mask]
-            
-            if len(brand_matches) > 0 and safe_product_name:
-                # Try to match product name within brand matches
-                name_mask = brand_matches['name'].astype(str).str.contains(
-                    re.escape(safe_product_name[:20]), case=False, na=False, regex=True
-                )
-                name_matches = brand_matches[name_mask]
+        # First try exact name match (case insensitive)
+        if safe_product_name:
+            exact_matches = product_df[
+                product_df['name'].astype(str).str.lower() == safe_product_name.lower()
+            ]
+            if len(exact_matches) > 0:
+                return exact_matches.iloc[0].to_dict()
+        
+        # Try brand + partial name match
+        if safe_brand and safe_product_name:
+            brand_matches = product_df[
+                product_df['brand'].astype(str).str.lower() == safe_brand.lower()
+            ]
+            if len(brand_matches) > 0:
+                # Look for name match within brand matches
+                name_matches = brand_matches[
+                    brand_matches['name'].astype(str).str.contains(
+                        re.escape(safe_product_name.split()[0]), case=False, na=False
+                    )
+                ]
                 if len(name_matches) > 0:
                     return name_matches.iloc[0].to_dict()
         
-        # Fallback: try product name match across all products
-        if safe_product_name:
-            name_mask = product_df['name'].astype(str).str.contains(
-                re.escape(safe_product_name[:15]), case=False, na=False, regex=True
-            )
-            name_matches = product_df[name_mask]
-            if len(name_matches) > 0:
-                return name_matches.iloc[0].to_dict()
+        # Fallback: fuzzy name matching
+        if safe_product_name and len(safe_product_name) > 3:
+            # Extract key terms from product name
+            key_terms = safe_product_name.lower().split()[:3]  # First 3 words
+            for term in key_terms:
+                if len(term) > 3:  # Only meaningful terms
+                    matches = product_df[
+                        product_df['name'].astype(str).str.contains(
+                            re.escape(term), case=False, na=False
+                        )
+                    ]
+                    if len(matches) > 0:
+                        return matches.iloc[0].to_dict()
         
         return None
         
     except Exception as e:
-        # If matching fails, return None rather than crashing
         return None
 
 def normalize_category(category_text, product_name):
@@ -918,7 +1140,7 @@ def create_advanced_requirements():
     }
 
 
-# --- ★★★ BUG FIX IS HERE ★★★ ---
+# --- Multi-Room Interface ---
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
     st.subheader("Multi-Room Project Management")
@@ -1830,11 +2052,7 @@ def main():
                             model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
                         )
                         
-                        # Add fallback logic
-                        if not boq_items:
-                            st.warning("AI generation failed, creating basic BOQ...")
-                            boq_items = create_fallback_boq(product_df, room_type_key, equipment_reqs)
-                        
+                        # --- ★★★ SIMPLIFIED LOGIC: Fallback is now handled inside the generation function ★★★ ---
                         if boq_items:
                             st.session_state.boq_items = boq_items
                             update_boq_content_with_current_items()
