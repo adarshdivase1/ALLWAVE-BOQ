@@ -4,7 +4,11 @@ import streamlit as st
 try:
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    from components.boq_generator import run_boq_generation_pipeline, validate_avixa_compliance
+    from components.boq_generator import (
+        generate_boq_from_ai, validate_avixa_compliance, 
+        _remove_duplicate_core_components, _validate_and_correct_mounts,
+        _ensure_system_completeness, _flag_hallucinated_models, _correct_quantities
+    )
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
@@ -45,7 +49,7 @@ def main():
         return
 
     st.set_page_config(
-        page_title="Professional AV BOQ Generator",
+        page_title="Production-Ready AV BOQ Generator",
         page_icon="⚡",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -106,18 +110,20 @@ def main():
     with tab2:
         create_room_calculator()
     with tab3:
-        st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", key="features_text_area")
+        st.text_area("Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation for 10 users, needs ADA compliance.'")
         technical_reqs = create_advanced_requirements()
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
+    
     with tab4:
         st.subheader("Professional BOQ Generation")
-        if st.button("🚀 Generate & Validate BOQ", type="primary", use_container_width=True):
+        if st.button("🚀 Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True):
             if not model:
                 st.error("AI Model is not available. Please check API key.")
             else:
-                with st.spinner("Running AI generation and validation pipeline..."):
-                    # Use the new, robust pipeline function
-                    boq_items, avixa_calcs, equipment_reqs = run_boq_generation_pipeline(
+                with st.spinner("Running AVIXA Design and Validation Pipeline..."):
+                    
+                    st.info("Step 1: Generating initial design with AI...")
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select, st.session_state.budget_tier_slider,
                         st.session_state.features_text_area, technical_reqs,
@@ -125,16 +131,26 @@ def main():
                     )
                     
                     if boq_items:
-                        st.session_state.boq_items = boq_items
+                        st.info("Step 2: Applying AVIXA-based logic and correction rules...")
+                        processed_boq = _correct_quantities(boq_items)
+                        processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _validate_and_correct_mounts(processed_boq)
+                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
+                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        
+                        st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
+                        
                         if st.session_state.project_rooms:
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         
-                        avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
+                        st.info("Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
                         st.session_state.validation_results = {
                             "issues": avixa_validation.get('avixa_issues', []),
                             "warnings": avixa_validation.get('avixa_warnings', [])
                         }
+                        
                         st.success("✅ BOQ pipeline complete!")
                         st.rerun()
                     else:
