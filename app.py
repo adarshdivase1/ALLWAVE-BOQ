@@ -1036,8 +1036,9 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
 
 def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
     """Define required components based on room complexity with proper specifications."""
-
-    base_components = {
+    
+    # Start with components EVERY room needs
+    components = {
         'display': {
             'category': 'Displays',
             'quantity': equipment_reqs['displays']['quantity'],
@@ -1048,118 +1049,113 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
         'mount': {
             'category': 'Mounts',
             'quantity': equipment_reqs['displays']['quantity'],
-            'priority': 2,
+            'priority': 5, # Lower priority than core tech
             'justification': 'Professional display mounting hardware'
         },
         'cables': {
             'category': 'Cables',
-            'quantity': 3,
-            'priority': 3,
+            'quantity': 3, # Base cable package
+            'priority': 6,
             'justification': 'AV connectivity infrastructure (HDMI, USB, Network)'
         }
     }
 
-    if complexity in ['simple']:
-        base_components.update({
-            'video_bar': {
+    # --- Additive Logic using sequential IF statements ---
+
+    # Tier 1: All rooms except the most basic need a video conferencing solution
+    if complexity in ['simple', 'moderate', 'advanced', 'complex']:
+        components.update({
+            'video_solution': {
                 'category': 'Video Conferencing',
                 'quantity': 1,
-                'priority': 1,
-                'justification': 'All-in-one video conferencing solution with integrated audio'
+                'priority': 2,
+                'justification': 'Primary video conferencing system for the room.'
             }
         })
 
-    elif complexity in ['moderate']:
-        base_components.update({
-            'video_system': {
-                'category': 'Video Conferencing',
-                'quantity': 1,
-                'priority': 1,
-                'justification': f"{equipment_reqs['video_system']['camera_type']} for professional video conferencing"
-            },
+    # Tier 2: Moderate rooms and above get separate audio and control
+    if complexity in ['moderate', 'advanced', 'complex']:
+        components.update({
             'microphones': {
                 'category': 'Audio',
                 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2),
-                'priority': 2,
+                'priority': 3,
                 'justification': f"{equipment_reqs['audio_system'].get('microphone_count', 2)}-zone microphone coverage"
             },
             'speakers': {
                 'category': 'Audio',
                 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2),
-                'priority': 2,
+                'priority': 3,
                 'justification': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_count', 2)} zones"
             },
             'control': {
                 'category': 'Control',
                 'quantity': 1,
-                'priority': 3,
+                'priority': 4,
                 'justification': f"{equipment_reqs['control_system']['type']} for system management"
             }
         })
+        # For moderate rooms, a simple video bar is enough. We remove the generic 'video_solution'
+        # and replace it with a more specific 'video_bar' component if it exists.
+        if 'video_solution' in components:
+            del components['video_solution']
+        components['video_bar'] = {
+            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
+            'justification': 'All-in-one video bar suitable for mid-size rooms.'
+        }
 
-    elif complexity in ['advanced', 'complex']:
-        base_components.update({
+
+    # Tier 3: Advanced rooms get dedicated cameras, codecs, and DSPs
+    if complexity in ['advanced', 'complex']:
+        # Replace simpler video solutions with a dedicated camera and codec
+        if 'video_solution' in components: del components['video_solution']
+        if 'video_bar' in components: del components['video_bar']
+        
+        components.update({
             'camera': {
                 'category': 'Video Conferencing',
                 'quantity': equipment_reqs['video_system']['camera_count'],
-                'priority': 1,
+                'priority': 2,
                 'justification': f"{equipment_reqs['video_system']['camera_type']} for executive-level video conferencing"
             },
             'codec': {
                 'category': 'Video Conferencing',
                 'quantity': 1,
-                'priority': 1,
+                'priority': 2,
                 'justification': 'Professional 4K video codec for high-quality conferencing'
-            },
-            'microphones': {
-                'category': 'Audio',
-                'quantity': equipment_reqs['audio_system'].get('microphone_count', 4),
-                'priority': 2,
-                'justification': f"Professional microphone array with {equipment_reqs['audio_system'].get('microphone_count', 4)}-zone coverage"
-            },
-            'speakers': {
-                'category': 'Audio',
-                'quantity': equipment_reqs['audio_system'].get('speaker_count', 4),
-                'priority': 2,
-                'justification': f"Distributed speaker system covering {equipment_reqs['audio_system'].get('speaker_count', 4)} zones"
             },
             'dsp': {
                 'category': 'Audio',
                 'quantity': 1,
-                'priority': 2,
-                'justification': 'Digital signal processor for advanced audio processing with AEC'
-            },
-            'control': {
-                'category': 'Control',
-                'quantity': 1,
                 'priority': 3,
-                'justification': f"{equipment_reqs['control_system']['type']} with touch panel"
+                'justification': 'Digital signal processor for advanced audio processing with AEC'
             },
             'network_switch': {
                 'category': 'Infrastructure',
                 'quantity': 1,
-                'priority': 3,
+                'priority': 5,
                 'justification': f"Network switch for {avixa_calcs['recommended_bandwidth_mbps']}Mbps system bandwidth"
             }
         })
 
-        if complexity == 'complex':
-            base_components.update({
-                'amplifier': {
-                    'category': 'Audio',
-                    'quantity': 1,
-                    'priority': 2,
-                    'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W system"
-                },
-                'ups': {
-                    'category': 'Infrastructure',
-                    'quantity': 1,
-                    'priority': 3,
-                    'justification': f"UPS system providing {avixa_calcs.get('ups_runtime_minutes', 15)} min backup"
-                }
-            })
+    # Tier 4: The most complex rooms require amplifiers and power protection
+    if complexity == 'complex':
+        components.update({
+            'amplifier': {
+                'category': 'Audio',
+                'quantity': 1,
+                'priority': 4,
+                'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W system"
+            },
+            'ups': {
+                'category': 'Infrastructure',
+                'quantity': 1,
+                'priority': 6,
+                'justification': f"UPS system providing {avixa_calcs.get('ups_runtime_minutes', 15)} min backup"
+            }
+        })
 
-    return base_components
+    return components
 
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
                                     required_components, product_df, budget_tier):
