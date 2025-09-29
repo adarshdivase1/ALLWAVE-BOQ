@@ -1105,7 +1105,7 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
     return boq_items
 
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Production-ready BOQ generation with enforced fallback."""
+    """Multi-shot AI system with strict product selection."""
     
     clean_product_df = clean_and_validate_product_data(product_df)
     if clean_product_df is None or len(clean_product_df) == 0:
@@ -1117,89 +1117,146 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
+    # Determine minimum components based on room size
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
     
-    # CRITICAL: Skip AI entirely for complex rooms - use deterministic fallback
-    if complexity in ['advanced', 'complex']:
-        st.info(f"Using deterministic BOQ generation for {complexity} room type to ensure completeness...")
-        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-        
-        if len(fallback_items) < 6:
-            st.error(f"Fallback only generated {len(fallback_items)} items. This indicates catalog issues.")
-        
-        corrected_items, issues, warnings = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
-        return None, corrected_items, avixa_calcs, equipment_reqs
-    
-    # For simple/moderate rooms, try AI first
-    product_list = _build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier, room_type)
-    
-    simplified_prompt = f"""Generate AV system BOQ for {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
+    # Determine required JSON keys based on complexity
+    if complexity == 'simple':
+        required_json_keys = ['display', 'video_bar', 'mount', 'cables']
+    elif complexity == 'moderate':
+        required_json_keys = ['display', 'video_bar', 'ceiling_mic', 'speakers', 'mount', 'cables', 'control']
+    elif complexity == 'advanced':
+        required_json_keys = ['display', 'camera', 'codec', 'ceiling_mic_array', 'speakers', 'dsp', 'control', 'mount', 'cables', 'network']
+    else:  # complex
+        required_json_keys = ['display', 'dual_displays', 'ptz_cameras', 'professional_codec', 'mic_array', 'speakers', 'dsp', 'amplifier', 'control', 'network', 'mount', 'cables']
 
-PRODUCTS AVAILABLE:
-{product_list}
+    # ★★★ FIX: Extract complex expressions into variables before the f-string ★★★
+    display_size = equipment_reqs['displays']['size_inches']
+    display_qty = equipment_reqs['displays']['quantity']
+    video_type = equipment_reqs['video_system']['camera_type']
+    video_qty = equipment_reqs['video_system']['camera_count']
+    mic_zones = equipment_reqs['audio_system'].get('microphone_count', 2)
+    speaker_zones = equipment_reqs['audio_system'].get('speaker_count', 2)
+    dsp_req = "REQUIRED" if equipment_reqs['audio_system'].get('dsp_required') else "Optional"
+    control_type = equipment_reqs['control_system']['type']
 
-REQUIREMENTS:
-- Display: {equipment_reqs['displays']['size_inches']}" (Qty: {equipment_reqs['displays']['quantity']})
-- Video: {equipment_reqs['video_system']['camera_type']}
-- Audio Mics: {equipment_reqs['audio_system'].get('microphone_count', 2)} zones
-- Audio Speakers: {equipment_reqs['audio_system'].get('speaker_count', 2)} zones
-- Control: {equipment_reqs['control_system']['type']}
+    product_selection_prompt = f"""You are a professional AV system designer. Design for: {room_type}
 
-Return ONLY this JSON (no extra text):
+ROOM SPECIFICATIONS:
+- Area: {room_area} sq ft
+- Capacity: {avixa_calcs['estimated_occupancy']} people
+- Complexity: {complexity.upper()}
+
+SYSTEM REQUIREMENTS (MANDATORY):
+Display: {display_size}" (Qty: {display_qty})
+Video: {video_type} (Qty: {video_qty})
+Audio Microphones: {mic_zones} zones required
+Audio Speakers: {speaker_zones} zones required
+DSP: {dsp_req}
+Control: {control_type}
+
+AVAILABLE PRODUCTS (SELECT FROM THESE ONLY):
+{_build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier, room_type)}
+
+MANDATORY OUTPUT STRUCTURE:
+You MUST include ALL of these keys in your JSON response:
+{json.dumps(required_json_keys)}
+
+RESPONSE FORMAT (valid JSON only, no explanations):
 {{
-  "display": {{"name": "product name from list", "qty": {equipment_reqs['displays']['quantity']}}},
-  "video_bar": {{"name": "product name from list", "qty": 1}},
-  "mount": {{"name": "product name from list", "qty": 1}},
-  "cables": {{"name": "product name from list", "qty": 2}}
-}}"""
+  "display": {{"name": "exact product name from list", "qty": {display_qty}}},
+  "video_bar": {{"name": "exact product name from list", "qty": 1}},
+  "ceiling_mic": {{"name": "exact product name from list", "qty": {mic_zones}}},
+  "speakers": {{"name": "exact product name from list", "qty": {speaker_zones}}},
+  "dsp": {{"name": "exact product name from list", "qty": 1}},
+  "control": {{"name": "exact product name from list", "qty": 1}},
+  "mount": {{"name": "exact product name from list", "qty": {display_qty}}},
+  "cables": {{"name": "exact product name from list", "qty": 2}}
+}}
+
+CRITICAL RULES:
+1. Response must be ONLY valid JSON - no text before or after
+2. Use EXACT product names from the lists above
+3. For {complexity} complexity, you MUST include {len(required_json_keys)} different components
+4. Do NOT abbreviate product names
+5. If unsure, select the first product in each category
+"""
 
     try:
-        response = generate_with_retry(model, simplified_prompt)
+        response = generate_with_retry(model, product_selection_prompt)
         if not response or not response.text:
-            raise Exception("AI returned empty")
+            raise Exception("AI returned empty response")
         
         ai_selection = _parse_ai_product_selection(response.text)
         
-        if len(ai_selection) < 3:
-            raise Exception(f"AI only returned {len(ai_selection)} items")
+        # Validate AI returned minimum required keys
+        if len(ai_selection) < len(required_json_keys):
+            st.warning(f"AI only returned {len(ai_selection)} components but {len(required_json_keys)} are required. Forcing fallback...")
+            raise Exception(f"Insufficient components: got {len(ai_selection)}, need {len(required_json_keys)}")
         
-        category_map = {
+        # Expanded category mapping
+        category_map_extended = {
             'display': 'Displays',
+            'dual_displays': 'Displays',
+            'video_system': 'Video Conferencing',
             'video_bar': 'Video Conferencing',
-            'mount': 'Mounts',
-            'cables': 'Cables'
+            'camera': 'PTZ & Pro Video Cameras',
+            'ptz_cameras': 'PTZ & Pro Video Cameras',
+            'codec': 'Video Conferencing',
+            'microphones': 'Audio: Microphones & Conferencing',
+            'ceiling_mic': 'Audio: Microphones & Conferencing',
+            'ceiling_mic_array': 'Audio: Microphones & Conferencing',
+            'mic_array': 'Audio: Microphones & Conferencing',
+            'speakers': 'Audio: Speakers',
+            'line_array_speakers': 'Audio: Speakers',
+            'dsp': 'Audio: DSP',
+            'amplifier': 'Audio: Amplifiers',
+            'control': 'Control Systems & Processing',
+            'matrix': 'Video Equipment',
+            'network': 'Networking',
+            'ups': 'Infrastructure',
+            'mount': 'Mounts & Racks',
+            'mounts': 'Mounts & Racks',
+            'cables': 'Cables & Connectivity'
         }
         
         boq_items = []
-        for key, selection in ai_selection.items():
-            matched = _strict_product_match(selection['name'], clean_product_df, category_map.get(key, 'General'))
-            if matched:
+        for category_key, selection in ai_selection.items():
+            mapped_category = category_map_extended.get(category_key, 'General')
+            matched_product = _strict_product_match(
+                selection['name'], 
+                clean_product_df,
+                mapped_category
+            )
+            
+            if matched_product is not None:
                 boq_items.append({
-                    'category': matched['category'],
-                    'name': matched['name'],
-                    'brand': matched['brand'],
+                    'category': matched_product['category'],
+                    'name': matched_product['name'],
+                    'brand': matched_product['brand'],
                     'quantity': selection['qty'],
-                    'price': float(matched['price']),
-                    'justification': _generate_justification(key, equipment_reqs, room_type),
-                    'specifications': matched.get('features', ''),
-                    'image_url': matched.get('image_url', ''),
-                    'gst_rate': matched.get('gst_rate', 18),
+                    'price': float(matched_product['price']),
+                    'justification': _generate_justification(category_key, equipment_reqs, room_type),
+                    'specifications': matched_product.get('features', ''),
+                    'image_url': matched_product.get('image_url', ''),
+                    'gst_rate': matched_product.get('gst_rate', 18),
                     'matched': True
                 })
         
-        if len(boq_items) < 3:
-            raise Exception("Insufficient items matched")
+        # Enforce minimum component count
+        if len(boq_items) < len(required_json_keys):
+            st.warning(f"AI only selected {len(boq_items)} items. Adding missing components...")
+            boq_items = _add_essential_missing_components(boq_items, equipment_reqs, clean_product_df, complexity)
         
         corrected_items, issues, warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
+        
         return None, corrected_items, avixa_calcs, equipment_reqs
         
     except Exception as e:
-        st.warning(f"AI generation failed: {e}. Using fallback system...")
+        st.error(f"Multi-shot generation failed: {str(e)}")
         fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-        corrected_items, issues, warnings = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
-        return None, corrected_items, avixa_calcs, equipment_reqs
-
+        return None, fallback_items, avixa_calcs, equipment_reqs
 ROOM SPECIFICATIONS:
 - Area: {room_area} sq ft
 - Capacity: {avixa_calcs['estimated_occupancy']} people
