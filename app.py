@@ -2414,7 +2414,7 @@ def generate_company_excel(rooms_data=None):
 
 # --- Main Application ---
 def get_sample_product_data():
-    """Provide comprehensive sample products with AVIXA-relevant specifications."""
+    ""Provide comprehensive sample products with AVIXA-relevant specifications.""
     return [
         # Displays
         {
