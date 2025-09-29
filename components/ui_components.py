@@ -9,7 +9,7 @@ try:
 except ImportError:
     ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
     def get_usd_to_inr_rate(): return 83.5
-    def convert_currency(amount, to_currency="INR"): return amount * 83.5 if to_currency == "INR" else amount
+    def convert_currency(amount, to_currency="INR"): return amount * (83.5 if to_currency == "INR" else 1)
     def format_currency(amount, currency="INR"): return f"₹{amount:,.0f}" if currency == "INR" else f"${amount:,.2f}"
     def generate_company_excel(*args, **kwargs):
         st.error("Excel component unavailable.")
@@ -21,8 +21,8 @@ def create_project_header():
     """Create professional project header."""
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        st.title("Professional AV BOQ Generator")
-        st.caption("Production-ready Bill of Quantities with technical validation")
+        st.title("Production-Ready AV BOQ Generator")
+        st.caption("AVIXA Standards-Compliant Design & Validation")
     with col2:
         project_id = st.text_input("Project ID", value=f"AVP-{datetime.now().strftime('%Y%m%d')}", key="project_id_input")
     with col3:
@@ -139,7 +139,6 @@ def create_multi_room_interface():
             st.rerun()
 
 # --- BOQ Display and Editing ---
-
 def update_boq_content_with_current_items():
     """Update the BOQ content in session state to reflect current items."""
     if not st.session_state.get('boq_items'):
@@ -152,7 +151,6 @@ def update_boq_content_with_current_items():
 
     for item in st.session_state.boq_items:
         remarks = item.get('justification', '')
-        # ★★★ NEW: Check for and display warnings from the validation layer ★★★
         if item.get('warning'):
             remarks = f"⚠️ **{item['warning']}**<br>{remarks}"
 
@@ -171,12 +169,14 @@ def display_boq_results(product_df):
     item_count = len(st.session_state.get('boq_items', []))
     st.subheader(f"Generated Bill of Quantities ({item_count} items)")
 
-    if validation_results.get('issues'):
-        st.error("Critical Issues Found:")
-        for issue in validation_results['issues']: st.write(f"- {issue}")
-    if validation_results.get('warnings'):
-        st.warning("Technical Recommendations & Compliance Notes:")
-        for warning in validation_results['warnings']: st.write(f"- {warning}")
+    if validation_results.get('issues') or validation_results.get('warnings'):
+        with st.container(border=True):
+            if validation_results.get('issues'):
+                st.error("🚨 **Critical System Gaps Identified**")
+                for issue in validation_results['issues']: st.write(f"- {issue}")
+            if validation_results.get('warnings'):
+                st.warning("👀 **Design Recommendations & Compliance Notes**")
+                for warning in validation_results['warnings']: st.write(f"- {warning}")
 
     if boq_content:
         st.markdown(boq_content, unsafe_allow_html=True)
