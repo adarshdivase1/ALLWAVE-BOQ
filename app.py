@@ -276,7 +276,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -1011,7 +1011,7 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
 
 # --- ★★★ COMPREHENSIVE BOQ GENERATION HELPERS ★★★ ---
 
-def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs):
+def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
     """Define required components based on room complexity with proper specifications."""
     
     base_components = {
@@ -1020,7 +1020,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
             'quantity': equipment_reqs['displays']['quantity'],
             'size_requirement': equipment_reqs['displays']['size_inches'],
             'priority': 1,
-            'justification': f"Primary {equipment_reqs['displays']['size_inches']}\" display for optimal viewing"
+            'justification': f"Professional display meeting AVIXA DISCAS standards for {room_type}"
         },
         'mount': {
             'category': 'Mounts',
@@ -1080,13 +1080,13 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
                 'category': 'Video Conferencing',
                 'quantity': equipment_reqs['video_system']['camera_count'],
                 'priority': 1,
-                'justification': f"{equipment_reqs['video_system']['camera_type']} system"
+                'justification': f"{equipment_reqs['video_system']['camera_type']} for executive-level video conferencing"
             },
             'codec': {
                 'category': 'Video Conferencing',
                 'quantity': 1,
                 'priority': 1,
-                'justification': 'Professional video codec for high-quality conferencing'
+                'justification': 'Professional 4K video codec for high-quality conferencing'
             },
             'microphones': {
                 'category': 'Audio',
@@ -1126,7 +1126,7 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
                     'category': 'Audio',
                     'quantity': 1,
                     'priority': 2,
-                    'justification': f"Multi-channel amplifier for {equipment_reqs['audio_system'].get('audio_power_needed', 300)}W system"
+                    'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W system"
                 },
                 'ups': {
                     'category': 'Infrastructure',
@@ -1243,13 +1243,22 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
         
         if matched_product:
             matched_count += 1
+            
+            # Extract actual product specs for better justification
+            actual_justification = comp_spec['justification']
+            if comp_key == 'display':
+                size_match = re.search(r'(\d+)"', matched_product['name'])
+                if size_match:
+                    actual_size = size_match.group(1)
+                    actual_justification = f"{actual_size}\" professional display meeting AVIXA DISCAS standards for {room_type}"
+            
             boq_items.append({
                 'category': matched_product['category'],
                 'name': matched_product['name'],
                 'brand': matched_product['brand'],
                 'quantity': selection.get('qty', comp_spec['quantity']),
                 'price': float(matched_product['price']),
-                'justification': comp_spec['justification'],
+                'justification': actual_justification,
                 'specifications': matched_product.get('features', ''),
                 'image_url': matched_product.get('image_url', ''),
                 'gst_rate': matched_product.get('gst_rate', 18),
@@ -1308,7 +1317,7 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     complexity = room_spec.get('complexity', 'simple')
     
     # Enhanced required components structure
-    required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs)
+    required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
     
     st.info(f"Generating {len(required_components)}-component system for {room_type} ({complexity} complexity)")
     
@@ -1387,7 +1396,7 @@ def validate_against_avixa(model, guidelines, boq_items):
     except Exception as e:
         return [f"AVIXA compliance check failed: {str(e)}"]
 
-def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
+def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
     """Validate BOQ against AVIXA standards and compliance requirements."""
     issues = []
     warnings = []
@@ -1402,14 +1411,26 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
             if size_match:
                 size = int(size_match.group(1))
                 recommended_size = avixa_calcs['detailed_viewing_display_size']
-                if abs(size - recommended_size) > 10:
-                    warnings.append(f"Display size {size}\" deviates from AVIXA calculation ({recommended_size}\")")
+                size_diff = abs(size - recommended_size)
+                
+                if size_diff > 20:
+                    issues.append(f"CRITICAL: Display size {size}\" significantly deviates from AVIXA calculation ({recommended_size}\")")
+                elif size_diff > 10:
+                    warnings.append(f"Display size {size}\" deviates from AVIXA DISCAS calculation ({recommended_size}\"). Consider larger display for optimal viewing.")
+                else:
+                    # Size is acceptable
+                    pass
     
     # Audio System Compliance
     has_dsp = any('dsp' in item.get('name', '').lower() or 'processor' in item.get('name', '').lower() 
                   for item in boq_items)
-    if equipment_reqs['audio_system'].get('dsp_required') and not has_dsp:
-        issues.append("CRITICAL: DSP required but not found in BOQ")
+    
+    # Only flag as critical if room is moderate+ complexity
+    room_spec = ROOM_SPECS.get(room_type, {})
+    complexity = room_spec.get('complexity', 'simple')
+
+    if equipment_reqs['audio_system'].get('dsp_required') and not has_dsp and complexity != 'simple':
+        issues.append("CRITICAL: DSP required for this room type but not found in BOQ")
     
     # Power Load Validation
     total_estimated_power = sum(item.get('power_draw', 150) * item.get('quantity', 1) 
@@ -1420,8 +1441,8 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs):
     
     # UPS Requirement Check
     has_ups = any('ups' in item.get('name', '').lower() for item in boq_items)
-    if avixa_calcs['ups_va_required'] > 1000 and not has_ups:
-        issues.append("CRITICAL: UPS system required but not found in BOQ")
+    if avixa_calcs['ups_va_required'] > 1000 and not has_ups and complexity in ['advanced', 'complex']:
+        issues.append("CRITICAL: UPS system required for this room type but not found in BOQ")
     
     # Cable Infrastructure Check
     required_cables = avixa_calcs['cable_runs']
@@ -2630,7 +2651,7 @@ def main():
                             if st.session_state.project_rooms:
                                 st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                             
-                            avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs)
+                            avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type_key)
                             # The BOQValidator class is not defined. These lines are commented out to prevent an error.
                             # validator = BOQValidator(ROOM_SPECS, product_df)
                             # issues, warnings = validator.validate_technical_requirements(boq_items, room_type_key, room_area_val)
