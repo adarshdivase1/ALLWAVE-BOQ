@@ -2745,7 +2745,7 @@ if st.button("🚀 Generate BOQ with Justifications", type="primary", use_contai
                 selected_features,      # Use the guaranteed correct value
                 technical_reqs, 
                 room_area_val
-            ), type="primary", use_container_width=True):
+            
                 if not model:
                     st.error("AI Model is not available. Please check API key.")
                 else:
