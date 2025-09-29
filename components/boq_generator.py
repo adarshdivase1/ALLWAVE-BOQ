@@ -1,3 +1,5 @@
+# components/boq_generator.py
+
 import streamlit as st
 import pandas as pd
 import re
@@ -217,6 +219,7 @@ def _remove_duplicate_core_components(boq_items):
     for item in boq_items:
         is_core = any(keyword in item['name'] for keyword in core_keywords)
         if is_core:
+            # If we haven't seen this core component, add it. Otherwise, skip.
             if item['name'] not in core_components:
                 core_components[item['name']] = item
                 final_items.append(item)
@@ -248,6 +251,7 @@ def _ensure_system_completeness(boq_items, product_df):
 
     if has_amplifier and not has_speakers:
         st.warning(" amplifier found but no speakers. Adding default speakers.")
+        # Find a suitable speaker from the product catalog to add
         speaker_products = product_df[product_df['name'].str.contains("Speaker", case=False)]
         if not speaker_products.empty:
             speaker_product = speaker_products.iloc[0]
@@ -273,6 +277,7 @@ def _correct_quantities(boq_items):
     """Ensures all quantities are integers."""
     for item in boq_items:
         try:
+            # Convert float quantities like 7.0 to integer 7
             item['quantity'] = int(float(item.get('quantity', 1)))
         except (ValueError, TypeError):
             item['quantity'] = 1
@@ -374,6 +379,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
         'avixa_warnings': warnings,
         'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
     }
+
 
 # --- Core AI Generation Function ---
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
