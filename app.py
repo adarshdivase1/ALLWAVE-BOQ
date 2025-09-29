@@ -143,27 +143,45 @@ def clean_and_validate_product_data(product_df):
 
     # Clean category names - standardize to match your expected categories
     category_mapping = {
+        # Display Related
         'Displays & Projectors': 'Displays',
+        'Digital Signage Players & CMS': 'Displays',
+        'Interactive Displays & Classroom Tech': 'Displays',
+        'Projection Screens': 'Displays',
+
+        # Video Conferencing Related
         'UC & Collaboration Devices': 'Video Conferencing',
         'PTZ & Pro Video Cameras': 'Video Conferencing',
+        'Lecture Capture & Recording': 'Video Conferencing',
+        'AV Bridges & Specialty I/O': 'Video Conferencing',
+
+        # Audio Related
         'Audio: Microphones & Conferencing': 'Audio',
         'Audio: Speakers': 'Audio',
         'Audio: DSP': 'Audio',
         'Audio: Amplifiers': 'Audio',
-        'Video Conferencing': 'Video Conferencing',
+        'Audio: DSP & Processing': 'Audio',
+        'Audio: Loudspeakers & Amplifiers': 'Audio',
+        'Acoustics & Sound Masking': 'Audio',
+        'Assistive Listening & Hearing Loop': 'Audio',
+        
+        # Control Related
         'Control Systems & Processing': 'Control',
         'AV over IP & Streaming': 'Control',
         'Control, Matrix & Extenders': 'Control',
         'Video Equipment': 'Control',
+        'Wireless Presentation': 'Control',
+        'Room Scheduling & Touch Panels': 'Control',
+        
+        # Infrastructure Related
         'Mounts & Racks': 'Mounts',
         'Cables & Connectivity': 'Cables',
         'Networking': 'Infrastructure',
         'Network Switches (AV-friendly)': 'Infrastructure',
-        'Installation & Services': 'Services',
-        'Wireless Presentation': 'Control',
-        'Room Scheduling & Touch Panels': 'Control',
-        'Digital Signage Players & CMS': 'Displays',
-        'Projection Screens': 'Displays'
+
+        # To be mapped to broad categories
+        'AV over IP': 'Control', # Map this specific one too
+        'Extracted from Project': 'General', # Map legacy category
     }
 
     df['category'] = df['category'].map(category_mapping).fillna(df['category'])
@@ -2684,15 +2702,38 @@ def main():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
-                if not model:
-                    st.error("AI Model is not available. Please check API key.")
-                else:
-                    with st.spinner("Generating and validating professional BOQ..."):
-                        room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-                        boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
-                            model, product_df, guidelines, room_type_key, budget_tier, features, technical_reqs, room_area_val
-                        )
+            # Add a container for debug info to make the state clear
+with st.container(border=True):
+    st.markdown("##### ⚙️ Current Generation Settings")
+    # This debug info will make it obvious if the state is correct BEFORE you click generate
+    try:
+        current_type = st.session_state.room_type_select
+        current_spec = ROOM_SPECS.get(current_type, {})
+        current_complexity = current_spec.get('complexity', 'simple')
+        st.info(f"**Room Type Selected:** `{current_type}` → **Complexity Level:** `{current_complexity.upper()}`")
+    except Exception as e:
+        st.warning("Could not read current room type selection yet.")
+
+if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
+    if not model:
+        st.error("AI Model is not available. Please check API key.")
+    else:
+        with st.spinner("Generating and validating professional BOQ..."):
+            # --- CRITICAL FIX: Read the LATEST value from session_state ---
+            selected_room_type = st.session_state.room_type_select 
+            selected_budget_tier = st.session_state.budget_tier_slider
+            selected_features = st.session_state.features_text_area
+
+            room_area_val = st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
+            
+            boq_content, boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
+                model, product_df, guidelines, 
+                selected_room_type, # Use the guaranteed correct value
+                selected_budget_tier, # Use the guaranteed correct value
+                selected_features, # Use the guaranteed correct value
+                technical_reqs, 
+                room_area_val
+            )
 
                         if boq_items:
                             st.session_state.boq_items = boq_items
