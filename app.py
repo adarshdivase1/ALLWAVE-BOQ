@@ -2359,7 +2359,7 @@ def add_terms_conditions_sheet(workbook):
     sheet.column_dimensions['A'].width = 80
 
 def generate_company_excel(rooms_data=None):
-    """Generate Excel file in the new company standard format."""
+    """Generate Excel file in the new company standard format."""  # ✅ 3 quotes
     if not rooms_data and ('boq_items' not in st.session_state or not st.session_state.boq_items):
         st.error("No BOQ items to export. Generate a BOQ first.")
         return None
@@ -2414,7 +2414,7 @@ def generate_company_excel(rooms_data=None):
 
 # --- Main Application ---
 def get_sample_product_data():
-    ""Provide comprehensive sample products with AVIXA-relevant specifications.""
+    """Provide comprehensive sample products with AVIXA-relevant specifications."""  # ✅ 3 quotes
     return [
         # Displays
         {
@@ -2431,7 +2431,7 @@ def get_sample_product_data():
     ]
 
 def show_login_page():
-    ""Simple login page for internal users.""
+    """Simple login page for internal users."""  # ✅ 3 quotes
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="⚡")
     
     col1, col2, col3 = st.columns([1, 2, 1])
