@@ -84,13 +84,9 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
     _create_sheet_header(sheet, styles)
     
     # Project Info
-    sheet['C5'] = "Room Name / Room Type"
-    sheet['E5'] = room_name
-    sheet['C6'] = "Floor"
-    sheet['C7'] = "Number of Seats"
-    sheet['C8'] = "Number of Rooms"
-    for cell in ['C5', 'E5', 'C6', 'C7', 'C8']:
-        sheet[cell].font = styles['bold']
+    sheet['C5'] = "Room Name / Room Type"; sheet['E5'] = room_name
+    sheet['C6'] = "Floor"; sheet['C7'] = "Number of Seats"; sheet['C8'] = "Number of Rooms"
+    for cell in ['C5', 'E5', 'C6', 'C7', 'C8']: sheet[cell].font = styles['bold']
 
     # Table Headers
     headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
@@ -112,7 +108,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Group and add items
-    # ... (Rest of the function is the same as before) ...
     grouped_items = {}
     for item in items:
         cat = item.get('category', 'General')
@@ -201,20 +196,33 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
 
 def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     """Adds the Proposal Summary sheet."""
-    summary_sheet = workbook.create_sheet(title="Proposal Summary", index=0)
-    _create_sheet_header(summary_sheet, styles) # Use the new header function
+    # Check if sheet exists to avoid creating duplicates
+    if "Proposal Summary" in workbook.sheetnames:
+        summary_sheet = workbook["Proposal Summary"]
+        # Clear existing data except header
+        for row in range(summary_sheet.max_row, 6, -1):
+            summary_sheet.delete_rows(row, 1)
+    else:
+        summary_sheet = workbook.create_sheet(title="Proposal Summary", index=0)
+        _create_sheet_header(summary_sheet, styles)
     
-    summary_sheet.merge_cells('A5:D5')
-    sub_header = summary_sheet['A5']
-    sub_header.value = "Commercial Proposal Summary"
-    sub_header.font = Font(size=14, bold=True)
-    sub_header.alignment = Alignment(horizontal='center')
+        summary_sheet.merge_cells('A5:D5')
+        sub_header = summary_sheet['A5']
+        sub_header.value = "Commercial Proposal Summary"
+        sub_header.font = Font(size=14, bold=True)
+        sub_header.alignment = Alignment(horizontal='center')
 
-    headers = ["Description", "Amount (INR) Without Tax", "GST Amount (INR)", "Total Amount (INR) With Tax"]
-    summary_sheet.append([])
-    summary_sheet.append(headers)
-    header_row = summary_sheet.max_row
-    
+        headers = ["Description", "Amount (INR) Without Tax", "GST Amount (INR)", "Total Amount (INR) With Tax"]
+        summary_sheet.append([])
+        summary_sheet.append(headers)
+        
+        # Style header row
+        header_row_idx = summary_sheet.max_row
+        for cell in summary_sheet[header_row_idx]:
+            cell.fill = styles['table_header_fill']
+            cell.font = styles['table_header']
+
+    # Populate data
     grand_total = 0
     for room in rooms_data:
         if room.get('total'):
@@ -228,16 +236,14 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     summary_sheet.append(["Grand Total", "", "", grand_total])
     total_row_idx = summary_sheet.max_row
 
-    # Styling
-    for cell in summary_sheet[header_row]:
-        cell.fill = styles['table_header_fill']
-        cell.font = styles['table_header']
-    for row in summary_sheet.iter_rows(min_row=header_row + 1, max_row=total_row_idx):
+    # Style data and total rows
+    for row in summary_sheet.iter_rows(min_row=8, max_row=total_row_idx):
         for cell in row:
             if isinstance(cell.value, (int, float)):
                 cell.number_format = styles['currency_format']
     summary_sheet[f'A{total_row_idx}'].font = styles['bold']
     summary_sheet[f'D{total_row_idx}'].font = styles['bold']
+    
     for col in ['A', 'B', 'C', 'D']:
         summary_sheet.column_dimensions[col].width = 30
 
@@ -315,6 +321,7 @@ def _add_terms_conditions_sheet(workbook, styles):
     tc_sheet.column_dimensions['B'].width = 100
 
 # --- Main Public Function ---
+
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
     Generate a complete, multi-sheet Excel file in the company standard format.
@@ -329,7 +336,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     gst_rates = project_details.get('gst_rates', {'Electronics': 18, 'Services': 18})
 
     # Add standard sheets first, in the desired order
-    _add_proposal_summary_sheet(workbook, rooms_data, styles)
+    _add_proposal_summary_sheet(workbook, [], styles) # Create summary sheet shell
     _add_scope_of_work_sheet(workbook, styles)
     _add_version_control_sheet(workbook, project_name, client_name, styles)
     _add_terms_conditions_sheet(workbook, styles)
