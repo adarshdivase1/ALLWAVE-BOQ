@@ -4,14 +4,15 @@ import re
 import json
 import time
 
-# Assuming these components are in your project structure as discussed
+# --- Component Imports ---
 try:
     from components.gemini_handler import generate_with_retry
     from components.av_designer import calculate_avixa_recommendations, determine_equipment_requirements
     from components.visualizer import ROOM_SPECS
     from components.utils import estimate_power_draw
-except ImportError:
-    st.error("Could not import one or more required components (gemini, av_designer, visualizer, utils).")
+except ImportError as e:
+    st.error(f"BOQ Generator failed to import a component: {e}")
+    # Define dummy functions to prevent crashes
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
     def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}, 'control_system': {}}
@@ -109,24 +110,26 @@ CRITICAL RULES:
 
 def _strict_product_match(product_name, product_df, category):
     """Enhanced fuzzy matching with fallback logic."""
-    filtered = product_df[product_df['category'] == category]
-    if len(filtered) == 0:
-        filtered = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-    if len(filtered) == 0:
-        st.warning(f"No products found for category '{category}' - searching all categories.")
-        filtered = product_df
-    if len(filtered) == 0: return None
+    if product_df is None or len(product_df) == 0: return None
     
-    exact = filtered[filtered['name'].str.lower() == product_name.lower()]
-    if len(exact) > 0: return exact.iloc[0].to_dict()
+    filtered_by_cat = product_df[product_df['category'] == category]
+    if len(filtered_by_cat) == 0:
+        filtered_by_cat = product_df[product_df['category'].str.contains(category, case=False, na=False)]
+    
+    search_df = filtered_by_cat if len(filtered_by_cat) > 0 else product_df
+
+    exact_match = search_df[search_df['name'].str.lower() == product_name.lower()]
+    if not exact_match.empty:
+        return exact_match.iloc[0].to_dict()
 
     search_terms = product_name.lower().split()[:3]
     for term in search_terms:
         if len(term) > 3:
-            matches = filtered[filtered['name'].str.lower().str.contains(term, na=False)]
-            if len(matches) > 0: return matches.iloc[0].to_dict()
+            matches = search_df[search_df['name'].str.lower().str.contains(term, na=False)]
+            if not matches.empty:
+                return matches.iloc[0].to_dict()
 
-    return filtered.iloc[0].to_dict() if len(filtered) > 0 else None
+    return search_df.iloc[0].to_dict() if not search_df.empty else None
 
 def _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs, room_type):
     """Build BOQ items from AI selection with enhanced matching and validation."""
@@ -203,6 +206,78 @@ def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_cal
     required_keys = complexity_map[complexity]
     return {key: component_definitions[key] for key in required_keys}
 
+# --- ★★★ NEW: VALIDATION AND CORRECTION LAYER ★★★ ---
+
+def _remove_duplicate_core_components(boq_items):
+    """Finds and removes duplicate core items like video codecs."""
+    core_components = {}
+    final_items = []
+    core_keywords = ['G7500', 'Room Kit', 'Codec', 'Crestron Flex']
+
+    for item in boq_items:
+        is_core = any(keyword in item['name'] for keyword in core_keywords)
+        if is_core:
+            if item['name'] not in core_components:
+                core_components[item['name']] = item
+                final_items.append(item)
+            else:
+                st.warning(f"🗑️ Removed duplicate core component: {item['name']}")
+        else:
+            final_items.append(item)
+    return final_items
+
+def _validate_and_correct_mounts(boq_items):
+    """Ensures the mount is for the display, not a hallway sign."""
+    display_item = next((item for item in boq_items if item['category'] == 'Displays'), None)
+    mount_item = next((item for item in boq_items if item['category'] == 'Mounts'), None)
+
+    if display_item and mount_item:
+        if "Hallway Sign" in mount_item['name']:
+            st.warning(f"⚠️ Correcting incorrect mount for '{display_item['name']}'.")
+            display_size_match = re.search(r'(\d+)"', display_item['name'])
+            display_size = display_size_match.group(1) if display_size_match else 'display'
+            mount_item['name'] = f"Professional Wall Mount for {display_size}\" Display"
+            mount_item['specifications'] = "Heavy-duty, professional-grade wall mounting bracket."
+            mount_item['justification'] = "Secure mounting for primary room display."
+    return boq_items
+
+def _ensure_system_completeness(boq_items, product_df):
+    """Checks for logical pairings, like an amplifier needing speakers."""
+    has_amplifier = any("Amplifier" in item['name'] for item in boq_items)
+    has_speakers = any("Speaker" in item['name'] for item in boq_items)
+
+    if has_amplifier and not has_speakers:
+        st.warning(" amplifier found but no speakers. Adding default speakers.")
+        speaker_products = product_df[product_df['name'].str.contains("Speaker", case=False)]
+        if not speaker_products.empty:
+            speaker_product = speaker_products.iloc[0]
+            boq_items.append({
+                'category': 'Audio', 'name': speaker_product['name'], 'brand': speaker_product['brand'],
+                'quantity': 4, 'price': float(speaker_product['price']),
+                'justification': 'Required speakers for the audio amplifier (auto-added).',
+                'specifications': speaker_product.get('features', ''), 'image_url': speaker_product.get('image_url', ''),
+                'gst_rate': speaker_product.get('gst_rate', 18), 'matched': True,
+                'power_draw': estimate_power_draw('Audio', speaker_product['name'])
+            })
+    return boq_items
+
+def _flag_hallucinated_models(boq_items):
+    """Adds a warning to items with auto-generated or generic model names."""
+    for item in boq_items:
+        if "Auto-generated" in item.get('specifications', '') or re.search(r'GEN-\d+', item['name']):
+            item['warning'] = "Model is auto-generated and requires verification."
+            st.warning(f" flagged '{item['name']}' as a likely hallucinated product.")
+    return boq_items
+
+def _correct_quantities(boq_items):
+    """Ensures all quantities are integers."""
+    for item in boq_items:
+        try:
+            item['quantity'] = int(float(item.get('quantity', 1)))
+        except (ValueError, TypeError):
+            item['quantity'] = 1
+    return boq_items
+
 # --- Fallback and Validation Logic ---
 
 def _get_fallback_product(category, product_df, comp_spec):
@@ -261,14 +336,12 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
     st.success(f"Fallback generated {len(fallback_items)} components.")
     return fallback_items
 
-# **** NEWLY ADDED FUNCTION ****
 def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
     """Validate BOQ against AVIXA standards and compliance requirements."""
     issues = []
     warnings = []
     if not avixa_calcs: return {'avixa_issues': ['AVIXA calculations not available.'], 'avixa_warnings': [], 'compliance_score': 0}
 
-    # Display Compliance Validation
     displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
     if not displays:
         issues.append("CRITICAL: No display found in BOQ")
@@ -281,19 +354,16 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
                 if abs(size - recommended_size) > 10:
                     warnings.append(f"Display size ({size}\") deviates from AVIXA recommendation ({recommended_size}\").")
 
-    # Audio System Compliance
     has_dsp = any('dsp' in item.get('name', '').lower() for item in boq_items)
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
     if equipment_reqs.get('audio_system', {}).get('dsp_required') and not has_dsp and complexity != 'simple':
         issues.append("CRITICAL: DSP required for this room type but not found in BOQ.")
 
-    # UPS Requirement Check
     has_ups = any('ups' in item.get('name', '').lower() for item in boq_items)
     if avixa_calcs.get('ups_va_required', 0) > 1000 and not has_ups and complexity in ['advanced', 'complex']:
         issues.append("CRITICAL: A UPS system is required for this high-power configuration but is missing.")
         
-    # ADA Compliance Check
     if avixa_calcs.get('requires_ada_compliance'):
         ada_items = [item for item in boq_items if any(term in item.get('name', '').lower() for term in ['assistive', 'hearing', 'loop'])]
         if not ada_items:
@@ -305,56 +375,50 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
         'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
     }
 
-
-# --- Main Generator Function ---
-
-def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Orchestrates the entire BOQ generation process."""
-    if product_df is None or len(product_df) == 0:
-        st.error("No valid products in catalog to generate a BOQ.")
-        return [], None, None
-
-    # 1. Perform AV calculations
+# --- Core AI Generation Function ---
+def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """The core function to get the BOQ from the AI, with fallback logic."""
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
-    
-    # 2. Determine system components based on complexity
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
     required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
+    prompt = _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier)
     
-    st.info(f"Designing a {complexity.upper()} system with {len(required_components)} components for a {room_type}.")
-    
-    # 3. Build and send prompt to AI
-    prompt = _build_comprehensive_boq_prompt(
-        room_type, complexity, room_area, avixa_calcs, equipment_reqs,
-        required_components, product_df, budget_tier
-    )
-
     try:
         response = generate_with_retry(model, prompt)
-        if not response or not response.text:
-            raise Exception("AI returned an empty response.")
-        
-        # 4. Parse response and build BOQ
+        if not response or not response.text: raise Exception("AI returned an empty response.")
         ai_selection = _parse_ai_product_selection(response.text)
-        if not ai_selection:
-             raise Exception("Failed to parse a valid JSON object from the AI response.")
-
-        boq_items = _build_boq_from_ai_selection(
-            ai_selection, required_components, product_df, equipment_reqs, room_type
-        )
+        if not ai_selection: raise Exception("Failed to parse valid JSON from AI response.")
+        boq_items = _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs, room_type)
         return boq_items, avixa_calcs, equipment_reqs
-
     except Exception as e:
-        # 5. If AI fails, use the smart fallback
         st.error(f"AI generation failed: {str(e)}")
         fallback_items = create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs)
-        
-        if len(fallback_items) < len(required_components):
-            st.error("Critical: Fallback system also failed to generate a complete BOQ. Please check the product catalog for availability.")
-            return [], avixa_calcs, equipment_reqs
-
         return fallback_items, avixa_calcs, equipment_reqs
+
+# --- Main Pipeline Function ---
+def run_boq_generation_pipeline(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """
+    The main public function that runs the full generation and validation pipeline.
+    """
+    st.info("Step 1: Generating initial BOQ with AI...")
+    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
+        model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area
+    )
+
+    if not boq_items:
+        return [], avixa_calcs, equipment_reqs
+
+    st.info("Step 2: Running production validation and correction rules...")
+    
+    processed_boq = _remove_duplicate_core_components(boq_items)
+    processed_boq = _validate_and_correct_mounts(processed_boq)
+    processed_boq = _ensure_system_completeness(processed_boq, product_df)
+    processed_boq = _flag_hallucinated_models(processed_boq)
+    processed_boq = _correct_quantities(processed_boq)
+    
+    st.success("✅ BOQ pipeline complete.")
+    return processed_boq, avixa_calcs, equipment_reqs
