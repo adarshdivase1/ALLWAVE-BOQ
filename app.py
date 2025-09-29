@@ -1,62 +1,79 @@
-# app.py
-
 import streamlit as st
 from datetime import datetime
 
 # --- Import from new component files ---
-from components.data_handler import load_and_validate_data
-from components.gemini_handler import setup_gemini, validate_against_avixa
-from components.boq_generator import generate_boq_with_justifications
-from components.ui_components import (
-    create_project_header, create_room_calculator, create_advanced_requirements,
-    create_multi_room_interface, display_boq_results
-)
-from components.visualizer import create_3d_visualization, ROOM_SPECS
+try:
+    from components.data_handler import load_and_validate_data
+    from components.gemini_handler import setup_gemini, validate_against_avixa
+    from components.boq_generator import generate_boq_with_justifications
+    from components.ui_components import (
+        create_project_header, create_room_calculator, create_advanced_requirements,
+        create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
+    )
+    from components.visualizer import create_3d_visualization, ROOM_SPECS
+    # Assuming avixa_compliance logic is now part of the boq_generator or a new validation component
+    # For now, let's create a placeholder if it's not found
+    from components.boq_generator import validate_avixa_compliance # Make sure this function exists in boq_generator.py
+except ImportError as e:
+    st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
+    st.stop()
+
 
 # --- Simple Login Page ---
 def show_login_page():
+    """Simple login page for internal users."""
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="⚡")
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         st.title("🏢 AllWave AV & GS")
         st.subheader("Design & Estimation Portal")
+        st.markdown("---")
         with st.form("login_form"):
             email = st.text_input("Email ID", placeholder="yourname@allwaveav.com or yourname@allwavegs.com")
-            password = st.text_input("Password", type="password")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
             if st.form_submit_button("Login", type="primary", use_container_width=True):
                 if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
+                    st.success("Login successful!")
                     st.rerun()
                 else:
-                    st.error("Please use a valid AllWave email and password.")
+                    st.error("Please use your AllWave AV or AllWave GS email and a valid password.")
+        st.markdown("---")
+        st.info("Phase 1 Internal Tool - Contact IT for access issues")
 
 # --- Main Application Logic ---
 def main():
-    if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+    if not st.session_state.get('authenticated'):
         show_login_page()
         return
 
-    st.set_page_config(page_title="Professional AV BOQ Generator", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(
+        page_title="Professional AV BOQ Generator",
+        page_icon="⚡",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
     # --- Initialize Session State ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
+    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state: st.session_state.validation_results = None
     if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
-    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18, 'Default': 18}
+    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
 
     # --- Load Data and Setup Model ---
     product_df, guidelines, data_issues = load_and_validate_data()
-    model = setup_gemini()
-    
     if data_issues:
         with st.expander("⚠️ Data Quality Issues", expanded=False):
             for issue in data_issues: st.warning(issue)
-    if product_df is None: return
+    if product_df is None:
+        st.error("Fatal Error: Product catalog could not be loaded. App cannot continue.")
+        st.stop()
 
-    # --- Header ---
-    create_project_header()
+    model = setup_gemini()
+    project_id, quote_valid_days = create_project_header()
 
     # --- Sidebar ---
     with st.sidebar:
@@ -71,39 +88,39 @@ def main():
 
         st.markdown("---")
         st.subheader("🇮🇳 Indian Business Settings")
-        st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
+        st.session_state['currency'] = st.selectbox("Currency Display", ["INR", "USD"], index=0, key="currency_select")
         st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18)
         st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18)
 
         st.markdown("---")
         st.subheader("Room Design Settings")
         room_type_key = st.selectbox("Primary Space Type:", list(ROOM_SPECS.keys()), key="room_type_select")
-        budget_tier = st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+        st.select_slider("Budget Tier:", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
         
-        # Room guidelines display
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
+            st.caption(f"Area: {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft")
             st.caption(f"Complexity: {spec.get('complexity', 'N/A')}")
         
     # --- Main Content Tabs ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Multi-Room Project", "Room Analysis", "Requirements", "Generate & Edit BOQ", "3D Visualization"])
 
+    with tab1:
+        create_multi_room_interface()
     with tab2:
-        room_area, ceiling_height = create_room_calculator()
+        create_room_calculator()
     with tab3:
-        features = st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, Zoom certified'", key="features_text_area")
+        st.text_area("Specific Requirements & Features:", placeholder="e.g., 'Dual displays, wireless presentation, Zoom certified'", key="features_text_area")
         technical_reqs = create_advanced_requirements()
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-
     with tab4:
         st.subheader("Professional BOQ Generation")
         if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
             if not model:
-                st.error("AI Model not available. Check API key.")
+                st.error("AI Model is not available. Please check API key.")
             else:
                 with st.spinner("Generating and validating professional BOQ..."):
-                    # Use latest values from session state for generation
-                    _, boq_items, _, _ = generate_boq_with_justifications(
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
                         model, product_df, guidelines,
                         st.session_state.room_type_select, st.session_state.budget_tier_slider,
                         st.session_state.features_text_area, technical_reqs,
@@ -111,14 +128,25 @@ def main():
                     )
                     if boq_items:
                         st.session_state.boq_items = boq_items
-                        st.session_state.validation_results['warnings'] = validate_against_avixa(model, guidelines, boq_items)
-                        st.success("✅ Generated and validated BOQ!")
+                        update_boq_content_with_current_items()
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
+                        # Perform Validation
+                        avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
+                        st.session_state.validation_results = {
+                            "issues": avixa_validation.get('avixa_issues', []),
+                            "warnings": avixa_validation.get('avixa_warnings', [])
+                        }
+                        st.success(f"✅ Generated and validated BOQ with {len(boq_items)} items!")
                         st.rerun()
                     else:
-                        st.error("Failed to generate a valid BOQ.")
+                        st.error("Failed to generate BOQ. The AI model and fallback system did not return valid items.")
         
-        display_boq_results(product_df)
-    
+        # This will render the results and the editor after generation or if items already exist in state
+        if st.session_state.get('boq_items'):
+            display_boq_results(product_df)
+            
     with tab5:
         create_3d_visualization()
 
