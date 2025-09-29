@@ -1041,69 +1041,6 @@ def _strict_product_match(product_name, product_df, category):
     # Fallback to first product in category
     return filtered.iloc[0].to_dict() if len(filtered) > 0 else None
 
-def _generate_justification(category_key, equipment_reqs, room_type):
-    """Context-aware justification generation."""
-    justifications = {
-        'display': f"Primary {equipment_reqs['displays']['size_inches']}\" display for {room_type}",
-        'video_system': f"Video conferencing with {equipment_reqs['video_system']['camera_type']}",
-        'microphones': f"Professional microphone array providing {equipment_reqs['audio_system'].get('microphone_coverage_zones', 2)}-zone coverage",
-        'ceiling_mic': "Ceiling-mounted microphone for clean audio capture",
-        'speakers': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_zones_required', 2)} zones",
-        'dsp': "Digital signal processor for echo cancellation and audio mixing",
-        'control': f"{equipment_reqs['control_system']['type']} for system automation",
-        'mount': "Professional display mounting hardware",
-        'cables': "High-speed AV connectivity infrastructure"
-    }
-    return justifications.get(category_key, f"Essential {category_key} component for {room_type}")
-
-def _add_essential_missing_components(boq_items, equipment_reqs, product_df, complexity):
-    """Enhanced rule-based fallback with complexity awareness."""
-    categories_present = {item['category'] for item in boq_items}
-    
-    essential_additions = []
-    
-    # Simple rooms
-    if 'Displays' not in categories_present:
-        essential_additions.append(('Displays', 'Primary display'))
-    if 'Video Conferencing' not in categories_present:
-        essential_additions.append(('Video Conferencing', 'Video conferencing solution'))
-    
-    # Moderate+ rooms
-    if complexity in ['moderate', 'advanced', 'complex']:
-        if not any('Microphone' in cat or 'Audio' in cat for cat in categories_present):
-            essential_additions.append(('Audio: Microphones & Conferencing', 'Ceiling microphone array'))
-        if not any('Speaker' in cat or 'Audio' in cat for cat in categories_present):
-            essential_additions.append(('Audio: Speakers', 'Room speakers'))
-        if not any('Control' in cat for cat in categories_present):
-            essential_additions.append(('Control Systems & Processing', 'Room control system'))
-    
-    # Advanced+ rooms
-    if complexity in ['advanced', 'complex']:
-        if not any('DSP' in cat or 'Processor' in cat for cat in categories_present):
-            essential_additions.append(('Audio: DSP', 'Audio processor with DSP'))
-        if not any('Camera' in cat or 'PTZ' in cat for cat in categories_present):
-            essential_additions.append(('PTZ & Pro Video Cameras', 'PTZ camera'))
-    
-    # Add missing components
-    for category, justification in essential_additions:
-        matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-        if len(matching) > 0:
-            product = matching.iloc[0]
-            boq_items.append({
-                'category': product['category'],
-                'name': product['name'],
-                'brand': product['brand'],
-                'quantity': 1,
-                'price': float(product['price']),
-                'justification': f'{justification} (system-added for completeness)',
-                'specifications': product.get('features', ''),
-                'image_url': product.get('image_url', ''),
-                'gst_rate': product.get('gst_rate', 18),
-                'matched': True
-            })
-    
-    return boq_items
-
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Multi-shot AI system with strict product selection."""
     
