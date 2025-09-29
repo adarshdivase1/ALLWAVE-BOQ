@@ -1367,51 +1367,6 @@ CRITICAL RULES:
         
         return None, corrected_items, avixa_calcs, equipment_reqs
         
-    except Exception as e:
-        st.error(f"Multi-shot generation failed: {str(e)}")
-        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-        return None, fallback_items, avixa_calcs, equipment_reqs
-        
-# --- BOQ Validation & Data Extraction ---
-class BOQValidator:
-    def __init__(self, room_specs, product_df):
-        self.room_specs = room_specs
-        self.product_df = product_df
-    
-    def validate_technical_requirements(self, boq_items, room_type, room_area=None):
-        issues = []
-        warnings = []
-        
-        # Check display sizing
-        displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
-        if displays:
-            room_spec = self.room_specs.get(room_type, {})
-            recommended_size = room_spec.get('recommended_display_size', (32, 98))
-            
-            for display in displays:
-                size_match = re.search(r'(\d+)"', display.get('name', ''))
-                if size_match:
-                    size = int(size_match.group(1))
-                    if size < recommended_size[0]:
-                        warnings.append(f"Display size {size}\" may be too small for {room_type}")
-                    elif size > recommended_size[1]:
-                        warnings.append(f"Display size {size}\" may be too large for {room_type}")
-        
-        # Check for essential components
-        essential_categories = ['display', 'audio', 'control']
-        found_categories = [item.get('category', '').lower() for item in boq_items]
-        
-        for essential in essential_categories:
-            if not any(essential in cat for cat in found_categories):
-                issues.append(f"Missing essential component: {essential}")
-        
-        # Power consumption estimation (simplified)
-        total_estimated_power = len(boq_items) * 150  # Rough estimate
-        if total_estimated_power > 1800:
-            warnings.append("System may require a dedicated 20A circuit")
-        
-        return issues, warnings
-
 def validate_against_avixa(model, guidelines, boq_items):
     """Use AI to validate the BOQ against AVIXA standards."""
     if not guidelines or not boq_items or not model:
