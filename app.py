@@ -6,8 +6,9 @@ try:
     from components.gemini_handler import setup_gemini
     from components.boq_generator import (
         generate_boq_from_ai, validate_avixa_compliance, 
-        _remove_duplicate_core_components, _validate_and_correct_mounts,
-        _ensure_system_completeness, _flag_hallucinated_models, _correct_quantities
+        _remove_exact_duplicates, _remove_duplicate_core_components, 
+        _validate_and_correct_mounts, _ensure_system_completeness, 
+        _flag_hallucinated_models, _correct_quantities
     )
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
@@ -110,8 +111,9 @@ def main():
     with tab2:
         create_room_calculator()
     with tab3:
+        technical_reqs = {}
         st.text_area("Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation for 10 users, needs ADA compliance.'")
-        technical_reqs = create_advanced_requirements()
+        technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
     
     with tab4:
@@ -132,11 +134,16 @@ def main():
                     
                     if boq_items:
                         st.info("Step 2: Applying AVIXA-based logic and correction rules...")
-                        processed_boq = _correct_quantities(boq_items)
+                        
+                        # --- MODIFICATION START ---
+                        # Run the full validation and correction pipeline
+                        processed_boq = _remove_exact_duplicates(boq_items)
+                        processed_boq = _correct_quantities(processed_boq)
                         processed_boq = _remove_duplicate_core_components(processed_boq)
                         processed_boq = _validate_and_correct_mounts(processed_boq)
                         processed_boq = _ensure_system_completeness(processed_boq, product_df)
                         processed_boq = _flag_hallucinated_models(processed_boq)
+                        # --- MODIFICATION END ---
                         
                         st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
