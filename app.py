@@ -1,19 +1,15 @@
 import streamlit as st
-from datetime import datetime
 
-# --- Import from new component files ---
+# --- Component Imports ---
 try:
     from components.data_handler import load_and_validate_data
-    from components.gemini_handler import setup_gemini, validate_against_avixa
-    from components.boq_generator import generate_boq_with_justifications
+    from components.gemini_handler import setup_gemini
+    from components.boq_generator import run_boq_generation_pipeline, validate_avixa_compliance
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization, ROOM_SPECS
-    # Assuming avixa_compliance logic is now part of the boq_generator or a new validation component
-    # For now, let's create a placeholder if it's not found
-    from components.boq_generator import validate_avixa_compliance # Make sure this function exists in boq_generator.py
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
     st.stop()
@@ -58,7 +54,7 @@ def main():
     # --- Initialize Session State ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
     if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = None
+    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
     if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
     if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
@@ -73,7 +69,7 @@ def main():
         st.stop()
 
     model = setup_gemini()
-    project_id, quote_valid_days = create_project_header()
+    create_project_header()
 
     # --- Sidebar ---
     with st.sidebar:
@@ -115,35 +111,35 @@ def main():
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
     with tab4:
         st.subheader("Professional BOQ Generation")
-        if st.button("🚀 Generate BOQ with Justifications", type="primary", use_container_width=True):
+        if st.button("🚀 Generate & Validate BOQ", type="primary", use_container_width=True):
             if not model:
                 st.error("AI Model is not available. Please check API key.")
             else:
-                with st.spinner("Generating and validating professional BOQ..."):
-                    boq_items, avixa_calcs, equipment_reqs = generate_boq_with_justifications(
+                with st.spinner("Running AI generation and validation pipeline..."):
+                    # Use the new, robust pipeline function
+                    boq_items, avixa_calcs, equipment_reqs = run_boq_generation_pipeline(
                         model, product_df, guidelines,
                         st.session_state.room_type_select, st.session_state.budget_tier_slider,
                         st.session_state.features_text_area, technical_reqs,
                         st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
                     )
+                    
                     if boq_items:
                         st.session_state.boq_items = boq_items
                         update_boq_content_with_current_items()
                         if st.session_state.project_rooms:
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         
-                        # Perform Validation
                         avixa_validation = validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
                         st.session_state.validation_results = {
                             "issues": avixa_validation.get('avixa_issues', []),
                             "warnings": avixa_validation.get('avixa_warnings', [])
                         }
-                        st.success(f"✅ Generated and validated BOQ with {len(boq_items)} items!")
+                        st.success("✅ BOQ pipeline complete!")
                         st.rerun()
                     else:
-                        st.error("Failed to generate BOQ. The AI model and fallback system did not return valid items.")
+                        st.error("Failed to generate BOQ. The AI and fallback system did not return valid items.")
         
-        # This will render the results and the editor after generation or if items already exist in state
         if st.session_state.get('boq_items'):
             display_boq_results(product_df)
             
