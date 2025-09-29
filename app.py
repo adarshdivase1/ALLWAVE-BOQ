@@ -210,7 +210,7 @@ def setup_gemini():
         # Ensure the secret is set in Streamlit Cloud or your local secrets.toml
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -652,70 +652,37 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
         st.error(f"Fallback BOQ creation failed: {str(e)}")
         return []
 
-# --- ★★★ NEW: BOQ PRICING VALIDATION AND CORRECTION LOGIC ★★★ ---
-def validate_boq_pricing_and_logic(boq_items, product_df):
-    """Validate BOQ for realistic pricing and logical component selection."""
-    issues = []
-    warnings = []
-    
-    # Price validation thresholds by category
-    price_ranges = {
-        'Displays': {'min': 800, 'max': 15000},
-        'Video Conferencing': {'min': 300, 'max': 8000}, 
-        'Audio': {'min': 50, 'max': 3000},
-        'Control': {'min': 200, 'max': 5000},
-        'Mounts': {'min': 50, 'max': 800},
-        'Cables': {'min': 10, 'max': 500},
-        'Infrastructure': {'min': 100, 'max': 2000}
-    }
-    
-    corrected_items = []
-    
+# --- ★★★ NEW HELPER AND VALIDATION FUNCTIONS (ADDED) ★★★ ---
+def extract_display_size_from_items(boq_items):
+    """Extract display size from BOQ items."""
     for item in boq_items:
-        category = item.get('category', 'General')
-        price = item.get('price', 0)
-        name = item.get('name', '')
-        brand = item.get('brand', '')
-        quantity = item.get('quantity', 1)
-        
-        # Check if price is realistic
-        if category in price_ranges:
-            min_price = price_ranges[category]['min']
-            max_price = price_ranges[category]['max']
-            
-            if price < min_price or price > max_price:
-                # Try to find a replacement product from catalog
-                replacement = find_replacement_product(category, name, brand, product_df, min_price, max_price)
-                
-                if replacement:
-                    warnings.append(f"Replaced unrealistic pricing for {name} (${price:,.0f}) with {replacement['name']} (${replacement['price']:,.0f})")
-                    # Corrected dictionary merging syntax
-                    corrected_items.append({
-                        **item,
-                        'name': replacement['name'],
-                        'brand': replacement['brand'],
-                        'price': replacement['price'],
-                        'matched': True,
-                        'specifications': replacement.get('features', item.get('specifications', ''))
-                    })
-                else:
-                    issues.append(f"Could not find realistic replacement for {name} - price ${price:,.0f} outside range ${min_price}-${max_price}")
-            else:
-                corrected_items.append(item)
-        else:
-            corrected_items.append(item)
+        if 'display' in item.get('category', '').lower():
+            size_match = re.search(r'(\d+)"', item.get('name', ''))
+            if size_match:
+                return int(size_match.group(1))
+    return None
+
+def validate_catalog_coverage(product_df):
+    """Validate that the product catalog has adequate coverage for BOQ generation."""
+    issues = []
+    essential_categories = ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables']
     
-    # Validate system completeness
-    categories_present = {item.get('category') for item in corrected_items}
+    for category in essential_categories:
+        cat_products = product_df[product_df['category'] == category]
+        if len(cat_products) == 0:
+            issues.append(f"No products found in {category} category")
+        elif len(cat_products) < 3:
+            issues.append(f"Limited product options in {category} category ({len(cat_products)} products)")
     
-    if 'Displays' not in categories_present:
-        issues.append("CRITICAL: No display found in BOQ")
-    if not any(cat in categories_present for cat in ['Video Conferencing', 'Audio']):
-        issues.append("CRITICAL: No audio/video solution found in BOQ")
-    if 'Mounts' not in categories_present:
-        warnings.append("No mounting solution specified")
+    # Check price ranges
+    for category in essential_categories:
+        cat_products = product_df[product_df['category'] == category]
+        if len(cat_products) > 0:
+            price_range = cat_products['price'].max() - cat_products['price'].min()
+            if price_range < 500:  # Less than $500 price range
+                issues.append(f"{category} category has limited price diversity")
     
-    return corrected_items, issues, warnings
+    return issues
 
 def find_replacement_product(category, original_name, original_brand, product_df, min_price, max_price):
     """Find a realistic replacement product from the catalog."""
@@ -755,7 +722,126 @@ def find_replacement_product(category, original_name, original_brand, product_df
     return suitable_products.iloc[0].to_dict()
 
 
-# --- ★★★ REPLACED: ENHANCED BOQ GENERATION WITH VALIDATION ★★★ ---
+# --- ★★★ ENHANCED VALIDATION FUNCTION (REPLACED) ★★★ ---
+def validate_boq_pricing_and_logic(boq_items, product_df):
+    """Enhanced validation with stricter cable pricing and system completeness checks."""
+    issues = []
+    warnings = []
+    
+    # Stricter price validation thresholds by category
+    price_ranges = {
+        'Displays': {'min': 800, 'max': 15000},
+        'Video Conferencing': {'min': 300, 'max': 8000}, 
+        'Audio': {'min': 50, 'max': 3000},
+        'Control': {'min': 200, 'max': 5000},
+        'Mounts': {'min': 50, 'max': 800},
+        'Cables': {'min': 10, 'max': 200},  # STRICTER: Max $200 for any cable
+        'Infrastructure': {'min': 100, 'max': 2000}
+    }
+    
+    corrected_items = []
+    total_system_value = 0
+    
+    for item in boq_items:
+        category = item.get('category', 'General')
+        price = item.get('price', 0)
+        name = item.get('name', '')
+        brand = item.get('brand', '')
+        quantity = item.get('quantity', 1)
+        
+        # Special validation for cables
+        if category == 'Cables':
+            if price > 200:
+                issues.append(f"CRITICAL: Cable '{name}' priced at ${price:,.0f} - exceeds maximum realistic price of $200")
+                # Force replacement for overpriced cables
+                replacement = find_replacement_product(category, "HDMI Cable", brand, product_df, 10, 50)
+                if replacement:
+                    corrected_items.append({
+                        **item,
+                        'name': replacement['name'],
+                        'brand': replacement['brand'],
+                        'price': replacement['price'],
+                        'matched': True,
+                        'specifications': replacement.get('features', 'Standard AV cable')
+                    })
+                    warnings.append(f"Replaced overpriced cable with {replacement['name']} (${replacement['price']:,.0f})")
+                else:
+                    # Use fallback pricing
+                    corrected_items.append({
+                        **item,
+                        'price': 25.0,  # Reasonable HDMI cable price
+                        'name': 'Standard HDMI Cable',
+                        'specifications': 'High-speed HDMI cable for AV connections'
+                    })
+                    warnings.append(f"Corrected cable pricing from ${price} to $25")
+                continue
+        
+        # Check if price is realistic for other categories
+        if category in price_ranges:
+            min_price = price_ranges[category]['min']
+            max_price = price_ranges[category]['max']
+            
+            if price < min_price or price > max_price:
+                replacement = find_replacement_product(category, name, brand, product_df, min_price, max_price)
+                
+                if replacement:
+                    warnings.append(f"Replaced unrealistic pricing for {name} (${price:,.0f}) with {replacement['name']} (${replacement['price']:,.0f})")
+                    corrected_items.append({
+                        **item,
+                        'name': replacement['name'],
+                        'brand': replacement['brand'],
+                        'price': replacement['price'],
+                        'matched': True,
+                        'specifications': replacement.get('features', item.get('specifications', ''))
+                    })
+                else:
+                    issues.append(f"Could not find realistic replacement for {name} - price ${price:,.0f} outside range ${min_price}-${max_price}")
+                    corrected_items.append(item)  # Keep original if no replacement found
+            else:
+                corrected_items.append(item)
+        else:
+            corrected_items.append(item)
+        
+        total_system_value += item.get('price', 0) * item.get('quantity', 1)
+    
+    # Enhanced system completeness validation
+    categories_present = {item.get('category') for item in corrected_items}
+    
+    # Critical components check
+    if 'Displays' not in categories_present:
+        issues.append("CRITICAL: No display found in BOQ")
+    if not any(cat in categories_present for cat in ['Video Conferencing', 'Audio']):
+        issues.append("CRITICAL: No audio/video solution found in BOQ")
+    if 'Mounts' not in categories_present:
+        warnings.append("No mounting solution specified")
+    
+    # System value reasonableness check
+    if total_system_value < 3000:
+        warnings.append("Total system value seems low for professional AV installation")
+    elif total_system_value > 50000:
+        warnings.append("Total system value seems high - verify requirements")
+    
+    # Check for system integration requirements
+    display_size = extract_display_size_from_items(corrected_items)
+    if display_size and display_size >= 75:
+        has_control_system = any('control' in item.get('category', '').lower() and 
+                                 'processor' in item.get('name', '').lower() 
+                                 for item in corrected_items)
+        if not has_control_system:
+            warnings.append("Large display system may require dedicated control processor")
+    
+    # Check for UPS requirement
+    total_power = sum(estimate_power_draw(item.get('category', ''), item.get('name', '')) 
+                      for item in corrected_items)
+    if total_power > 1000:
+        has_ups = any('ups' in item.get('name', '').lower() for item in corrected_items)
+        if not has_ups:
+            warnings.append("High-power system should include UPS for equipment protection")
+    
+    return corrected_items, issues, warnings
+
+
+# --- ★★★ BOQ GENERATION FUNCTION (REPLACED) ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced BOQ generation with comprehensive validation and correction."""
     
@@ -766,41 +852,55 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
         st.error("No valid products found in catalog after cleaning.")
         return None, [], None, None
     
+    # Validate catalog coverage before generation
+    catalog_issues = validate_catalog_coverage(clean_product_df)
+    if catalog_issues:
+        st.warning("Product catalog coverage issues:")
+        for issue in catalog_issues:
+            st.write(f"- {issue}")
+    
     # Calculate AVIXA recommendations
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
-    # Get curated products for each category
+    # Get curated products with better selection
     essential_categories = ['Displays', 'Video Conferencing', 'Audio', 'Control', 'Mounts', 'Cables']
     curated_catalog = ""
     
     for category in essential_categories:
-        curated_products = get_curated_products_by_category(clean_product_df, category)
+        curated_products = get_curated_products_by_category(clean_product_df, category, max_products=10)
         if len(curated_products) > 0:
             curated_catalog += f"\n--- {category.upper()} PRODUCTS ---\n"
             for _, product in curated_products.iterrows():
                 curated_catalog += f"• {product['brand']} - {product['name']} - ${product['price']:.0f}\n"
+                curated_catalog += f"  Features: {str(product.get('features', ''))[:60]}...\n"
     
-    # Simplified prompt with exact product matching requirement
+    # More restrictive prompt
     enhanced_prompt = f"""
 You are creating a BOQ for a {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
 
-AVAILABLE PRODUCTS (use EXACT names):
+CRITICAL: You MUST select products using the EXACT names from this list:
+
 {curated_catalog}
 
 REQUIREMENTS:
-- Display: ~{equipment_reqs['displays']['size_inches']}" for room size
-- Video conferencing solution for {avixa_calcs['estimated_occupancy']} people
-- Basic mounts and cables
-- Budget: {budget_tier}
+- Display: {equipment_reqs['displays']['size_inches']}" for optimal viewing
+- Video conferencing for {avixa_calcs['estimated_occupancy']} people
+- Professional mounts and cables
+- Budget tier: {budget_tier}
 
-FORMAT (copy this table structure exactly):
+STRICT RULES:
+1. Use EXACT product names as shown above
+2. Use EXACT pricing as shown above  
+3. Do NOT create new model numbers
+4. Keep cable prices under $100 each
+5. Focus on functionality over fancy features
+
+Create a functional AV system table:
 | Category | Make | Model No. | Specifications | Qty | Unit Price (USD) | Remarks |
 |---|---|---|---|---|---|---|
-
-Select ONLY from the products listed above. Use exact product names and realistic prices.
 """
     
     try:
@@ -809,28 +909,27 @@ Select ONLY from the products listed above. Use exact product names and realisti
             boq_content = response.text.strip()
             boq_items = extract_enhanced_boq_items(boq_content, clean_product_df)
             
-            # CRITICAL: Validate and correct pricing
+            # ENHANCED: Validate and correct pricing with stricter rules
             corrected_items, price_issues, price_warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
             
             if price_issues:
-                st.error("BOQ contains critical pricing issues:")
+                st.error("BOQ contains critical pricing/product issues:")
                 for issue in price_issues:
                     st.write(f"- {issue}")
+                st.write("**Consider regenerating the BOQ or manually reviewing the products.**")
             
             if price_warnings:
                 st.info("BOQ corrections applied:")
                 for warning in price_warnings:
                     st.write(f"- {warning}")
             
-            # Use corrected items instead of original
+            # Use corrected items
             boq_items = corrected_items
             
             # Validate essential components
             if not validate_essential_components(boq_items):
                 st.warning("Adding missing essential components...")
                 fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-                
-                # Validate fallback items too
                 corrected_fallback, _, _ = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
                 boq_items.extend(corrected_fallback)
             
@@ -843,7 +942,6 @@ Select ONLY from the products listed above. Use exact product names and realisti
         
     except Exception as e:
         st.error(f"BOQ generation failed: {str(e)}")
-        # Return smart fallback with validation
         fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
         corrected_fallback, _, _ = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
         return None, corrected_fallback, avixa_calcs, equipment_reqs
