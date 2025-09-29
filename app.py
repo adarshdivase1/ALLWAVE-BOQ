@@ -929,11 +929,17 @@ def _parse_ai_product_selection(ai_response_text):
 
 def _strict_product_match(product_name, product_df, category):
     """Strict fuzzy matching with category filter."""
+    # Try exact category first
     filtered = product_df[product_df['category'] == category]
+    
+    # If no exact match, try substring
+    if len(filtered) == 0:
+        filtered = product_df[
+            product_df['category'].str.contains(category, case=False, na=False)
+        ]
     
     if len(filtered) == 0:
         return None
-    
     # Try exact match first
     exact = filtered[filtered['name'].str.lower() == product_name.lower()]
     if len(exact) > 0:
@@ -965,13 +971,20 @@ def _generate_justification(category_key, equipment_reqs, room_type):
     }
     return justifications.get(category_key, f"Essential {category_key} component for {room_type}")
 
-def _add_essential_missing_components(boq_items, equipment_reqs, product_df, complexity):
+def _add_essential_missing_components(boq_items, equipment_reqs, product_df, complexity, room_type='Standard Conference Room'):
     """Add missing components based on required system configuration."""
     
     # Get what should be there
-    avixa_calcs = {'estimated_occupancy': 10, 'recommended_bandwidth_mbps': 50, 
-                   'total_power_load_watts': 1000, 'ups_runtime_minutes': 15}
-    required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs)
+    avixa_calcs = {
+        'estimated_occupancy': 10, 
+        'recommended_bandwidth_mbps': 50, 
+        'total_power_load_watts': 1000, 
+        'ups_runtime_minutes': 15,
+        'audio_power_needed': 200,
+        'microphone_coverage_zones': 2,
+        'speaker_zones_required': 2
+    }
+    required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
     
     # Track what we have
     components_present = {item.get('category', '').lower(): True for item in boq_items}
@@ -1154,19 +1167,26 @@ def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calc
     product_catalog = {}
     for comp_key, comp_spec in required_components.items():
         category = comp_spec['category']
-        matching_products = product_df[
-            (product_df['category'].str.contains(category, case=False, na=False)) &
-            (product_df['price'] >= price_range[0]) &
-            (product_df['price'] <= price_range[1])
-        ]
-        
-        if len(matching_products) == 0:
-            # Relax price filter
-            matching_products = product_df[
-                product_df['category'].str.contains(category, case=False, na=False)
-            ]
-        
-        product_catalog[comp_key] = matching_products.head(8)  # Top 8 options per category
+# First try exact category match
+matching_products = product_df[product_df['category'] == category]
+
+# If no exact match, try substring match
+if len(matching_products) == 0:
+    matching_products = product_df[
+        product_df['category'].str.contains(category, case=False, na=False)
+    ]
+
+# Apply budget filter only if we have enough products
+if len(matching_products) > 20:
+    budget_filtered = matching_products[
+        (matching_products['price'] >= price_range[0]) &
+        (matching_products['price'] <= price_range[1])
+    ]
+    if len(budget_filtered) >= 5:
+        matching_products = budget_filtered
+
+# Provide 15 options instead of 8 for better selection
+product_catalog[comp_key] = matching_products.head(15)
     
     # Build prompt sections
     prompt = f"""You are an AVIXA-certified AV system designer. Design a complete system for: {room_type}
@@ -1288,16 +1308,36 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
 
 def _get_fallback_product(category, product_df, comp_spec):
     """Get best fallback product for a category."""
-    matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
+    # Try exact match first
+    matching = product_df[product_df['category'] == category]
+    
+    # Fallback to substring
+    if len(matching) == 0:
+        matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
     
     if len(matching) == 0:
+        st.warning(f"No products found for category: {category}")
         return None
     
-    # Prefer mid-range products
-    matching_sorted = matching.sort_values('price')
-    mid_index = len(matching_sorted) // 2
+    # For displays, try to match size requirement
+    if 'display' in category.lower() and 'size_requirement' in comp_spec:
+        target_size = comp_spec['size_requirement']
+        for _, prod in matching.iterrows():
+            size_match = re.search(r'(\d+)"', prod['name'])
+            if size_match:
+                size = int(size_match.group(1))
+                if abs(size - target_size) <= 10:
+                    return prod.to_dict()
     
-    return matching_sorted.iloc[mid_index].to_dict()
+    # Prefer mid-range products (avoid cheapest/most expensive)
+    matching_sorted = matching.sort_values('price')
+    if len(matching_sorted) > 5:
+        # Use 40th percentile for good value
+        index = int(len(matching_sorted) * 0.4)
+        return matching_sorted.iloc[index].to_dict()
+    else:
+        mid_index = len(matching_sorted) // 2
+        return matching_sorted.iloc[mid_index].to_dict()
 
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """Enhanced multi-shot AI system with comprehensive product selection."""
@@ -1320,6 +1360,12 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     required_components = _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type)
     
     st.info(f"Generating {len(required_components)}-component system for {room_type} ({complexity} complexity)")
+    # Debug: Show what we're looking for
+with st.expander("🔍 Debug: Product Availability", expanded=False):
+    for comp_key, comp_spec in required_components.items():
+        category = comp_spec['category']
+        available = len(product_df[product_df['category'] == category])
+        st.write(f"**{comp_key}** ({category}): {available} products available")
     
     # Build comprehensive product selection prompt
     product_selection_prompt = _build_comprehensive_boq_prompt(
@@ -1348,8 +1394,8 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
         if len(boq_items) < len(required_components):
             st.warning(f"System incomplete ({len(boq_items)}/{len(required_components)}). Adding missing components...")
             boq_items = _add_essential_missing_components(
-                boq_items, equipment_reqs, clean_product_df, complexity
-            )
+    boq_items, equipment_reqs, clean_product_df, complexity, room_type
+         )
         
         # Final validation and correction
         corrected_items, issues, warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
