@@ -117,7 +117,7 @@ def main():
                     else:
                         st.error("Failed to generate a valid BOQ.")
         
-        display_boq_results(st.session_state.boq_items, st.session_state.validation_results, product_df)
+        display_boq_results(product_df)
     
     with tab5:
         create_3d_visualization()
