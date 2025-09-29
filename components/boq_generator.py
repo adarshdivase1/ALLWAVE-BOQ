@@ -239,6 +239,20 @@ def _remove_duplicate_core_components(boq_items):
         
     return final_items
 
+def _remove_exact_duplicates(boq_items):
+    """Removes items that are exact duplicates based on their name."""
+    seen = set()
+    unique_items = []
+    for item in boq_items:
+        # Create a unique key for each item based on its name
+        item_key = item.get('name')
+        if item_key not in seen:
+            seen.add(item_key)
+            unique_items.append(item)
+        else:
+            st.warning(f"🧹 Removed exact duplicate item: {item_key}")
+    return unique_items
+
 def _validate_and_correct_mounts(boq_items):
     """Ensures the mount is for the display, not a hallway sign."""
     display_item = next((item for item in boq_items if item['category'] == 'Displays'), None)
