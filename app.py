@@ -908,9 +908,9 @@ def validate_boq_pricing_and_logic(boq_items, product_df):
     return corrected_items, issues, warnings
 
 
-# --- ★★★ HELPER FUNCTIONS FOR MULTI-SHOT BOQ (ADDED) ★★★ ---
-def _build_categorized_product_list(product_df, equipment_reqs, budget_tier):
-    """Build focused product list based on requirements."""
+# --- ★★★ HELPER FUNCTIONS FOR MULTI-SHOT BOQ (UPDATED) ★★★ ---
+def _build_categorized_product_list(product_df, equipment_reqs, budget_tier, room_type):
+    """Build room-specific product list with required quantities."""
     
     budget_filters = {
         'Economy': (0, 2000),
@@ -920,40 +920,36 @@ def _build_categorized_product_list(product_df, equipment_reqs, budget_tier):
     }
     price_range = budget_filters.get(budget_tier, (0, 10000))
     
-    output = ""
+    # Determine required components based on room complexity
+    room_spec = ROOM_SPECS.get(room_type, {})
+    complexity = room_spec.get('complexity', 'simple')
     
-    # Displays
-    target_size = equipment_reqs['displays']['size_inches']
-    displays = product_df[
-        (product_df['category'] == 'Displays') &
-        (product_df['price'] >= price_range[0]) &
-        (product_df['price'] <= price_range[1])
-    ]
-    output += "\n=== DISPLAYS ===\n"
-    for _, prod in displays.head(5).iterrows():
-        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    required_categories = ['Displays', 'Video Conferencing', 'Mounts', 'Cables']
     
-    # Video Conferencing
-    vc_products = product_df[
-        (product_df['category'] == 'Video Conferencing') &
-        (product_df['price'] >= price_range[0]) &
-        (product_df['price'] <= price_range[1])
-    ]
-    output += "\n=== VIDEO CONFERENCING ===\n"
-    for _, prod in vc_products.head(5).iterrows():
-        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    if complexity in ['moderate', 'advanced', 'complex']:
+        required_categories.extend(['Audio', 'Control'])
     
-    # Mounts (always budget-friendly)
-    mounts = product_df[product_df['category'] == 'Mounts']
-    output += "\n=== MOUNTS ===\n"
-    for _, prod in mounts.head(3).iterrows():
-        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    if complexity in ['advanced', 'complex']:
+        required_categories.extend(['PTZ & Pro Video Cameras', 'Audio: DSP'])
     
-    # Cables
-    cables = product_df[product_df['category'] == 'Cables']
-    output += "\n=== CABLES ===\n"
-    for _, prod in cables.head(3).iterrows():
-        output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+    output = f"\nROOM TYPE: {room_type}\nCOMPLEXITY LEVEL: {complexity}\nREQUIRED CATEGORIES: {', '.join(required_categories)}\n"
+    
+    for category in required_categories:
+        matching_products = product_df[
+            (product_df['category'].str.contains(category, case=False, na=False)) &
+            (product_df['price'] >= price_range[0]) &
+            (product_df['price'] <= price_range[1])
+        ]
+        
+        if len(matching_products) == 0:
+            # Relax price filter if no matches
+            matching_products = product_df[
+                product_df['category'].str.contains(category, case=False, na=False)
+            ]
+        
+        output += f"\n=== {category.upper()} ===\n"
+        for _, prod in matching_products.head(5).iterrows():
+            output += f"• {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
     
     return output
 
@@ -971,15 +967,6 @@ def _parse_ai_product_selection(ai_response_text):
     except Exception as e:
         st.warning(f"Failed to parse AI JSON: {e}")
         return {}
-
-category_map = {
-    'display': 'Displays',
-    'video_bar': 'Video Conferencing',
-    'mount': 'Mounts',
-    'cables': 'Cables',
-    'audio': 'Audio',
-    'control': 'Control'
-}
 
 def _strict_product_match(product_name, product_df, category):
     """Strict fuzzy matching with category filter."""
@@ -1004,53 +991,66 @@ def _strict_product_match(product_name, product_df, category):
     # Fallback to first product in category
     return filtered.iloc[0].to_dict() if len(filtered) > 0 else None
 
-def _generate_justification(category_key, equipment_reqs):
-    """Generate technical justification based on requirements."""
+def _generate_justification(category_key, equipment_reqs, room_type):
+    """Context-aware justification generation."""
     justifications = {
-        'display': f"Primary display meeting {equipment_reqs['displays']['resolution']} requirement for optimal viewing",
-        'video_bar': f"Video conferencing solution with {equipment_reqs['video_system']['camera_type']}",
-        'mount': "Professional mounting solution meeting load and safety requirements",
-        'cables': "High-speed connectivity cables for AV signal transmission",
-        'audio': f"Audio system providing {equipment_reqs['audio_system']['type']} coverage",
-        'control': "Room control and automation system"
+        'display': f"Primary {equipment_reqs['displays']['size_inches']}\" display for {room_type}",
+        'video_system': f"Video conferencing with {equipment_reqs['video_system']['camera_type']}",
+        'microphones': f"Professional microphone array providing {equipment_reqs['audio_system'].get('microphone_coverage_zones', 2)}-zone coverage",
+        'ceiling_mic': "Ceiling-mounted microphone for clean audio capture",
+        'speakers': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_zones_required', 2)} zones",
+        'dsp': "Digital signal processor for echo cancellation and audio mixing",
+        'control': f"{equipment_reqs['control_system']['type']} for system automation",
+        'mount': "Professional display mounting hardware",
+        'cables': "High-speed AV connectivity infrastructure"
     }
-    return justifications.get(category_key, "Essential AV system component")
+    return justifications.get(category_key, f"Essential {category_key} component for {room_type}")
 
-def _add_essential_missing_components(boq_items, equipment_reqs, product_df):
-    """Rule-based fallback to ensure complete system."""
+def _add_essential_missing_components(boq_items, equipment_reqs, product_df, complexity):
+    """Enhanced rule-based fallback with complexity awareness."""
     categories_present = {item['category'] for item in boq_items}
     
-    # Ensure display
-    if 'Displays' not in categories_present:
-        display = product_df[product_df['category'] == 'Displays'].iloc[0]
-        boq_items.append({
-            'category': 'Displays',
-            'name': display['name'],
-            'brand': display['brand'],
-            'quantity': 1,
-            'price': float(display['price']),
-            'justification': 'Primary display (added by system)',
-            'specifications': display.get('features', ''),
-            'image_url': display.get('image_url', ''),
-            'gst_rate': display.get('gst_rate', 18),
-            'matched': True
-        })
+    essential_additions = []
     
-    # Ensure video conferencing
+    # Simple rooms
+    if 'Displays' not in categories_present:
+        essential_additions.append(('Displays', 'Primary display'))
     if 'Video Conferencing' not in categories_present:
-        vc = product_df[product_df['category'] == 'Video Conferencing'].iloc[0]
-        boq_items.append({
-            'category': 'Video Conferencing',
-            'name': vc['name'],
-            'brand': vc['brand'],
-            'quantity': 1,
-            'price': float(vc['price']),
-            'justification': 'Video conferencing system (added by system)',
-            'specifications': vc.get('features', ''),
-            'image_url': vc.get('image_url', ''),
-            'gst_rate': vc.get('gst_rate', 18),
-            'matched': True
-        })
+        essential_additions.append(('Video Conferencing', 'Video conferencing solution'))
+    
+    # Moderate+ rooms
+    if complexity in ['moderate', 'advanced', 'complex']:
+        if not any('Microphone' in cat or 'Audio' in cat for cat in categories_present):
+            essential_additions.append(('Audio: Microphones & Conferencing', 'Ceiling microphone array'))
+        if not any('Speaker' in cat or 'Audio' in cat for cat in categories_present):
+            essential_additions.append(('Audio: Speakers', 'Room speakers'))
+        if not any('Control' in cat for cat in categories_present):
+            essential_additions.append(('Control Systems & Processing', 'Room control system'))
+    
+    # Advanced+ rooms
+    if complexity in ['advanced', 'complex']:
+        if not any('DSP' in cat or 'Processor' in cat for cat in categories_present):
+            essential_additions.append(('Audio: DSP', 'Audio processor with DSP'))
+        if not any('Camera' in cat or 'PTZ' in cat for cat in categories_present):
+            essential_additions.append(('PTZ & Pro Video Cameras', 'PTZ camera'))
+    
+    # Add missing components
+    for category, justification in essential_additions:
+        matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
+        if len(matching) > 0:
+            product = matching.iloc[0]
+            boq_items.append({
+                'category': product['category'],
+                'name': product['name'],
+                'brand': product['brand'],
+                'quantity': 1,
+                'price': float(product['price']),
+                'justification': f'{justification} (system-added for completeness)',
+                'specifications': product.get('features', ''),
+                'image_url': product.get('image_url', ''),
+                'gst_rate': product.get('gst_rate', 18),
+                'matched': True
+            })
     
     return boq_items
 
@@ -1063,53 +1063,105 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
         st.error("No valid products in catalog.")
         return None, [], None, None
     
-    # Calculate requirements
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
-    # --- SHOT 1: Get room-specific product IDs ---
-    product_selection_prompt = f"""You are selecting products for a {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
+    # Determine minimum components based on room size
+    room_spec = ROOM_SPECS.get(room_type, {})
+    complexity = room_spec.get('complexity', 'simple')
+    
+    # Define minimum requirements
+    min_components = {
+        'simple': ['display', 'video_bar', 'mount', 'cables'],
+        'moderate': ['display', 'video_bar', 'ceiling_mic', 'mount', 'cables', 'control'],
+        'advanced': ['display', 'camera', 'codec', 'ceiling_mic_array', 'speakers', 'dsp', 'mount', 'cables', 'control', 'network'],
+        'complex': ['display', 'dual_displays', 'ptz_cameras', 'professional_codec', 'mic_array', 'line_array_speakers', 'dsp', 'amplifier', 'matrix', 'control', 'network', 'ups', 'mounts', 'cables']
+    }
+    
+    required_components = min_components.get(complexity, min_components['simple'])
+    
+    product_selection_prompt = f"""You are designing a professional AV system for a {room_type}.
 
-AVAILABLE PRODUCTS (USE EXACT NAMES):
-{_build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier)}
+ROOM DETAILS:
+- Area: {room_area} sq ft ({avixa_calcs['estimated_occupancy']} people capacity)
+- Viewing Distance: {avixa_calcs['max_viewing_distance']:.1f} ft
+- Complexity Level: {complexity.upper()}
 
-REQUIREMENTS:
-- Display: {equipment_reqs['displays']['size_inches']}" recommended
-- Video System: {equipment_reqs['video_system']['camera_type']}
+TECHNICAL REQUIREMENTS:
+- Display: {equipment_reqs['displays']['size_inches']}" {equipment_reqs['displays']['resolution']} (Quantity: {equipment_reqs['displays']['quantity']})
+- Video: {equipment_reqs['video_system']['camera_type']}
 - Audio: {equipment_reqs['audio_system']['type']}
-- Budget: {budget_tier}
+  - Microphones: {equipment_reqs['audio_system'].get('microphone_count', 1)} zones
+  - Speakers: {equipment_reqs['audio_system'].get('speaker_count', 2)} zones
+  - DSP Required: {equipment_reqs['audio_system'].get('dsp_required', False)}
+- Control: {equipment_reqs['control_system']['type']}
 
-OUTPUT FORMAT (respond ONLY with this JSON structure):
+AVAILABLE PRODUCTS:
+{_build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier, room_type)}
+
+MANDATORY: You MUST select products for ALL these categories: {required_components}
+
+OUTPUT FORMAT (JSON only):
 {{
-  "display": {{"name": "exact product name", "qty": 1}},
-  "video_bar": {{"name": "exact product name", "qty": 1}},
-  "mount": {{"name": "exact product name", "qty": 1}},
-  "cables": {{"name": "exact product name", "qty": 1}}
+  "display": {{"name": "exact product name", "qty": {equipment_reqs['displays']['quantity']}}},
+  "video_system": {{"name": "exact product name", "qty": 1}},
+  "microphones": {{"name": "exact product name", "qty": {equipment_reqs['audio_system'].get('microphone_count', 1)}}},
+  "speakers": {{"name": "exact product name", "qty": {equipment_reqs['audio_system'].get('speaker_count', 2)}}},
+  "dsp": {{"name": "exact product name", "qty": 1}},
+  "control": {{"name": "exact product name", "qty": 1}},
+  "mount": {{"name": "exact product name", "qty": {equipment_reqs['displays']['quantity']}}},
+  "cables": {{"name": "exact product name", "qty": 3}}
 }}
 
-RULES:
-1. Use EXACT product names from the list above
-2. Select products that match the budget tier
-3. Display size must be within ±10" of {equipment_reqs['displays']['size_inches']}"
-4. Respond with JSON only, no explanations"""
+CRITICAL RULES:
+1. Use EXACT product names from the lists above
+2. Select AT LEAST {len(required_components)} different products
+3. For {complexity} rooms, include dedicated microphones, speakers, and DSP
+4. Do NOT skip audio components for rooms over 400 sq ft
+5. Return valid JSON only"""
 
     try:
         response = generate_with_retry(model, product_selection_prompt)
         if not response or not response.text:
             raise Exception("AI returned empty response")
         
-        # Parse AI selection
         ai_selection = _parse_ai_product_selection(response.text)
         
-        # --- SHOT 2: Validate and match products ---
+        # Expanded category mapping
+        category_map_extended = {
+            'display': 'Displays',
+            'dual_displays': 'Displays',
+            'video_system': 'Video Conferencing',
+            'video_bar': 'Video Conferencing',
+            'camera': 'PTZ & Pro Video Cameras',
+            'ptz_cameras': 'PTZ & Pro Video Cameras',
+            'codec': 'Video Conferencing',
+            'microphones': 'Audio: Microphones & Conferencing',
+            'ceiling_mic': 'Audio: Microphones & Conferencing',
+            'ceiling_mic_array': 'Audio: Microphones & Conferencing',
+            'mic_array': 'Audio: Microphones & Conferencing',
+            'speakers': 'Audio: Speakers',
+            'line_array_speakers': 'Audio: Speakers',
+            'dsp': 'Audio: DSP',
+            'amplifier': 'Audio: Amplifiers',
+            'control': 'Control Systems & Processing',
+            'matrix': 'Video Equipment',
+            'network': 'Networking',
+            'ups': 'Infrastructure',
+            'mount': 'Mounts & Racks',
+            'mounts': 'Mounts & Racks',
+            'cables': 'Cables & Connectivity'
+        }
+        
         boq_items = []
         for category_key, selection in ai_selection.items():
+            mapped_category = category_map_extended.get(category_key, 'General')
             matched_product = _strict_product_match(
                 selection['name'], 
                 clean_product_df,
-                category_map[category_key]
+                mapped_category
             )
             
             if matched_product is not None:
@@ -1119,25 +1171,19 @@ RULES:
                     'brand': matched_product['brand'],
                     'quantity': selection['qty'],
                     'price': float(matched_product['price']),
-                    'justification': _generate_justification(category_key, equipment_reqs),
+                    'justification': _generate_justification(category_key, equipment_reqs, room_type),
                     'specifications': matched_product.get('features', ''),
                     'image_url': matched_product.get('image_url', ''),
                     'gst_rate': matched_product.get('gst_rate', 18),
                     'matched': True
                 })
-            else:
-                st.warning(f"Could not match AI selection: {selection['name']}")
         
-        # --- SHOT 3: Fill gaps with rule-based fallbacks ---
-        boq_items = _add_essential_missing_components(boq_items, equipment_reqs, clean_product_df)
+        # Enforce minimum component count
+        if len(boq_items) < len(required_components):
+            st.warning(f"AI only selected {len(boq_items)} items. Adding missing components...")
+            boq_items = _add_essential_missing_components(boq_items, equipment_reqs, clean_product_df, complexity)
         
-        # Final validation
         corrected_items, issues, warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
-        
-        if len(corrected_items) < 3:
-            st.error("Insufficient valid products selected. Using fallback.")
-            fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
-            corrected_items = fallback_items
         
         return None, corrected_items, avixa_calcs, equipment_reqs
         
