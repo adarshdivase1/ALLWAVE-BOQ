@@ -1104,9 +1104,8 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
     
     return boq_items
 
-# --- ★★★ BOQ GENERATION FUNCTION (REPLACED) ★★★ ---
 def generate_boq_with_justifications(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """Multi-shot AI system with strict product selection."""
+    """Production-ready BOQ generation with enforced fallback."""
     
     clean_product_df = clean_and_validate_product_data(product_df)
     if clean_product_df is None or len(clean_product_df) == 0:
@@ -1118,21 +1117,88 @@ def generate_boq_with_justifications(model, product_df, guidelines, room_type, b
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
-    # Determine minimum components based on room size
     room_spec = ROOM_SPECS.get(room_type, {})
     complexity = room_spec.get('complexity', 'simple')
     
-    # Determine required JSON keys based on complexity
-    if complexity == 'simple':
-        required_json_keys = ['display', 'video_bar', 'mount', 'cables']
-    elif complexity == 'moderate':
-        required_json_keys = ['display', 'video_bar', 'ceiling_mic', 'speakers', 'mount', 'cables', 'control']
-    elif complexity == 'advanced':
-        required_json_keys = ['display', 'camera', 'codec', 'ceiling_mic_array', 'speakers', 'dsp', 'control', 'mount', 'cables', 'network']
-    else:  # complex
-        required_json_keys = ['display', 'dual_displays', 'ptz_cameras', 'professional_codec', 'mic_array', 'speakers', 'dsp', 'amplifier', 'control', 'network', 'mount', 'cables']
+    # CRITICAL: Skip AI entirely for complex rooms - use deterministic fallback
+    if complexity in ['advanced', 'complex']:
+        st.info(f"Using deterministic BOQ generation for {complexity} room type to ensure completeness...")
+        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+        
+        if len(fallback_items) < 6:
+            st.error(f"Fallback only generated {len(fallback_items)} items. This indicates catalog issues.")
+        
+        corrected_items, issues, warnings = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
+        return None, corrected_items, avixa_calcs, equipment_reqs
+    
+    # For simple/moderate rooms, try AI first
+    product_list = _build_categorized_product_list(clean_product_df, equipment_reqs, budget_tier, room_type)
+    
+    simplified_prompt = f"""Generate AV system BOQ for {room_type} ({room_area} sq ft, {avixa_calcs['estimated_occupancy']} people).
 
-    product_selection_prompt = f"""You are a professional AV system designer. Design for: {room_type}
+PRODUCTS AVAILABLE:
+{product_list}
+
+REQUIREMENTS:
+- Display: {equipment_reqs['displays']['size_inches']}" (Qty: {equipment_reqs['displays']['quantity']})
+- Video: {equipment_reqs['video_system']['camera_type']}
+- Audio Mics: {equipment_reqs['audio_system'].get('microphone_count', 2)} zones
+- Audio Speakers: {equipment_reqs['audio_system'].get('speaker_count', 2)} zones
+- Control: {equipment_reqs['control_system']['type']}
+
+Return ONLY this JSON (no extra text):
+{{
+  "display": {{"name": "product name from list", "qty": {equipment_reqs['displays']['quantity']}}},
+  "video_bar": {{"name": "product name from list", "qty": 1}},
+  "mount": {{"name": "product name from list", "qty": 1}},
+  "cables": {{"name": "product name from list", "qty": 2}}
+}}"""
+
+    try:
+        response = generate_with_retry(model, simplified_prompt)
+        if not response or not response.text:
+            raise Exception("AI returned empty")
+        
+        ai_selection = _parse_ai_product_selection(response.text)
+        
+        if len(ai_selection) < 3:
+            raise Exception(f"AI only returned {len(ai_selection)} items")
+        
+        category_map = {
+            'display': 'Displays',
+            'video_bar': 'Video Conferencing',
+            'mount': 'Mounts',
+            'cables': 'Cables'
+        }
+        
+        boq_items = []
+        for key, selection in ai_selection.items():
+            matched = _strict_product_match(selection['name'], clean_product_df, category_map.get(key, 'General'))
+            if matched:
+                boq_items.append({
+                    'category': matched['category'],
+                    'name': matched['name'],
+                    'brand': matched['brand'],
+                    'quantity': selection['qty'],
+                    'price': float(matched['price']),
+                    'justification': _generate_justification(key, equipment_reqs, room_type),
+                    'specifications': matched.get('features', ''),
+                    'image_url': matched.get('image_url', ''),
+                    'gst_rate': matched.get('gst_rate', 18),
+                    'matched': True
+                })
+        
+        if len(boq_items) < 3:
+            raise Exception("Insufficient items matched")
+        
+        corrected_items, issues, warnings = validate_boq_pricing_and_logic(boq_items, clean_product_df)
+        return None, corrected_items, avixa_calcs, equipment_reqs
+        
+    except Exception as e:
+        st.warning(f"AI generation failed: {e}. Using fallback system...")
+        fallback_items = create_smart_fallback_boq(clean_product_df, room_type, equipment_reqs, avixa_calcs)
+        corrected_items, issues, warnings = validate_boq_pricing_and_logic(fallback_items, clean_product_df)
+        return None, corrected_items, avixa_calcs, equipment_reqs
 
 ROOM SPECIFICATIONS:
 - Area: {room_area} sq ft
