@@ -11,7 +11,6 @@ try:
     from components.visualizer import ROOM_SPECS
     from components.utils import estimate_power_draw
 except ImportError:
-    # Define dummy/fallback functions if imports fail, to prevent the app from crashing entirely
     st.error("Could not import one or more required components (gemini, av_designer, visualizer, utils).")
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
@@ -105,6 +104,7 @@ CRITICAL RULES:
 """
     return prompt
 
+
 # --- Product Matching and BOQ Assembly ---
 
 def _strict_product_match(product_name, product_df, category):
@@ -167,6 +167,42 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
         
     return boq_items
 
+def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
+    """Define required components using explicit blueprints for each complexity level."""
+    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
+        st.warning(f"Mismatch: Room type '{room_type}' should not be 'simple'. Upgrading to 'advanced'.")
+        complexity = 'advanced'
+    
+    component_definitions = {
+        'display': {'category': 'Displays', 'quantity': equipment_reqs['displays']['quantity'], 'size_requirement': equipment_reqs['displays']['size_inches'], 'priority': 1, 'justification': f"Primary display for {room_type}"},
+        'mount': {'category': 'Mounts', 'quantity': equipment_reqs['displays']['quantity'], 'priority': 5, 'justification': 'Professional display mounting hardware'},
+        'cables': {'category': 'Cables', 'quantity': 4, 'priority': 6, 'justification': 'Essential AV connectivity'},
+        'video_bar': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one VC solution'},
+        'camera': {'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system']['camera_count'], 'priority': 2, 'justification': f"{equipment_reqs['video_system']['camera_type']}"},
+        'codec': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Professional 4K video codec'},
+        'microphones': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 3, 'justification': f"Microphone coverage"},
+        'speakers': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 3, 'justification': f"Distributed speaker system"},
+        'control': {'category': 'Control', 'quantity': 1, 'priority': 4, 'justification': f"{equipment_reqs['control_system']['type']}"},
+        'dsp': {'category': 'Audio', 'quantity': 1, 'priority': 3, 'justification': 'DSP for echo cancellation'},
+        'network_switch': {'category': 'Infrastructure', 'quantity': 1, 'priority': 5, 'justification': f"Managed network switch"},
+        'amplifier': {'category': 'Audio', 'quantity': 1, 'priority': 4, 'justification': f"Amplifier for audio system"},
+        'ups': {'category': 'Infrastructure', 'quantity': 1, 'priority': 6, 'justification': f"UPS for power protection"}
+    }
+    
+    complexity_map = {
+        'simple': ['display', 'mount', 'cables', 'video_bar'],
+        'moderate': ['display', 'mount', 'cables', 'video_bar', 'microphones', 'speakers', 'control'],
+        'advanced': ['display', 'mount', 'cables', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'control', 'network_switch'],
+        'complex': ['display', 'mount', 'cables', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'control', 'network_switch', 'amplifier', 'ups']
+    }
+    
+    if complexity not in complexity_map:
+        st.error(f"Unknown complexity: '{complexity}' - using 'moderate' as fallback.")
+        complexity = 'moderate'
+        
+    required_keys = complexity_map[complexity]
+    return {key: component_definitions[key] for key in required_keys}
+
 # --- Fallback and Validation Logic ---
 
 def _get_fallback_product(category, product_df, comp_spec):
@@ -224,6 +260,51 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
             })
     st.success(f"Fallback generated {len(fallback_items)} components.")
     return fallback_items
+
+# **** NEWLY ADDED FUNCTION ****
+def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
+    """Validate BOQ against AVIXA standards and compliance requirements."""
+    issues = []
+    warnings = []
+    if not avixa_calcs: return {'avixa_issues': ['AVIXA calculations not available.'], 'avixa_warnings': [], 'compliance_score': 0}
+
+    # Display Compliance Validation
+    displays = [item for item in boq_items if 'display' in item.get('category', '').lower()]
+    if not displays:
+        issues.append("CRITICAL: No display found in BOQ")
+    else:
+        for display in displays:
+            size_match = re.search(r'(\d+)"', display.get('name', ''))
+            if size_match:
+                size = int(size_match.group(1))
+                recommended_size = avixa_calcs.get('detailed_viewing_display_size', 75)
+                if abs(size - recommended_size) > 10:
+                    warnings.append(f"Display size ({size}\") deviates from AVIXA recommendation ({recommended_size}\").")
+
+    # Audio System Compliance
+    has_dsp = any('dsp' in item.get('name', '').lower() for item in boq_items)
+    room_spec = ROOM_SPECS.get(room_type, {})
+    complexity = room_spec.get('complexity', 'simple')
+    if equipment_reqs.get('audio_system', {}).get('dsp_required') and not has_dsp and complexity != 'simple':
+        issues.append("CRITICAL: DSP required for this room type but not found in BOQ.")
+
+    # UPS Requirement Check
+    has_ups = any('ups' in item.get('name', '').lower() for item in boq_items)
+    if avixa_calcs.get('ups_va_required', 0) > 1000 and not has_ups and complexity in ['advanced', 'complex']:
+        issues.append("CRITICAL: A UPS system is required for this high-power configuration but is missing.")
+        
+    # ADA Compliance Check
+    if avixa_calcs.get('requires_ada_compliance'):
+        ada_items = [item for item in boq_items if any(term in item.get('name', '').lower() for term in ['assistive', 'hearing', 'loop'])]
+        if not ada_items:
+            warnings.append("ADA compliance may be required, but no assistive listening devices were found in the BOQ.")
+
+    return {
+        'avixa_issues': issues,
+        'avixa_warnings': warnings,
+        'compliance_score': max(0, 100 - (len(issues) * 25) - (len(warnings) * 5)),
+    }
+
 
 # --- Main Generator Function ---
 
