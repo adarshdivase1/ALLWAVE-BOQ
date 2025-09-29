@@ -38,21 +38,25 @@ def _add_image_to_cell(sheet, image_path, cell, height, width):
 
 def _create_sheet_header(sheet, styles):
     """Creates the standard header with logos and title for a sheet."""
-    sheet.row_dimensions[1].height = 60
-    
-    # Add the four logos to the top row
-    _add_image_to_cell(sheet, 'company_logo.png', 'A1', 75, 150)
-    _add_image_to_cell(sheet, 'crestron_logo.png', 'M1', 50, 90)
-    _add_image_to_cell(sheet, 'iso_logo.png', 'N1', 50, 50)
-    _add_image_to_cell(sheet, 'avixa_logo.png', 'O1', 50, 90)
+    # 1. Set a taller row height to comfortably fit all logos
+    sheet.row_dimensions[1].height = 65
 
-    # Add the main title bar
+    # 2. Add the main logo on the far left
+    _add_image_to_cell(sheet, 'company_logo.png', 'A1', 60, 120)
+
+    # 3. Add the certification logos on the far right, with proper spacing
+    _add_image_to_cell(sheet, 'crestron_logo.png', 'L1', 55, 100)
+    _add_image_to_cell(sheet, 'iso_logo.png', 'N1', 55, 55)
+    _add_image_to_cell(sheet, 'avixa_logo.png', 'O1', 55, 100)
+
+    # 4. Add the main title bar below the logos
     sheet.merge_cells('A3:P3')
     header_cell = sheet['A3']
     header_cell.value = "All Wave AV Systems Pvt. Ltd."
     header_cell.font = styles["header"]
     header_cell.fill = styles["header_fill"]
     header_cell.alignment = Alignment(horizontal='center', vertical='center')
+
 
 def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
     """Add product image from a URL to an Excel cell."""
