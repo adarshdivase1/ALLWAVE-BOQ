@@ -26,18 +26,36 @@ def _define_styles():
         "thin_border": Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     }
 
-def _add_company_logo(sheet, logo_path='logo.png', cell='A1'):
-    """Adds the company logo to the specified sheet."""
+def _add_image_to_cell(sheet, image_path, cell, height, width):
+    """Helper to add an image to a specific cell with error handling."""
     try:
-        img = ExcelImage(logo_path)
-        img.height = 75 
-        img.width = 150
+        img = ExcelImage(image_path)
+        img.height = height
+        img.width = width
         sheet.add_image(img, cell)
     except FileNotFoundError:
-        sheet[cell] = "Logo not found"
+        sheet[cell] = f"Missing: {image_path}"
+
+def _create_sheet_header(sheet, styles):
+    """Creates the standard header with logos and title for a sheet."""
+    sheet.row_dimensions[1].height = 60
+    
+    # Add the four logos to the top row
+    _add_image_to_cell(sheet, 'company_logo.png', 'A1', 75, 150)
+    _add_image_to_cell(sheet, 'crestron_logo.png', 'M1', 50, 90)
+    _add_image_to_cell(sheet, 'iso_logo.png', 'N1', 50, 50)
+    _add_image_to_cell(sheet, 'avixa_logo.png', 'O1', 50, 90)
+
+    # Add the main title bar
+    sheet.merge_cells('A3:P3')
+    header_cell = sheet['A3']
+    header_cell.value = "All Wave AV Systems Pvt. Ltd."
+    header_cell.font = styles["header"]
+    header_cell.fill = styles["header_fill"]
+    header_cell.alignment = Alignment(horizontal='center', vertical='center')
 
 def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
-    """Add product image to Excel cell if URL is valid."""
+    """Add product image from a URL to an Excel cell."""
     if not isinstance(image_url, str) or not image_url.strip():
         return
     try:
@@ -63,15 +81,8 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
 
 def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, gst_rates):
     """Populates a single Excel sheet with detailed BOQ data."""
-    _add_company_logo(sheet)
+    _create_sheet_header(sheet, styles)
     
-    sheet.merge_cells('A3:P3')
-    header_cell = sheet['A3']
-    header_cell.value = "All Wave AV Systems Pvt. Ltd."
-    header_cell.font = styles["header"]
-    header_cell.fill = styles["header_fill"]
-    header_cell.alignment = Alignment(horizontal='center', vertical='center')
-
     # Project Info
     sheet['C5'] = "Room Name / Room Type"
     sheet['E5'] = room_name
@@ -85,7 +96,7 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
     headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
     headers2 = [None, None, None, None, None, None, None, None, 'Rate', 'Amt', 'Rate', 'Amt', None, None, None, None]
 
-    sheet.append([]) # Spacer
+    sheet.append([]); sheet.append([]); sheet.append([]) # Spacers
     sheet.append(headers1)
     sheet.append(headers2)
     header_start_row = sheet.max_row - 1
@@ -101,6 +112,7 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Group and add items
+    # ... (Rest of the function is the same as before) ...
     grouped_items = {}
     for item in items:
         cat = item.get('category', 'General')
@@ -123,10 +135,8 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
             unit_price_inr = item.get('price', 0) * usd_to_inr_rate
             subtotal = unit_price_inr * item.get('quantity', 1)
             gst_rate = item.get('gst_rate', gst_rates.get('Electronics', 18))
-            sgst_rate = gst_rate / 2
-            cgst_rate = gst_rate / 2
-            sgst_amount = subtotal * (sgst_rate / 100)
-            cgst_amount = subtotal * (cgst_rate / 100)
+            sgst_rate, cgst_rate = gst_rate / 2, gst_rate / 2
+            sgst_amount, cgst_amount = subtotal * (sgst_rate / 100), subtotal * (cgst_rate / 100)
             total_tax = sgst_amount + cgst_amount
             total_with_gst = subtotal + total_tax
             total_before_gst_hardware += subtotal
@@ -141,7 +151,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
             _add_product_image_to_excel(sheet, sheet.max_row, item.get('image_url', ''))
             item_s_no += 1
     
-    # Add Services section
     services = [("Installation & Commissioning", 0.15), ("System Warranty (3 Years)", 0.05), ("Project Management", 0.10)]
     services_letter = chr(ord('A') + len(grouped_items))
     total_before_gst_services, total_gst_services = 0, 0
@@ -160,7 +169,6 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
             service_total = service_amount_inr + service_total_tax
             total_before_gst_services += service_amount_inr
             total_gst_services += service_total_tax
-
             sheet.append([
                 item_s_no, None, "Certified professional service", "AllWave AV", service_name, 1,
                 service_amount_inr, service_amount_inr, f"{sgst_rate}%", service_sgst,
@@ -168,8 +176,7 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
             ])
             item_s_no += 1
     
-    # Totals Section
-    sheet.append([]) # Spacer
+    sheet.append([])
     if total_before_gst_hardware > 0:
       sheet.append(["", "Total for Hardware", "", "", "", "", "", total_before_gst_hardware, "", "", "", "", total_gst_hardware, total_before_gst_hardware + total_gst_hardware])
     if total_before_gst_services > 0:
@@ -180,12 +187,10 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
     sheet[f'M{grand_total_row_idx}'] = "Grand Total (INR)"
     sheet[f'N{grand_total_row_idx}'] = grand_total
     
-    # Final Formatting
     column_widths = {'A': 8, 'B': 35, 'C': 45, 'D': 20, 'E': 30, 'F': 6, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 18, 'O': 40, 'P': 15}
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
     
-    # Apply number formats and borders
     for row in sheet.iter_rows(min_row=header_start_row + 2, max_row=sheet.max_row):
         for cell in row:
             if cell.column >= 7 and isinstance(cell.value, (int, float)):
@@ -197,67 +202,60 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
 def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     """Adds the Proposal Summary sheet."""
     summary_sheet = workbook.create_sheet(title="Proposal Summary", index=0)
-    _add_company_logo(summary_sheet)
+    _create_sheet_header(summary_sheet, styles) # Use the new header function
     
-    summary_sheet.merge_cells('A3:D3')
-    header_cell = summary_sheet['A3']
-    header_cell.value = "Proposal Summary"
-    header_cell.font = styles["header"]
-    header_cell.fill = styles["header_fill"]
-    header_cell.alignment = Alignment(horizontal='center')
+    summary_sheet.merge_cells('A5:D5')
+    sub_header = summary_sheet['A5']
+    sub_header.value = "Commercial Proposal Summary"
+    sub_header.font = Font(size=14, bold=True)
+    sub_header.alignment = Alignment(horizontal='center')
 
     headers = ["Description", "Amount (INR) Without Tax", "GST Amount (INR)", "Total Amount (INR) With Tax"]
     summary_sheet.append([])
-    summary_sheet.append([])
     summary_sheet.append(headers)
+    header_row = summary_sheet.max_row
     
     grand_total = 0
     for room in rooms_data:
         if room.get('total'):
             summary_sheet.append([
-                room['name'],
-                room['subtotal'],
-                room['gst'],
-                room['total']
+                room['name'], room.get('subtotal', 0),
+                room.get('gst', 0), room.get('total', 0)
             ])
-            grand_total += room['total']
+            grand_total += room.get('total', 0)
 
     summary_sheet.append([])
-    total_row = ["Grand Total", "", "", grand_total]
-    summary_sheet.append(total_row)
+    summary_sheet.append(["Grand Total", "", "", grand_total])
+    total_row_idx = summary_sheet.max_row
 
     # Styling
-    for cell in summary_sheet[6]: cell.fill = styles['table_header_fill']; cell.font = styles['table_header']
-    for row in summary_sheet.iter_rows(min_row=7, max_row=summary_sheet.max_row):
+    for cell in summary_sheet[header_row]:
+        cell.fill = styles['table_header_fill']
+        cell.font = styles['table_header']
+    for row in summary_sheet.iter_rows(min_row=header_row + 1, max_row=total_row_idx):
         for cell in row:
             if isinstance(cell.value, (int, float)):
                 cell.number_format = styles['currency_format']
-    summary_sheet[f'A{summary_sheet.max_row}'].font = styles['bold']
-    summary_sheet[f'D{summary_sheet.max_row}'].font = styles['bold']
+    summary_sheet[f'A{total_row_idx}'].font = styles['bold']
+    summary_sheet[f'D{total_row_idx}'].font = styles['bold']
+    for col in ['A', 'B', 'C', 'D']:
+        summary_sheet.column_dimensions[col].width = 30
 
 
-def _add_scope_of_work_sheet(workbook):
+def _add_scope_of_work_sheet(workbook, styles):
     """Adds the static Scope of Work sheet."""
     sow_sheet = workbook.create_sheet(title="Scope of Work")
-    sow_sheet['A1'] = "Scope of Work"
-    sow_sheet['A1'].font = Font(size=14, bold=True)
+    _create_sheet_header(sow_sheet, styles)
+    sow_sheet.merge_cells('A5:D5')
+    sow_sheet['A5'] = "Scope of Work"
+    sow_sheet['A5'].font = Font(size=14, bold=True)
+    sow_sheet['A5'].alignment = Alignment(horizontal='center')
     
     scope = {
-        "INCLUSIONS": [
-            "Supply of Equipment as per the Bill of Quantity.",
-            "Installation & Commissioning of the specified AV equipment.",
-            "System integration and programming as required.",
-            "Basic user training and system handover."
-        ],
-        "EXCLUSIONS": [
-            "Any Civil Work, Masonry, Carpentry, POP, False Ceiling, Painting, etc.",
-            "Electrical Work including Raw Power, Cabling, Conduits, Raceways.",
-            "Network infrastructure including switches, routers, and cabling not specified in the BOQ.",
-            "Any software, licenses, or subscriptions not explicitly mentioned.",
-            "Coordination with any third-party vendors not under our direct scope."
-        ]
+        "INCLUSIONS": ["Supply of Equipment as per the Bill of Quantity.", "Installation & Commissioning of the specified AV equipment.", "System integration and programming as required.", "Basic user training and system handover."],
+        "EXCLUSIONS": ["Any Civil Work, Masonry, Carpentry, POP, False Ceiling, Painting, etc.", "Electrical Work including Raw Power, Cabling, Conduits, Raceways.", "Network infrastructure including switches, routers, and cabling not specified in the BOQ.", "Any software, licenses, or subscriptions not explicitly mentioned.", "Coordination with any third-party vendors not under our direct scope."]
     }
-    row = 3
+    row = 7
     for section, points in scope.items():
         sow_sheet[f'A{row}'] = section
         sow_sheet[f'A{row}'].font = Font(bold=True)
@@ -266,29 +264,38 @@ def _add_scope_of_work_sheet(workbook):
             sow_sheet[f'B{row}'] = point
             row += 1
         row += 1
+    sow_sheet.column_dimensions['A'].width = 25
+    sow_sheet.column_dimensions['B'].width = 100
 
-def _add_version_control_sheet(workbook, project_name, client_name):
+
+def _add_version_control_sheet(workbook, project_name, client_name, styles):
     """Adds the Version Control sheet."""
     vc_sheet = workbook.create_sheet(title="Version Control")
-    vc_sheet['A1'] = "Version Control"
-    vc_sheet['A1'].font = Font(size=14, bold=True)
-    vc_sheet['A3'] = "Project Name:"; vc_sheet['B3'] = project_name
-    vc_sheet['A4'] = "Client Name:"; vc_sheet['B4'] = client_name
+    _create_sheet_header(vc_sheet, styles)
+    
+    vc_sheet['A5'] = "Project Name:"; vc_sheet['B5'] = project_name
+    vc_sheet['A6'] = "Client Name:"; vc_sheet['B6'] = client_name
     
     headers = ["Version", "Date", "Description", "Author"]
-    vc_sheet.append([])
-    vc_sheet.append([])
+    vc_sheet.append([]); vc_sheet.append([]); 
     vc_sheet.append(headers)
-    vc_sheet.append(["1.0", datetime.now().strftime("%Y-%m-%d"), "Initial Proposal", "System"])
-
-    for cell in vc_sheet[7]: cell.font = Font(bold=True)
+    header_row = vc_sheet.max_row
     
-def _add_terms_conditions_sheet(workbook):
+    vc_sheet.append(["1.0", datetime.now().strftime("%Y-%m-%d"), "Initial Proposal", "System"])
+    
+    for cell in vc_sheet[header_row]: cell.font = Font(bold=True); cell.fill = styles['group_header_fill']
+    for col in ['A', 'B', 'C', 'D']: vc_sheet.column_dimensions[col].width = 25
+
+
+def _add_terms_conditions_sheet(workbook, styles):
     """Adds a static Terms & Conditions sheet."""
     tc_sheet = workbook.create_sheet(title="Terms & Conditions")
-    tc_sheet['A1'] = "Commercial Terms & Conditions"
-    tc_sheet['A1'].font = Font(size=14, bold=True)
-    
+    _create_sheet_header(tc_sheet, styles)
+    tc_sheet.merge_cells('A5:D5')
+    tc_sheet['A5'] = "Commercial Terms & Conditions"
+    tc_sheet['A5'].font = Font(size=14, bold=True)
+    tc_sheet['A5'].alignment = Alignment(horizontal='center')
+
     terms = [
         ("Payment Terms", "50% Advance with Purchase Order, 40% on Delivery of Material, 10% on Handover."),
         ("Validity", "This proposal is valid for 30 days from the date of submission."),
@@ -296,20 +303,23 @@ def _add_terms_conditions_sheet(workbook):
         ("Warranty", "Standard manufacturer's warranty applies to all hardware components. A 3-year system warranty is included as part of the service charges."),
         ("Delivery", "4-6 weeks from the date of receipt of advance payment and confirmed purchase order."),
     ]
-    row = 3
+    row = 7
     for title, text in terms:
         tc_sheet[f'A{row}'] = title
         tc_sheet[f'A{row}'].font = Font(bold=True)
         tc_sheet[f'B{row}'] = text
+        tc_sheet.row_dimensions[row].height = 30
+        tc_sheet[f'B{row}'].alignment = Alignment(wrap_text=True, vertical='top')
         row += 1
+    tc_sheet.column_dimensions['A'].width = 25
+    tc_sheet.column_dimensions['B'].width = 100
 
 # --- Main Public Function ---
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
     Generate a complete, multi-sheet Excel file in the company standard format.
     """
-    if not rooms_data:
-        return None
+    if not rooms_data: return None
 
     workbook = openpyxl.Workbook()
     styles = _define_styles()
@@ -318,6 +328,12 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     client_name = project_details.get('client_name', 'Valued Client')
     gst_rates = project_details.get('gst_rates', {'Electronics': 18, 'Services': 18})
 
+    # Add standard sheets first, in the desired order
+    _add_proposal_summary_sheet(workbook, rooms_data, styles)
+    _add_scope_of_work_sheet(workbook, styles)
+    _add_version_control_sheet(workbook, project_name, client_name, styles)
+    _add_terms_conditions_sheet(workbook, styles)
+    
     # Generate sheets for each room and store their totals
     for room in rooms_data:
         if room.get('boq_items'):
@@ -326,19 +342,13 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             subtotal, gst, total = _populate_company_boq_sheet(
                 room_sheet, room['boq_items'], room['name'], styles, usd_to_inr_rate, gst_rates
             )
-            # Store calculated totals back in the dict for the summary sheet
-            room['subtotal'] = subtotal
-            room['gst'] = gst
-            room['total'] = total
+            room['subtotal'], room['gst'], room['total'] = subtotal, gst, total
     
-    # Add standard sheets
+    # After all rooms are processed, re-populate the summary sheet with the final data
     _add_proposal_summary_sheet(workbook, rooms_data, styles)
-    _add_scope_of_work_sheet(workbook)
-    _add_version_control_sheet(workbook, project_name, client_name)
-    _add_terms_conditions_sheet(workbook)
 
     # Remove the default sheet created by openpyxl
-    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
+    if "Sheet" in workbook.sheetnames:
         del workbook["Sheet"]
 
     # Save to a memory buffer
