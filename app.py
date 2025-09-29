@@ -1200,7 +1200,7 @@ ROOM SPECIFICATIONS:
 - Complexity: {complexity.upper()}
 
 SYSTEM REQUIREMENTS (MANDATORY):
-Display: {equipment_reqs['displays']['size_inches']}" (Qty: {equipment_reqs['displays']['quantity']})
+Display: {equipment_reqs['displays']['size_inches']} (Qty: {equipment_reqs['displays']['quantity']})
 Video: {equipment_reqs['video_system']['camera_type']} (Qty: {equipment_reqs['video_system']['camera_count']})
 Audio Microphones: {equipment_reqs['audio_system'].get('microphone_count', 2)} zones required
 Audio Speakers: {equipment_reqs['audio_system'].get('speaker_count', 2)} zones required
