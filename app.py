@@ -1037,127 +1037,93 @@ def _add_essential_missing_components(boq_items, equipment_reqs, product_df, com
 # --- ★★★ COMPREHENSIVE BOQ GENERATION HELPERS ★★★ ---
 
 def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
-    """Define required components based on room complexity with proper specifications."""
+    """
+    Define required components using explicit blueprints for each complexity level.
+    This is a more robust method than additive logic.
+    """
     
-    # Start with components EVERY room needs
-    components = {
+    # --- 1. Define ALL possible component blueprints ---
+    component_definitions = {
         'display': {
-            'category': 'Displays',
-            'quantity': equipment_reqs['displays']['quantity'],
-            'size_requirement': equipment_reqs['displays']['size_inches'],
-            'priority': 1,
-            'justification': f"Professional display meeting AVIXA DISCAS standards for {room_type}"
+            'category': 'Displays', 'quantity': equipment_reqs['displays']['quantity'],
+            'size_requirement': equipment_reqs['displays']['size_inches'], 'priority': 1,
+            'justification': f"Primary display meeting AVIXA DISCAS standards for {room_type}"
         },
         'mount': {
-            'category': 'Mounts',
-            'quantity': equipment_reqs['displays']['quantity'],
-            'priority': 5, # Lower priority than core tech
+            'category': 'Mounts', 'quantity': equipment_reqs['displays']['quantity'], 'priority': 5,
             'justification': 'Professional display mounting hardware'
         },
         'cables': {
-            'category': 'Cables',
-            'quantity': 3, # Base cable package
-            'priority': 6,
-            'justification': 'AV connectivity infrastructure (HDMI, USB, Network)'
+            'category': 'Cables', 'quantity': 4, 'priority': 6, # Increased base quantity
+            'justification': 'Essential AV connectivity infrastructure (HDMI, USB, Network)'
+        },
+        'video_bar': {
+            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
+            'justification': 'All-in-one video conferencing solution with integrated audio'
+        },
+        'camera': {
+            'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system']['camera_count'], 'priority': 2,
+            'justification': f"{equipment_reqs['video_system']['camera_type']} for executive-level video conferencing"
+        },
+        'codec': {
+            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
+            'justification': 'Professional 4K video codec for high-quality conferencing'
+        },
+        'microphones': {
+            'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 3,
+            'justification': f"{equipment_reqs['audio_system'].get('microphone_count', 2)}-zone professional microphone coverage"
+        },
+        'speakers': {
+            'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 3,
+            'justification': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_count', 2)} zones"
+        },
+        'control': {
+            'category': 'Control', 'quantity': 1, 'priority': 4,
+            'justification': f"{equipment_reqs['control_system']['type']} for system management and automation"
+        },
+        'dsp': {
+            'category': 'Audio', 'quantity': 1, 'priority': 3,
+            'justification': 'Digital Signal Processor for advanced echo cancellation and audio mixing'
+        },
+        'network_switch': {
+            'category': 'Infrastructure', 'quantity': 1, 'priority': 5,
+            'justification': f"Managed network switch to support {avixa_calcs['recommended_bandwidth_mbps']}Mbps AV traffic"
+        },
+        'amplifier': {
+            'category': 'Audio', 'quantity': 1, 'priority': 4,
+            'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W distributed audio system"
+        },
+        'ups': {
+            'category': 'Infrastructure', 'quantity': 1, 'priority': 6,
+            'justification': f"UPS for power protection providing {avixa_calcs.get('ups_runtime_minutes', 15)} min backup"
         }
     }
 
-    # --- Additive Logic using sequential IF statements ---
+    # --- 2. Create explicit lists of required component KEYS for each level ---
+    complexity_map = {
+        'simple': [
+            'display', 'mount', 'cables', 'video_bar'
+        ],
+        'moderate': [
+            'display', 'mount', 'cables', 'video_bar', 'microphones', 'speakers', 'control'
+        ],
+        'advanced': [
+            'display', 'mount', 'cables', 'camera', 'codec', 'microphones', 
+            'speakers', 'dsp', 'control', 'network_switch'
+        ],
+        'complex': [
+            'display', 'mount', 'cables', 'camera', 'codec', 'microphones', 
+            'speakers', 'dsp', 'control', 'network_switch', 'amplifier', 'ups'
+        ]
+    }
 
-    # Tier 1: All rooms except the most basic need a video conferencing solution
-    if complexity in ['simple', 'moderate', 'advanced', 'complex']:
-        components.update({
-            'video_solution': {
-                'category': 'Video Conferencing',
-                'quantity': 1,
-                'priority': 2,
-                'justification': 'Primary video conferencing system for the room.'
-            }
-        })
+    # --- 3. Select the correct list of keys based on complexity ---
+    required_keys = complexity_map.get(complexity, complexity_map['simple']) # Default to simple
+    
+    # --- 4. Build the final dictionary from the selected keys ---
+    final_components = {key: component_definitions[key] for key in required_keys}
 
-    # Tier 2: Moderate rooms and above get separate audio and control
-    if complexity in ['moderate', 'advanced', 'complex']:
-        components.update({
-            'microphones': {
-                'category': 'Audio',
-                'quantity': equipment_reqs['audio_system'].get('microphone_count', 2),
-                'priority': 3,
-                'justification': f"{equipment_reqs['audio_system'].get('microphone_count', 2)}-zone microphone coverage"
-            },
-            'speakers': {
-                'category': 'Audio',
-                'quantity': equipment_reqs['audio_system'].get('speaker_count', 2),
-                'priority': 3,
-                'justification': f"Distributed speaker system with {equipment_reqs['audio_system'].get('speaker_count', 2)} zones"
-            },
-            'control': {
-                'category': 'Control',
-                'quantity': 1,
-                'priority': 4,
-                'justification': f"{equipment_reqs['control_system']['type']} for system management"
-            }
-        })
-        # For moderate rooms, a simple video bar is enough. We remove the generic 'video_solution'
-        # and replace it with a more specific 'video_bar' component if it exists.
-        if 'video_solution' in components:
-            del components['video_solution']
-        components['video_bar'] = {
-            'category': 'Video Conferencing', 'quantity': 1, 'priority': 2,
-            'justification': 'All-in-one video bar suitable for mid-size rooms.'
-        }
-
-
-    # Tier 3: Advanced rooms get dedicated cameras, codecs, and DSPs
-    if complexity in ['advanced', 'complex']:
-        # Replace simpler video solutions with a dedicated camera and codec
-        if 'video_solution' in components: del components['video_solution']
-        if 'video_bar' in components: del components['video_bar']
-        
-        components.update({
-            'camera': {
-                'category': 'Video Conferencing',
-                'quantity': equipment_reqs['video_system']['camera_count'],
-                'priority': 2,
-                'justification': f"{equipment_reqs['video_system']['camera_type']} for executive-level video conferencing"
-            },
-            'codec': {
-                'category': 'Video Conferencing',
-                'quantity': 1,
-                'priority': 2,
-                'justification': 'Professional 4K video codec for high-quality conferencing'
-            },
-            'dsp': {
-                'category': 'Audio',
-                'quantity': 1,
-                'priority': 3,
-                'justification': 'Digital signal processor for advanced audio processing with AEC'
-            },
-            'network_switch': {
-                'category': 'Infrastructure',
-                'quantity': 1,
-                'priority': 5,
-                'justification': f"Network switch for {avixa_calcs['recommended_bandwidth_mbps']}Mbps system bandwidth"
-            }
-        })
-
-    # Tier 4: The most complex rooms require amplifiers and power protection
-    if complexity == 'complex':
-        components.update({
-            'amplifier': {
-                'category': 'Audio',
-                'quantity': 1,
-                'priority': 4,
-                'justification': f"Multi-channel amplifier for {avixa_calcs.get('audio_power_needed', 300)}W system"
-            },
-            'ups': {
-                'category': 'Infrastructure',
-                'quantity': 1,
-                'priority': 6,
-                'justification': f"UPS system providing {avixa_calcs.get('ups_runtime_minutes', 15)} min backup"
-            }
-        })
-
-    return components
+    return final_components
 
 
 def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calcs, equipment_reqs,
