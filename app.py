@@ -135,15 +135,13 @@ def main():
                     if boq_items:
                         st.info("Step 2: Applying AVIXA-based logic and correction rules...")
                         
-                        # --- MODIFICATION START ---
-                        # Run the full validation and correction pipeline
+                        # --- Full Validation and Correction Pipeline ---
                         processed_boq = _remove_exact_duplicates(boq_items)
                         processed_boq = _correct_quantities(processed_boq)
                         processed_boq = _remove_duplicate_core_components(processed_boq)
                         processed_boq = _validate_and_correct_mounts(processed_boq)
                         processed_boq = _ensure_system_completeness(processed_boq, product_df)
                         processed_boq = _flag_hallucinated_models(processed_boq)
-                        # --- MODIFICATION END ---
                         
                         st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
