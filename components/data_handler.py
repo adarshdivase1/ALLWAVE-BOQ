@@ -1,197 +1,354 @@
-# components/data_handler.py
-
-import pandas as pd
 import streamlit as st
-import re
+import time
+from datetime import datetime
+import base64
+from pathlib import Path
 
-def clean_and_validate_product_data(product_df):
-    """Clean and validate product data before using in BOQ generation."""
-    if product_df is None or len(product_df) == 0:
-        return product_df
+# --- Component Imports ---
+# Make sure your component files are in a 'components' directory.
+try:
+    from components.data_handler import load_and_validate_data
+    from components.gemini_handler import setup_gemini
+    from components.boq_generator import (
+        generate_boq_from_ai, validate_avixa_compliance,
+        _remove_exact_duplicates, _remove_duplicate_core_components,
+        _validate_and_correct_mounts, _ensure_system_completeness,
+        _flag_hallucinated_models, _correct_quantities
+    )
+    from components.ui_components import (
+        create_project_header, create_room_calculator, create_advanced_requirements,
+        create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
+    )
+    from components.visualizer import create_3d_visualization, ROOM_SPECS
+except ImportError as e:
+    st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
+    st.stop()
 
-    # Create a copy to avoid modifying original
-    df = product_df.copy()
 
-    # Clean price data - remove unrealistic prices
-    df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+# --- "Solar Flare" Theme CSS (Enhanced for Branding) ---
+def load_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    # Category-specific price filtering
-    price_filters = {
-        'Cables': (10, 500),
-        'Mounts': (30, 1000),
-        'Displays': (500, 20000),
-        'Audio': (50, 5000),
-        'Video Conferencing': (200, 10000),
-        'Control': (100, 8000),
-        'Infrastructure': (100, 5000)
-    }
-    
-    def is_valid_price(row):
-        category = row['category']
-        price = row['price']
-        if category in price_filters:
-            min_p, max_p = price_filters[category]
-            return min_p <= price <= max_p
-        return 100 <= price <= 50000  # Default range
-    
-    df = df[df.apply(is_valid_price, axis=1)]
-
-    # Clean category names - standardize to match your expected categories
-    category_mapping = {
-        # Display Related
-        'Displays & Projectors': 'Displays',
-        'Digital Signage Players & CMS': 'Displays',
-        'Interactive Displays & Classroom Tech': 'Displays',
-        'Projection Screens': 'Displays',
-        # Video Conferencing Related
-        'UC & Collaboration Devices': 'Video Conferencing',
-        'PTZ & Pro Video Cameras': 'Video Conferencing',
-        'Lecture Capture & Recording': 'Video Conferencing',
-        'AV Bridges & Specialty I/O': 'Video Conferencing',
-        # Audio Related
-        'Audio: Microphones & Conferencing': 'Audio',
-        'Audio: Speakers': 'Audio',
-        'Audio: DSP': 'Audio',
-        'Audio: Amplifiers': 'Audio',
-        'Audio: DSP & Processing': 'Audio',
-        'Audio: Loudspeakers & Amplifiers': 'Audio',
-        'Acoustics & Sound Masking': 'Audio',
-        'Assistive Listening & Hearing Loop': 'Audio',
-        # Control Related
-        'Control Systems & Processing': 'Control',
-        'AV over IP & Streaming': 'Control',
-        'Control, Matrix & Extenders': 'Control',
-        'Video Equipment': 'Control',
-        'Wireless Presentation': 'Control',
-        'Room Scheduling & Touch Panels': 'Control',
-        # Infrastructure Related
-        'Mounts & Racks': 'Mounts',
-        'Cables & Connectivity': 'Cables',
-        'Networking': 'Infrastructure',
-        'Network Switches (AV-friendly)': 'Infrastructure',
-        # To be mapped to broad categories
-        'AV over IP': 'Control',
-        'Extracted from Project': 'General',
+    :root {
+        --bg-dark: #111827;
+        --glass-bg: rgba(17, 24, 39, 0.75);
+        --widget-bg: rgba(0, 0, 0, 0.3);
+        --glow-primary: #FFBF00; /* Solar Gold */
+        --glow-secondary: #00BFFF; /* Holographic Blue */
+        --text-primary: #F9FAFB;
+        --text-secondary: #9CA3AF;
+        --border-color: rgba(255, 255, 255, 0.2);
+        --border-radius-lg: 16px;
+        --border-radius-md: 10px;
+        --animation-speed: 0.4s;
     }
 
-    df['category'] = df['category'].map(category_mapping).fillna(df['category'])
+    /* Keyframe Animations */
+    @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+    @keyframes shine { 0%{left:-100px} 100%{left:120%} }
+    @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
+    @keyframes pulse-glow { 0%, 100% { filter: drop-shadow(0 0 10px var(--glow-primary)); } 50% { filter: drop-shadow(0 0 20px var(--glow-primary)); } }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
+    
+    /* Global Style */
+    .stApp {
+        background-color: var(--bg-dark);
+        background-image: 
+            url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWPj4+NjY19fX2JiYl/f39tbW1+fn5oaGhiYmLS0tLR0dGysrKqqqrZ2dnx8fHU1NTKysp8fHydnp6Fu3UIAAADcElEQVR42p2b65biQAxAW2s3s3N3d3N3/v/H9i7Itp4oMElsoI3z30IJ8DeyZkTRLMAqgTqgso3qSg+sDGCmostvjQYwY8z2N4pMQbjIwkQS5UQcmJXE28j2Uht4RYVGYo8wT6yok5eJMDEs0mGuxKMR4itN4gY2xqkM7gqCchlOINQk4gUCXg0gY2yQhIkfRhgojJgQpE5SDyE5zHyf6kwoIT5sSj/PEpX0vYnL2b3k52TfG0c4w7z/D/3zzLdOOkN8pIe3h/d7b+S+zYdHz2CiD3wzG/AZoP/39b/d3b0eAAAAAElFTSuQmCC),
+            linear-gradient(125deg, #111827, #3730a3, #FFBF00, #00BFFF, #111827);
+        background-size: auto, 400% 400%;
+        animation: aurora 25s ease infinite;
+        font-family: 'Inter', sans-serif;
+        color: var(--text-primary);
+    }
+    
+    /* Glassmorphism Containers & Corner Brackets */
+    .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
+    .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
+    .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
+    .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
+    .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
+    .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
+    .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
 
-    # Clean brand names - remove test data patterns
-    test_patterns = ['Generated Model', 'Extracted from Project']
-    for pattern in test_patterns:
-        df = df[~df['features'].astype(str).str.contains(pattern, na=False)]
+    /* Themed Widgets (Sidebar & Main) */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
+    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
+    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
+    [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
+    [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
+    
+    /* Login Page Boot-Up Sequence & Logo */
+    .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
+    .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
+    .login-title { animation-delay: 0.4s; }
+    .login-form > div { animation: fadeInUp 0.8s ease-out both; }
+    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
+    
+    /* Other Styles */
+    .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
+    .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
+    .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
+    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
+    #MainMenu, header { visibility: hidden; }
+    footer { visibility: hidden; }
+    .custom-footer { text-align: center; padding: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; margin-top: 2rem; }
+    ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
+    
+    /* Custom Header/Logo Styles */
+    .logo-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 2rem;
+        background: var(--glass-bg);
+        border-bottom: 1px solid var(--border-color);
+        border-radius: var(--border-radius-lg);
+        margin-bottom: 2rem;
+    }
+    .main-logo img {
+        max-height: 50px;
+    }
+    .partner-logos {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+    }
+    .partner-logos img {
+        max-height: 35px;
+        opacity: 0.7;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .partner-logos img:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # Ensure required columns exist
-    required_columns = ['name', 'brand', 'category', 'price', 'features']
-    for col in required_columns:
-        if col not in df.columns:
-            df[col] = 'Unknown' if col != 'price' else 0
+# --- Helper Functions ---
+def show_animated_loader(text="Processing...", duration=2):
+    placeholder = st.empty()
+    with placeholder.container():
+        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
+    time.sleep(duration); placeholder.empty()
 
-    # Remove duplicate products
-    df = df.drop_duplicates(subset=['name', 'brand'], keep='first')
+def show_success_message(message):
+    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
-    return df.reset_index(drop=True)
+def show_error_message(message):
+    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
 @st.cache_data
-def load_and_validate_data():
-    """Enhanced loads and validates with image URLs and GST data."""
+def image_to_base64(img_path):
+    """Encodes an image to Base64 to embed in HTML."""
     try:
-        df = pd.read_csv("master_product_catalog.csv")
-        df = clean_and_validate_product_data(df)
-        validation_issues = []
-
-        # Check for missing critical data
-        if 'name' not in df.columns or df['name'].isnull().sum() > 0:
-            validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
-
-        if 'price' in df.columns:
-            df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
-            zero_price_count = (df['price'] == 0.0).sum()
-            if zero_price_count > 100:
-                validation_issues.append(f"{zero_price_count} products have zero pricing")
-        else:
-            df['price'] = 0.0
-            validation_issues.append("Price column missing - using default values")
-
-        if 'brand' not in df.columns:
-            df['brand'] = 'Unknown'
-            validation_issues.append("Brand column missing - using default values")
-        elif df['brand'].isnull().sum() > 0:
-            df['brand'] = df['brand'].fillna('Unknown')
-            validation_issues.append(f"{df['brand'].isnull().sum()} products missing brand information")
-
-        if 'category' not in df.columns:
-            df['category'] = 'General'
-            validation_issues.append("Category column missing - using default values")
-        else:
-            df['category'] = df['category'].fillna('General')
-
-        if 'features' not in df.columns:
-            df['features'] = df['name']
-            validation_issues.append("Features column missing - using product names for search")
-        else:
-            df['features'] = df['features'].fillna('')
-            
-        if 'image_url' not in df.columns:
-            df['image_url'] = ''
-            validation_issues.append("Image URL column missing - images won't display in Excel")
-
-        if 'gst_rate' not in df.columns:
-            df['gst_rate'] = 18
-            validation_issues.append("GST rate column missing - using 18% default")
-
-        try:
-            with open("avixa_guidelines.md", "r") as f:
-                guidelines = f.read()
-        except FileNotFoundError:
-            guidelines = "AVIXA guidelines not found. Using basic industry standards."
-            validation_issues.append("AVIXA guidelines file missing")
-
-        return df, guidelines, validation_issues
-
+        with open(img_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
-        st.warning("Master product catalog not found. Using sample data for testing.")
-        sample_data = get_sample_product_data()
-        df = pd.DataFrame(sample_data)
-        guidelines = "AVIXA guidelines not found. Using basic industry standards."
-        return df, guidelines, ["Using sample product catalog for testing"]
-    except Exception as e:
-        return None, None, [f"Data loading error: {str(e)}"]
+        # Return a placeholder or None if the image is not found
+        return None
 
-def get_sample_product_data():
-    """Provide comprehensive sample products with AVIXA-relevant specifications."""
-    return [
-        {
-            'name': 'Samsung 55" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
-            'price': 1200, 'features': '55" 4K UHD, 500-nit brightness, 16/7 operation, TIZEN 4.0',
-            'image_url': 'https://images.samsung.com/is/image/samsung/assets/sg/business-images/qm55r/qm55r_001_front_black.png',
-            'gst_rate': 18, 'power_draw': 180
-        },
-        # Add more sample data here if needed
-    ]
+def create_header(main_logo, partner_logos):
+    """Creates the branded header with main and partner logos."""
+    main_logo_b64 = image_to_base64(main_logo)
+    partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
+    
+    partner_html = ""
+    for name, b64 in partner_logos_b64.items():
+        if b64:
+            partner_html += f'<img src="data:image/png;base64,{b64}" alt="{name} Logo" title="{name}">'
 
-def match_product_in_database(product_name, brand, product_df):
-    """Enhanced product matching with better validation."""
-    if product_df is None or len(product_df) == 0:
-        return None
-    try:
-        safe_product_name = str(product_name).strip() if product_name else ""
-        safe_brand = str(brand).strip() if brand else ""
-        if not safe_product_name and not safe_brand: return None
-        if safe_product_name:
-            exact_matches = product_df[product_df['name'].astype(str).str.lower() == safe_product_name.lower()]
-            if len(exact_matches) > 0: return exact_matches.iloc[0].to_dict()
-        if safe_brand and safe_product_name:
-            brand_matches = product_df[product_df['brand'].astype(str).str.lower() == safe_brand.lower()]
-            if len(brand_matches) > 0:
-                name_matches = brand_matches[brand_matches['name'].astype(str).str.contains(re.escape(safe_product_name.split()[0]), case=False, na=False)]
-                if len(name_matches) > 0: return name_matches.iloc[0].to_dict()
-        if safe_product_name and len(safe_product_name) > 3:
-            key_terms = safe_product_name.lower().split()[:3]
-            for term in key_terms:
-                if len(term) > 3:
-                    matches = product_df[product_df['name'].astype(str).str.contains(re.escape(term), case=False, na=False)]
-                    if len(matches) > 0: return matches.iloc[0].to_dict()
-        return None
-    except Exception as e:
-        return None
+    if main_logo_b64:
+        st.markdown(f"""
+        <div class="logo-container">
+            <div class="main-logo">
+                <img src="data:image/png;base64,{main_logo_b64}" alt="AllWave AV Logo">
+            </div>
+            <div class="partner-logos">
+                {partner_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
+
+def show_login_page(logo_b64, page_icon_path):
+    st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
+    load_css()
+    
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
+
+    st.markdown(f"""
+    <div class="login-container">
+        <div class="glass-container interactive-card has-corners">
+            {logo_html}
+            <div class="login-title">
+                <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
+                <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
+            </div>
+            
+            <form>
+                <div class="login-form">
+                    {st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")}
+                    {st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")}
+                    <button type="submit" name="Engage" class="st-emotion-cache-73o5de e1i5pmfg9">Engage</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Custom form handling logic
+    if 'Engage' in st.query_params:
+        email = st.session_state.get('email_input', '')
+        password = st.session_state.get('password_input', '')
+        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
+            show_animated_loader("Authenticating...", 1.5)
+            st.session_state.authenticated = True
+            st.session_state.user_email = email
+            show_success_message("Authentication Successful. Welcome.")
+            time.sleep(1)
+            st.rerun()
+        else:
+            show_error_message("Access Denied. Use official AllWave credentials.")
+
+# The main application function
+def main():
+    # --- Define asset paths ---
+    # Create an 'assets' folder in the same directory as your script and place logos there.
+    main_logo_path = Path("assets/company_logo.png")
+    
+    # --- Handle Authentication and Login Page ---
+    if not st.session_state.get('authenticated'):
+        main_logo_b64 = image_to_base64(main_logo_path)
+        show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
+        return
+
+    # --- Main App Configuration ---
+    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
+    load_css()
+
+    # --- Initialize Session State ---
+    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
+    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
+    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
+
+    # --- Load Data and Setup Model ---
+    with st.spinner("Initializing system modules..."):
+        product_df, guidelines, data_issues = load_and_validate_data()
+    if data_issues:
+        with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
+            for issue in data_issues: st.warning(issue)
+    if product_df is None:
+        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
+    model = setup_gemini()
+
+    # --- Display Header and Logos ---
+    partner_logos_paths = {
+        "Crestron": Path("assets/crestron_logo.png"),
+        "AVIXA": Path("assets/avixa_logo.png"),
+        "PSNI Global Alliance": Path("assets/iso_logo.png")
+    }
+    create_header(main_logo_path, partner_logos_paths)
+
+    st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
+        st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
+        if st.button("🚪 Logout", use_container_width=True):
+            show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
+        st.markdown("---")
+        st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
+        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+        st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
+        st.markdown("---")
+        st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
+        st.selectbox("Currency", ["INR", "USD"], key="currency_select")
+        st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
+        st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
+        st.markdown("---")
+        st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
+        room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
+        st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+        if room_type_key in ROOM_SPECS:
+            spec = ROOM_SPECS[room_type_key]
+            st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Main Content Tabs with Icons ---
+    tab_titles = ["📝 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+
+    with tab1:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        create_multi_room_interface()
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab2:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        create_room_calculator()
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab3:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        technical_reqs = {}
+        st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
+        technical_reqs.update(create_advanced_requirements())
+        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab4:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
+            if not model:
+                show_error_message("AI Model is not available. Please check API key.")
+            else:
+                progress_bar = st.progress(0, text="Initializing generation pipeline...")
+                try:
+                    progress_bar.progress(10, text="🔄 Step 1: Generating initial design with AI...")
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
+                    if boq_items:
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
+                        processed_boq = _remove_exact_duplicates(boq_items)
+                        processed_boq = _correct_quantities(processed_boq)
+                        processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _validate_and_correct_mounts(processed_boq)
+                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
+                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        st.session_state.boq_items = processed_boq
+                        update_boq_content_with_current_items()
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
+                        st.session_state.validation_results = {"issues": avixa_validation.get('avixa_issues', []), "warnings": avixa_validation.get('avixa_warnings', [])}
+                        progress_bar.progress(100, text="Pipeline complete!")
+                        time.sleep(1); progress_bar.empty()
+                        show_success_message("BOQ generation pipeline completed successfully!")
+                        st.rerun()
+                    else:
+                        progress_bar.empty(); show_error_message("Failed to generate BOQ. The AI and fallback system did not return valid items.")
+                except Exception as e:
+                    progress_bar.empty(); show_error_message(f"An error occurred during BOQ generation: {str(e)}")
+        if st.session_state.get('boq_items'):
+            st.markdown("---"); display_boq_results(product_df)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab5:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        create_3d_visualization()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Custom Footer ---
+    st.markdown(f'<div class="custom-footer">© {datetime.now().year} AllWave AV & GS. All Rights Reserved.</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
