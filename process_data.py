@@ -65,41 +65,40 @@ def categorize_and_tag_product(description, model):
     text_to_search = (str(description) + ' ' + str(model)).lower()
 
     # CRITICAL: Order matters - most specific rules first
-    category_rules = [
-        # Video Conferencing - Most specific first
-        ('Video Conferencing', ['video bar', 'rally bar', 'studio x', 'meetup', 'studio soundbar']),
-        ('Video Conferencing', ['codec', 'g7500', 'roommate', 'sx80']),
-        ('Video Conferencing', ['ptz', 'camera', 'eagleeye', 'webcam'], ['mount', 'shelf', 'bracket']),  # Exclude mounts
-        
-        # Control Systems
-        ('Control', ['touch panel', 'touch screen', 'tsw-', 'ts-', 'tap', 'ctp18'], ['scheduler']),  # Exclude schedulers
-        ('Control', ['control processor', 'dmps', 'cp4', 'mc4']),
-        ('Control', ['matrix', 'switcher', 'hd-md', 'dm-md']),
-        
-        # Audio - Very specific
-        ('Audio', ['microphone', 'mic array', 'mxa9', 'ceiling mic', 'table mic'], ['cable', 'adapter']),
-        ('Audio', ['speaker', 'loudspeaker', 'ceiling speaker'], ['cable', 'mount']),
-        ('Audio', ['amplifier', ' amp ', 'power amp'], ['summing']),
-        ('Audio', ['dsp', 'tesira', 'q-sys core', 'biamp', 'digital signal']),
-        
-        # Displays - Exclude accessories
-        ('Displays', ['display', 'monitor', 'screen', 'interactive', 'flip', 'board'], ['mount', 'cable', 'bracket']),
-        ('Displays', ['projector'], ['mount', 'screen']),
-        
-        # Mounts - Be specific about what they mount
-        ('Mounts', ['display mount', 'wall mount', 'flat panel mount'], ['camera']),
-        ('Mounts', ['camera mount', 'camera shelf']),
-        ('Mounts', ['rack mount', 'rack shelf']),
-        
-        # Cables - Only actual cables
-        ('Cables', ['cable', 'hdmi', 'displayport', 'usb cable', 'cat6', 'patch cord']),
-        
-        # Infrastructure
-        ('Infrastructure', ['rack', 'enclosure', 'cabinet'], ['mount', 'shelf']),
-        ('Infrastructure', ['pdu', 'power distribution']),
-        ('Infrastructure', ['ups', 'uninterruptible power']),
-        ('Infrastructure', ['network switch', 'poe switch']),
-    ]
+# In categorize_and_tag_product function, update category_rules:
+category_rules = [
+    # Video Conferencing - Most specific first
+    ('Video Conferencing', ['video bar', 'rally bar', 'studio x', 'meetup', 'studio bar'], []),
+    ('Video Conferencing', ['codec', 'g7500', 'roommate', 'sx80', 'codec plus'], []),
+    ('Video Conferencing', ['ptz', 'camera', 'eagleeye', 'webcam'], ['mount', 'shelf', 'bracket', 'kit']),
+    
+    # Control Systems
+    ('Control', ['touch panel', 'touch screen', 'tsw-', 'tsd-', 'ts-', 'tap', 'ctp18'], ['scheduler', 'home os']),
+    ('Control', ['control processor', 'dmps', 'cp4', 'mc4'], ['home os']),
+    ('Control', ['matrix', 'switcher', 'hd-md', 'dm-md'], []),
+    
+    # Audio - Very specific
+    ('Audio', ['microphone', 'mic array', 'mxa9', 'ceiling mic', 'table mic'], ['cable', 'adapter', 'kit']),
+    ('Audio', ['speaker', 'loudspeaker', 'ceiling speaker'], ['cable', 'mount', 'baffle', 'kit']),
+    ('Audio', ['amplifier', ' amp ', 'power amp'], ['summing', 'tile', 'bridge', 'kit']),
+    ('Audio', ['dsp', 'tesira', 'q-sys core', 'biamp', 'digital signal'], ['tile', 'bridge']),
+    
+    # Displays - Exclude accessories and peripherals
+    ('Displays', ['display', 'monitor', 'screen', 'interactive', 'flip', 'board'], ['mount', 'cable', 'bracket', 'keyboard', 'mouse']),
+    ('Displays', ['projector'], ['mount', 'screen']),
+    
+    # Mounts - Be specific
+    ('Mounts', ['display mount', 'wall mount', 'flat panel mount'], ['camera', 'tile', 'bezel']),
+    ('Mounts', ['camera mount', 'camera shelf'], []),
+    ('Mounts', ['rack mount', 'rack shelf'], ['bezel']),
+    
+    # Cables - Only actual cables
+    ('Cables', ['cable', 'hdmi', 'displayport', 'usb cable', 'cat6', 'patch cord'], ['bezel', 'kit']),
+    
+    # Infrastructure
+    ('Infrastructure', ['rack', 'enclosure', 'cabinet'], ['mount', 'shelf', 'bezel']),
+    ('Infrastructure', ['pdu', 'power distribution'], []),
+]
     
     category = 'General'
     for rule in category_rules:
