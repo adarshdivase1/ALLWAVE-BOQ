@@ -117,54 +117,87 @@ def load_css():
         font-weight: 500 !important;
     }
     
-    /* Sidebar Styles */
-    .st-emotion-cache-16txtl3 { padding: 2rem 1rem; }
-    .user-info { margin-bottom: 1rem; }
-    .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); font-weight: 600; }
-    .user-info p { color: var(--text-secondary); word-wrap: break-word; font-size: 0.95rem; }
-    .sidebar-section { margin-top: 1.5rem; }
-    .sidebar-section h3 { margin-bottom: 1rem; color: var(--text-primary); font-weight: 600; }
-    .info-box { 
-        background: var(--widget-bg); 
-        padding: 1rem; 
-        border-radius: var(--border-radius-md); 
-        margin-top: 1rem; 
-        border: 1px solid var(--border-color); 
+    /* --- Sidebar Improvements --- */
+    .st-emotion-cache-16txtl3 /* Sidebar main container */ {
+        background: rgba(17, 24, 39, 0.98) !important; /* darker, more opaque */
+        padding: 2rem 1rem;
+        border-right: 2px solid var(--glow-primary);
     }
-    .info-box p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.6; }
 
-    /* Themed Widgets */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea { 
-        background-color: var(--widget-bg) !important; 
-        color: var(--text-primary) !important; 
-        border: 1px solid var(--border-color) !important; 
-        border-radius: var(--border-radius-md) !important; 
-        transition: all 0.3s ease; 
+    .sidebar-section {
+        margin-top: 1.5rem;
+        padding: 1rem 0.5rem 1.5rem 0.5rem;
+        background: rgba(40, 55, 80, 0.65); /* soft blue glassy bg */
+        border-radius: var(--border-radius-md);
+        border: 1px solid var(--border-color);
     }
-    
-    [data-baseweb="select"] > div { 
-        background-color: var(--widget-bg) !important; 
-        color: var(--text-primary) !important; 
-        border: 1px solid var(--border-color) !important; 
-        border-radius: var(--border-radius-md) !important; 
+
+    .sidebar-section h3 {
+        color: var(--glow-primary) !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.02em;
+        margin-bottom: 0.8rem;
     }
-    
-    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
-    [data-baseweb="slider"] div[role="slider"] { 
-        background-color: var(--glow-primary) !important; 
-        box-shadow: 0 0 10px var(--glow-primary); 
-        border: none !important; 
+
+    .user-info h3,
+    .user-info p {
+        color: var(--text-primary) !important;
+        font-weight: 600;
     }
-    [data-baseweb="slider"] > div:first-of-type { 
-        background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); 
+
+    .info-box {
+        background: linear-gradient(110deg, rgba(0,191,255,0.2), rgba(255,191,0,0.07));
+        border: 1.5px solid var(--glow-secondary);
+        color: var(--text-primary) !important;
+        border-radius: var(--border-radius-md);
+        margin-top: 1rem;
     }
-    
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, 
-    [data-baseweb="select"] > div[aria-expanded="true"] { 
-        border-color: var(--glow-primary) !important; 
-        box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; 
+
+    /* Sidebar input fields */
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea,
+    [data-baseweb="select"] > div {
+        background: rgba(30, 41, 59, 0.95) !important; /* dark, readable */
+        color: #fafafa !important;
+        border: 1.5px solid var(--glow-secondary) !important;
+        border-radius: var(--border-radius-md) !important;
     }
-    
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stTextArea textarea:focus,
+    [data-baseweb="select"] > div[aria-expanded="true"] {
+        border-color: var(--glow-primary) !important;
+        box-shadow: 0 0 0 2px var(--glow-primary) !important;
+    }
+
+    /* Sidebar labels (inputs, selects, textareas) */
+    label,
+    .st-emotion-cache-1c7y2kd { /* Streamlit label class */
+        color: #fffde4 !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+        letter-spacing: 0.01em;
+    }
+
+    /* Sidebar selectbox and slider tweaks */
+    [data-baseweb="select"] svg {
+        fill: var(--glow-secondary) !important;
+    }
+    [data-baseweb="slider"] div[role="slider"] {
+        background-color: var(--glow-primary) !important;
+        box-shadow: 0 0 8px var(--glow-primary);
+    }
+    [data-baseweb="slider"] > div:first-of-type {
+        background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary));
+    }
+
+    /* Sidebar links and info */
+    a {
+        color: var(--glow-secondary) !important;
+        text-decoration: underline;
+    }
+
     /* Login Page */
     .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
     .login-main-logo { 
@@ -644,21 +677,4 @@ def main():
             <p>
                 <b>💡 Visualization Controls:</b><br>
                 • <b>Rotate:</b> Left-click and drag<br>
-                • <b>Zoom:</b> Scroll wheel<br>
-                • <b>Pan:</b> Right-click and drag<br>
-                • Equipment placement is based on AVIXA standards and room acoustics
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # --- Footer ---
-    st.markdown(f"""
-    <div class="custom-footer">
-        <p>© {datetime.now().year} AllWave Audio Visual & General Services | Powered by AI-driven Design Engine</p>
-        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Built with Streamlit • Gemini AI • AVIXA Standards Compliance</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-if __name__ == "__main__":
-    main()
+                • <b>Zoom
