@@ -13,15 +13,15 @@ def clean_and_validate_product_data(product_df):
     # Clean price data - remove unrealistic prices
     df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     
-    # --- ADDED: More aggressive, category-specific price filtering to remove bad data ---
+    # Category-specific price filtering
     price_filters = {
-        'Cables': (10, 800),
-        'Mounts': (50, 1500),
-        'Displays': (400, 25000),
-        'Audio': (100, 15000),
-        'Video Conferencing': (200, 20000),
-        'Control': (150, 10000),
-        'Infrastructure': (50, 5000)
+        'Cables': (10, 500),
+        'Mounts': (30, 1000),
+        'Displays': (500, 20000),
+        'Audio': (50, 5000),
+        'Video Conferencing': (200, 10000),
+        'Control': (100, 8000),
+        'Infrastructure': (100, 5000)
     }
     
     def is_valid_price(row):
@@ -30,26 +30,9 @@ def clean_and_validate_product_data(product_df):
         if category in price_filters:
             min_p, max_p = price_filters[category]
             return min_p <= price <= max_p
-        return 100 <= price <= 50000  # strict default
+        return 100 <= price <= 50000  # Default range
     
-    initial_rows = len(df)
     df = df[df.apply(is_valid_price, axis=1)]
-    if initial_rows > len(df):
-        print(f"Price Validation: Removed {initial_rows - len(df)} products with unrealistic prices.")
-
-    # --- ADDED: Exclude irrelevant products like warranties, kits, accessories ---
-    excluded_patterns = [
-        'year', 'warranty', 'partner', 'bezel', 'tile bridge', 'baffle', 
-        'home os', 'keyboard', 'mouse', 'kit', 'assy only', 'assembly kit'
-    ]
-    def should_exclude(row):
-        name_lower = str(row['name']).lower()
-        return any(pattern in name_lower for pattern in excluded_patterns)
-
-    before_exclusion = len(df)
-    df = df[~df.apply(should_exclude, axis=1)]
-    if before_exclusion > len(df):
-        print(f"Exclusion Filter: Removed {before_exclusion - len(df)} non-product entries.")
 
     # Clean category names
     category_mapping = {
@@ -113,10 +96,6 @@ def load_and_validate_data():
             df['image_url'] = ''
         if 'gst_rate' not in df.columns:
             df['gst_rate'] = 18
-        if 'feature_tags' not in df.columns:
-            df['feature_tags'] = ''
-        if 'compatibility_tags' not in df.columns:
-            df['compatibility_tags'] = ''
 
         try:
             with open("avixa_guidelines.md", "r") as f:
@@ -137,8 +116,8 @@ def load_and_validate_data():
 def get_sample_product_data():
     """Provide comprehensive sample products."""
     return [{
-        'name': 'Samsung 55\" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
-        'price': 1200, 'features': '55\" 4K UHD, 500-nit, 16/7',
+        'name': 'Samsung 55" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
+        'price': 1200, 'features': '55" 4K UHD, 500-nit, 16/7',
         'image_url': '', 'gst_rate': 18
     }]
 
@@ -172,6 +151,8 @@ def match_product_in_database(product_name, brand, product_df):
         return None
     except Exception:
         return None
+
+# --- NEWLY ADDED FUNCTIONS ---
 
 def normalize_category(category_text, product_name):
     """Normalize category names to standard categories."""
