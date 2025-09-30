@@ -237,7 +237,7 @@ def main():
     partner_logos_paths = {
         "Crestron": Path("assets/crestron_logo.png"),
         "AVIXA": Path("assets/avixa_logo.png"),
-        "PSNI Global Alliance": Path("assets/iso_logo.png") # Assuming iso_logo.png is the PSNI logo
+        "PSNI Global Alliance": Path("assets/iso_logo.png")
     }
     create_header(main_logo_path, partner_logos_paths)
 
@@ -284,10 +284,7 @@ def main():
         st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        st.markdown('</div>', unsafe_### How to Set Up and Run This Application
-
-
-
+        st.markdown('</div>', unsafe_allow_html=True)
     with tab4:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
         st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
