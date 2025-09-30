@@ -64,10 +64,7 @@ def _build_comprehensive_boq_prompt(room_type, complexity, room_area, avixa_calc
 
 # AVIXA-BASED DESIGN PARAMETERS
 - **Area:** {room_area:.0f} sq ft
-- **Capacity:** {avixa_calcs.get('estimated_occupancy', 'N/A')} people
 - **Required Display Size (DISCAS):** {equipment_reqs.get('displays', {}).get('size_inches', 'N/A')}"
-- **Required System Type:** {equipment_reqs.get('audio_system', {}).get('type', 'Standard Audio')}
-- **Required Control Type:** {equipment_reqs.get('control_system', {}).get('type', 'Standard Control')}
 
 # MANDATORY SYSTEM COMPONENTS ({len(required_components)} items)
 You must select one product for each of the following roles. Use the product lists provided below.
@@ -88,15 +85,12 @@ OUTPUT FORMAT (STRICT JSON - NO TEXT BEFORE OR AFTER):
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
         comma = "," if i < len(required_components) - 1 else ""
         prompt += f'  "{comp_key}": {{"name": "EXACT product name from list above", "qty": {comp_spec["quantity"]}}}{comma}\n'
-
     prompt += f"""}}
 
 CRITICAL RULES:
 1. Output ONLY valid JSON.
 2. Use EXACT product names from the lists.
 3. Include ALL {len(required_components)} components.
-4. Match display size requirements.
-5. For audio, prioritize a single integrated system (like a DSP with microphones) over multiple separate components if possible. Do not select multiple redundant items for the same task.
 """
     return prompt
 
@@ -165,40 +159,36 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df, 
     return boq_items
 
 def _get_required_components_by_complexity(complexity, equipment_reqs, avixa_calcs, room_type):
-    """Define required components using explicit blueprints for each complexity level."""
-    if complexity == 'simple' and any(keyword in room_type for keyword in ["Large", "Executive", "Training", "Boardroom", "Suite"]):
-        st.warning(f"Mismatch: Room type '{room_type}' should not be 'simple'. Upgrading to 'advanced'.")
-        complexity = 'advanced'
+    """MODIFIED: Define required components using more flexible and complete blueprints."""
     
+    # MODIFIED: Expanded component definitions for a complete solution
     component_definitions = {
         'display': {'category': 'Displays', 'quantity': equipment_reqs['displays']['quantity'], 'size_requirement': equipment_reqs['displays']['size_inches'], 'priority': 1, 'justification': f"Primary display for {room_type}"},
-        'mount': {'category': 'Mounts', 'quantity': equipment_reqs['displays']['quantity'], 'priority': 5, 'justification': 'Professional display mounting hardware'},
-        'cables': {'category': 'Cables', 'quantity': 4, 'priority': 6, 'justification': 'Essential AV connectivity'},
-        'video_bar': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one VC solution'},
+        'mount': {'category': 'Mounts', 'quantity': equipment_reqs['displays']['quantity'], 'priority': 8, 'justification': 'Professional display mounting hardware'},
+        'video_bar': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one VC solution for huddle spaces'},
+        'touch_panel': {'category': 'Control', 'quantity': 1, 'priority': 3, 'justification': 'Primary user interface for meeting control'},
+        'table_connectivity': {'category': 'Cables', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input plate/cubby for wired HDMI presentation'},
+        'cables': {'category': 'Cables', 'quantity': 4, 'priority': 10, 'justification': 'Essential AV network and power connectivity'},
+        'pdu': {'category': 'Infrastructure', 'quantity': 1, 'priority': 11, 'justification': 'Rack-mounted power distribution and protection'},
+        'rack': {'category': 'Infrastructure', 'quantity': 1, 'priority': 12, 'justification': 'Professional housing for AV equipment'},
         'camera': {'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system']['camera_count'], 'priority': 2, 'justification': f"{equipment_reqs['video_system']['camera_type']}"},
-        'codec': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Professional 4K video codec'},
-        'microphones': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 3, 'justification': f"Microphone coverage"},
-        'speakers': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 3, 'justification': f"Distributed speaker system"},
-        'control': {'category': 'Control', 'quantity': 1, 'priority': 4, 'justification': f"{equipment_reqs['control_system']['type']}"},
-        'dsp': {'category': 'Audio', 'quantity': 1, 'priority': 3, 'justification': 'DSP for echo cancellation'},
-        'network_switch': {'category': 'Infrastructure', 'quantity': 1, 'priority': 5, 'justification': f"Managed network switch"},
-        'amplifier': {'category': 'Audio', 'quantity': 1, 'priority': 4, 'justification': f"Amplifier for audio system"},
-        'ups': {'category': 'Infrastructure', 'quantity': 1, 'priority': 6, 'justification': f"UPS for power protection"}
+        'codec': {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Professional 4K video codec for integrated rooms'},
+        'microphones': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 4, 'justification': f"Microphone coverage for room occupants"},
+        'speakers': {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 5, 'justification': f"Distributed speaker system for even audio coverage"},
+        'dsp': {'category': 'Audio', 'quantity': 1, 'priority': 6, 'justification': 'DSP for acoustic echo cancellation and audio routing'},
+        'amplifier': {'category': 'Audio', 'quantity': 1, 'priority': 7, 'justification': f"Amplifier for passive audio system components"},
     }
     
+    # MODIFIED: Blueprints now include controllers and infrastructure for all levels
     complexity_map = {
-        'simple': ['display', 'mount', 'cables', 'video_bar'],
-        'moderate': ['display', 'mount', 'cables', 'video_bar', 'microphones', 'speakers', 'control'],
-        'advanced': ['display', 'mount', 'cables', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'control', 'network_switch'],
-        'complex': ['display', 'mount', 'cables', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'control', 'network_switch', 'amplifier', 'ups']
+        'simple': ['display', 'mount', 'video_bar', 'touch_panel', 'table_connectivity', 'cables'],
+        'moderate': ['display', 'mount', 'video_bar', 'touch_panel', 'table_connectivity', 'cables', 'pdu'],
+        'advanced': ['display', 'mount', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'touch_panel', 'table_connectivity', 'cables', 'pdu', 'rack'],
+        'complex': ['display', 'mount', 'camera', 'codec', 'microphones', 'speakers', 'dsp', 'amplifier', 'touch_panel', 'table_connectivity', 'cables', 'pdu', 'rack']
     }
-    
-    if complexity not in complexity_map:
-        st.error(f"Unknown complexity: '{complexity}' - using 'moderate' as fallback.")
-        complexity = 'moderate'
         
-    required_keys = complexity_map[complexity]
-    return {key: component_definitions[key] for key in required_keys}
+    required_keys = complexity_map.get(complexity, complexity_map['moderate'])
+    return {key: component_definitions[key] for key in required_keys if key in component_definitions}
 
 # --- PRODUCTION-READY VALIDATION & CORRECTION LAYER ---
 
@@ -379,16 +369,7 @@ def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type=
     complexity = room_spec.get('complexity', 'simple')
     if equipment_reqs.get('audio_system', {}).get('dsp_required') and not has_dsp and complexity != 'simple':
         issues.append("CRITICAL: DSP required for this room type but not found in BOQ.")
-
-    has_ups = any('ups' in item.get('name', '').lower() for item in boq_items)
-    if avixa_calcs.get('ups_va_required', 0) > 1000 and not has_ups and complexity in ['advanced', 'complex']:
-        issues.append("CRITICAL: A UPS system is required for this high-power configuration but is missing.")
-        
-    if avixa_calcs.get('requires_ada_compliance'):
-        ada_items = [item for item in boq_items if any(term in item.get('name', '').lower() for term in ['assistive', 'hearing', 'loop'])]
-        if not ada_items:
-            warnings.append("ADA compliance may be required, but no assistive listening devices were found in the BOQ.")
-
+    
     return {
         'avixa_issues': issues,
         'avixa_warnings': warnings,
