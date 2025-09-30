@@ -63,6 +63,188 @@ def load_css():
         color: var(--text-primary);
     }
     
+    /* ============================================
+       SIDEBAR ENHANCED STYLING
+       ============================================ */
+    
+    /* Sidebar background and base styling */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, rgba(17, 24, 39, 0.95) 0%, rgba(55, 48, 163, 0.15) 100%);
+        backdrop-filter: blur(20px);
+        border-right: 1px solid var(--border-color);
+    }
+    
+    section[data-testid="stSidebar"] > div {
+        background: transparent;
+        padding: 1.5rem 1rem;
+    }
+    
+    /* Sidebar text elements - ensure all text is visible */
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] div {
+        color: var(--text-primary) !important;
+    }
+    
+    /* User info section */
+    .user-info {
+        background: var(--glass-bg);
+        backdrop-filter: blur(15px);
+        border-radius: var(--border-radius-md);
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    
+    .user-info h3 {
+        margin: 0 0 0.75rem 0;
+        color: var(--glow-primary) !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        text-shadow: 0 0 10px rgba(255, 191, 0, 0.3);
+    }
+    
+    .user-info p {
+        color: var(--text-secondary) !important;
+        word-wrap: break-word;
+        font-size: 0.95rem !important;
+        line-height: 1.5 !important;
+        margin: 0 !important;
+    }
+    
+    /* Sidebar sections */
+    .sidebar-section {
+        background: var(--glass-bg);
+        backdrop-filter: blur(15px);
+        border-radius: var(--border-radius-md);
+        padding: 1.25rem;
+        margin-top: 1.5rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    
+    .sidebar-section h3 {
+        margin: 0 0 1rem 0 !important;
+        color: var(--glow-secondary) !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+        text-shadow: 0 0 10px rgba(0, 191, 255, 0.3);
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    /* Info boxes in sidebar */
+    .info-box {
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(10px);
+        padding: 1rem;
+        border-radius: var(--border-radius-md);
+        margin-top: 1rem;
+        border: 1px solid rgba(255, 191, 0, 0.3);
+        box-shadow: inset 0 0 20px rgba(255, 191, 0, 0.1);
+    }
+    
+    .info-box p {
+        color: var(--text-secondary) !important;
+        margin: 0 !important;
+        font-size: 0.9rem !important;
+        line-height: 1.8 !important;
+    }
+    
+    .info-box b {
+        color: var(--glow-primary) !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Sidebar input labels */
+    section[data-testid="stSidebar"] label {
+        color: var(--text-primary) !important;
+        font-weight: 500 !important;
+        font-size: 0.95rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Sidebar widgets */
+    section[data-testid="stSidebar"] .stTextInput input,
+    section[data-testid="stSidebar"] .stNumberInput input,
+    section[data-testid="stSidebar"] .stTextArea textarea {
+        background-color: rgba(0, 0, 0, 0.4) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid rgba(255, 191, 0, 0.3) !important;
+        border-radius: var(--border-radius-md) !important;
+        transition: all 0.3s ease;
+    }
+    
+    section[data-testid="stSidebar"] .stTextInput input:focus,
+    section[data-testid="stSidebar"] .stNumberInput input:focus,
+    section[data-testid="stSidebar"] .stTextArea textarea:focus {
+        border-color: var(--glow-primary) !important;
+        box-shadow: 0 0 15px rgba(255, 191, 0, 0.4) !important;
+        background-color: rgba(0, 0, 0, 0.5) !important;
+    }
+    
+    /* Sidebar selectbox */
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+        background-color: rgba(0, 0, 0, 0.4) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid rgba(255, 191, 0, 0.3) !important;
+        border-radius: var(--border-radius-md) !important;
+    }
+    
+    section[data-testid="stSidebar"] [data-baseweb="select"] svg {
+        fill: var(--glow-primary) !important;
+    }
+    
+    /* Sidebar slider */
+    section[data-testid="stSidebar"] [data-baseweb="slider"] div[role="slider"] {
+        background-color: var(--glow-primary) !important;
+        box-shadow: 0 0 15px var(--glow-primary);
+        border: none !important;
+    }
+    
+    section[data-testid="stSidebar"] [data-baseweb="slider"] > div:first-of-type {
+        background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary));
+    }
+    
+    section[data-testid="stSidebar"] [data-baseweb="slider"] [data-testid="stTickBar"] > div {
+        color: var(--text-secondary) !important;
+    }
+    
+    /* Sidebar buttons */
+    section[data-testid="stSidebar"] .stButton > button {
+        background: linear-gradient(135deg, rgba(220, 38, 38, 0.8), rgba(185, 28, 28, 0.9));
+        color: var(--text-primary) !important;
+        border: 1px solid rgba(220, 38, 38, 0.5);
+        border-radius: var(--border-radius-md);
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        font-size: 1rem;
+        transition: all var(--animation-speed) ease;
+        box-shadow: 0 4px 15px rgba(220, 38, 38, 0.3);
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: linear-gradient(135deg, rgba(220, 38, 38, 1), rgba(185, 28, 28, 1));
+        box-shadow: 0 0 25px rgba(220, 38, 38, 0.6);
+        transform: scale(1.03);
+        border-color: rgba(220, 38, 38, 0.8);
+    }
+    
+    /* Sidebar divider */
+    section[data-testid="stSidebar"] hr {
+        border: none;
+        border-top: 1px solid var(--border-color);
+        margin: 1.5rem 0;
+        opacity: 0.5;
+    }
+    
+    /* ============================================
+       END SIDEBAR STYLING
+       ============================================ */
+    
     .glass-container { 
         background: var(--glass-bg); 
         backdrop-filter: blur(20px); 
@@ -117,22 +299,6 @@ def load_css():
         font-weight: 500 !important;
     }
     
-    /* Sidebar Styles */
-    .st-emotion-cache-16txtl3 { padding: 2rem 1rem; }
-    .user-info { margin-bottom: 1rem; }
-    .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); font-weight: 600; }
-    .user-info p { color: var(--text-secondary); word-wrap: break-word; font-size: 0.95rem; }
-    .sidebar-section { margin-top: 1.5rem; }
-    .sidebar-section h3 { margin-bottom: 1rem; color: var(--text-primary); font-weight: 600; }
-    .info-box { 
-        background: var(--widget-bg); 
-        padding: 1rem; 
-        border-radius: var(--border-radius-md); 
-        margin-top: 1rem; 
-        border: 1px solid var(--border-color); 
-    }
-    .info-box p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.6; }
-
     /* Themed Widgets */
     .stTextInput input, .stNumberInput input, .stTextArea textarea { 
         background-color: var(--widget-bg) !important; 
