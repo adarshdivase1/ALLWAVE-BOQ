@@ -7,139 +7,147 @@ def find_header_row(file_path, keywords, max_rows=20):
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             for i, line in enumerate(f):
-                if i >= max_rows:
-                    break
+                if i >= max_rows: break
                 if sum(keyword.lower() in line.lower() for keyword in keywords) >= 2:
                     return i
-    except Exception as e:
-        print(f"  -> Could not read file {file_path} with utf-8, trying latin1. Error: {e}")
+    except Exception:
+        # Fallback to latin1 if utf-8 fails
         with open(file_path, 'r', encoding='latin1', errors='ignore') as f:
             for i, line in enumerate(f):
-                if i >= max_rows:
-                    break
+                if i >= max_rows: break
                 if sum(keyword.lower() in line.lower() for keyword in keywords) >= 2:
                     return i
     return 0
 
-def clean_brand_name(filename):
-    """Extracts a clean brand name from the filename."""
-    base_name = re.sub(r'Master List 2\.0.*-|\.csv', '', filename).strip()
-    # Handle multi-brand files by taking the first one
-    return base_name.split('&')[0].split(' and ')[0].strip()
-
-def categorize_product(description):
-    """Analyzes the description to determine category."""
-    description_lower = str(description).lower()
+# --- UPGRADED: HIERARCHICAL CATEGORIZATION LOGIC ---
+def categorize_product_intelligently(description, model):
+    """
+    Analyzes product info using an ordered, hierarchical system to assign a precise sub-category.
+    The order of this list is CRITICAL. More specific rules must come before general ones.
+    """
+    text_to_search = (str(description) + ' ' + str(model)).lower()
     
-    category_keywords = {
-        'Displays': ['display', 'screen', 'monitor', 'touch', 'led wall', 'projector', 'interactive'],
-        'Audio': ['audio', 'microphone', 'speaker', 'sound', 'headset', 'mixer', 'amplifier'],
-        'Video Conferencing': ['camera', 'ptz', 'video bar', 'conferencing', 'codec'],
-        'Control': ['control', 'processor', 'switch', 'matrix', 'touch panel', 'controller'],
-        'Mounts': ['mount', 'wall mount', 'trolley', 'stand', 'bracket', 'rack'],
-        'Cables': ['cable', 'adapter', 'extender', 'hdmi', 'connector'],
-        'Infrastructure': ['ups', 'pdu', 'infrastructure']
-    }
+    # Ordered rules: (Category, [keywords])
+    category_rules = [
+        # Control Sub-categories (Specific to General)
+        ('Control-Scheduler', ['scheduler']),
+        ('Control-InRoom', ['touch panel', 'touch screen', 'tsw-', 'ts-']),
+        ('Control-Processor', ['control processor', 'dmps']),
+        ('Control-Matrix', ['matrix', 'switcher']),
+        
+        # Mounts Sub-categories
+        ('Mounts-Camera', ['camera mount', 'cam-mount']),
+        ('Mounts-Display', ['wall mount', 'display mount', 'flat panel', 'fusion']),
+        ('Mounts-Rack', ['rack', 'enclosure', 'credenza']),
+        
+        # Video Conferencing Sub-categories
+        ('VC-Camera', ['camera', 'ptz', 'e-ptz', 'webcam', 'eagleeye']),
+        ('VC-Codec', ['codec', 'g7500']),
+        ('VC-VideoBar', ['video bar', 'soundbar', 'studi x', 'rally bar']),
+        
+        # Audio Sub-categories
+        ('Audio-DSP', ['dsp', 'digital signal processor', 'tesira', 'q-sys core']),
+        ('Audio-Microphone', ['microphone', 'mic', 'mxa9', 'ceiling mic']),
+        ('Audio-Amplifier', ['amplifier', 'amp']),
+        ('Audio-Speaker', ['speaker', 'soundbar', 'ceiling speaker']),
 
-    for cat, keywords in category_keywords.items():
-        if any(keyword in description_lower for keyword in keywords):
-            return cat
+        # General Categories
+        ('Displays', ['display', 'screen', 'monitor', 'interactive', 'projector']),
+        ('Cables', ['cable', 'adapter', 'extender', 'hdmi', 'connector']),
+        ('Infrastructure', ['ups', 'pdu', 'power', 'switch']),
+    ]
+
+    for category, keywords in category_rules:
+        if any(keyword in text_to_search for keyword in keywords):
+            return category
             
-    return 'General'
+    return 'General' # Fallback for anything that doesn't match
+
+# --- UPGRADED: BRAND DETECTION LOGIC ---
+def get_brand(row, filename_brand, columns):
+    """Prioritizes finding a 'Brand' or 'Make' column over the filename."""
+    brand_col = next((col for col in columns if str(col).lower() in ['brand', 'make']), None)
+    if brand_col and pd.notna(row[brand_col]):
+        return str(row[brand_col]).strip()
+    return filename_brand # Fallback to the brand derived from the filename
+
+def clean_filename_brand(filename):
+    """Extracts a clean brand name from the filename."""
+    base_name = re.sub(r'Master List 2\.0.*-|\.csv', '', filename, flags=re.IGNORECASE).strip()
+    return base_name.split('&')[0].split(' and ')[0].strip()
 
 # --- Main Script ---
 new_data_folder = 'data'
-existing_master_file = 'master_product_catalog.csv'
 output_filename = 'master_product_catalog.csv'
-all_new_products = []
+all_products = []
 header_keywords = ['description', 'model', 'part', 'price', 'sku', 'item']
 
-if os.path.exists(existing_master_file):
-    print(f"Reading existing data from {existing_master_file}...")
-    try:
-        existing_df = pd.read_csv(existing_master_file)
-        print(f"  -> Found {len(existing_df)} existing products in catalog")
-    except Exception as e:
-        print(f"  -> Warning: Could not read existing master file. Starting fresh. Error: {e}")
-        existing_df = pd.DataFrame()
-else:
-    print(f"No existing {existing_master_file} found. Starting with a blank slate.")
-    existing_df = pd.DataFrame()
-
 if not os.path.exists(new_data_folder):
-    print(f"Error: The '{new_data_folder}' directory was not found. Please create it and add your new CSV files.")
+    print(f"Error: The '{new_data_folder}' directory was not found.")
     exit()
 
 csv_files = [f for f in os.listdir(new_data_folder) if f.endswith('.csv')]
-print(f"Found {len(csv_files)} new CSV files to process in the '{new_data_folder}' folder...")
+print(f"Found {len(csv_files)} CSV files to process in '{new_data_folder}'...")
 
 for filename in csv_files:
     file_path = os.path.join(new_data_folder, filename)
-    brand = clean_brand_name(filename)
-    print(f"Processing: {filename} (Brand: {brand})")
+    filename_brand = clean_filename_brand(filename)
+    print(f"Processing: {filename} (Default Brand: {filename_brand})")
+    
     try:
         header_row = find_header_row(file_path, header_keywords)
         df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip', dtype=str)
+        df.dropna(how='all', inplace=True) # Drop empty rows
 
-        # --- PRICE LOGIC FIX ---
-        # Prioritize finding the 'USD' column for accurate pricing.
-        model_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['model', 'part', 'sku', 'item no'])), None)
-        desc_col = next((col for col in df.columns if 'desc' in str(col).lower()), None)
-        price_col_usd = next((col for col in df.columns if 'usd' in str(col).lower()), None) # Explicitly look for USD
-
-        # Fallback if no USD column is found
-        if not price_col_usd:
-            price_col_generic = next((col for col in df.columns if any(kw in str(col).lower() for kw in ['price', 'rate'])), None)
-            price_col = price_col_generic
-        else:
-            price_col = price_col_usd
+        # Identify columns dynamically
+        model_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['model', 'part', 'sku', 'item no'])), None)
+        desc_col = next((c for c in df.columns if 'desc' in str(c).lower()), None)
+        price_col_usd = next((c for c in df.columns if 'usd' in str(c).lower()), None)
+        price_col = price_col_usd if price_col_usd else next((c for c in df.columns if any(k in str(c).lower() for k in ['price', 'rate'])), None)
 
         if not model_col or not desc_col:
             print(f"  -> Warning: Could not find 'Model' or 'Description' columns in {filename}. Skipping.")
             continue
 
-        df = df.rename(columns={model_col: 'Model', desc_col: 'Description', price_col: 'Price'})
-        df['Price'] = pd.to_numeric(df['Price'], errors='coerce').fillna(0)
-
+        # --- Process each row ---
         for _, row in df.iterrows():
-            model = str(row.get('Model', '')).strip()
-            desc = str(row.get('Description', '')).strip()
-
+            model = str(row.get(model_col, '')).strip()
             if not model or model.lower() == 'nan':
                 continue
 
-            category = categorize_product(desc)
-            full_name = f"{model} - {desc.splitlines()[0]}" if desc else model
-
-            product_data = {
+            brand = get_brand(row, filename_brand, df.columns)
+            desc = str(row.get(desc_col, '')).strip()
+            price = pd.to_numeric(row.get(price_col, 0), errors='coerce')
+            
+            category = categorize_product_intelligently(desc, model)
+            
+            # Create a more useful, shorter name
+            name = f"{model} - {desc.splitlines()[0]}" if desc else model
+            
+            all_products.append({
                 'category': category,
                 'brand': brand,
-                'name': full_name,
-                'price': row.get('Price', 0.0),
+                'name': name,
+                'price': price if pd.notna(price) else 0.0,
                 'features': desc,
-                'tier': 'Standard',
-                'use_case_tags': '',
-                'compatibility_tags': '',
-                'technical_spec_tags': ''
-            }
-            all_new_products.append(product_data)
+                'image_url': '', # Placeholder for future use
+                'gst_rate': 18 # Default GST rate
+            })
 
     except Exception as e:
         print(f"  -> CRITICAL ERROR processing {filename}: {e}")
 
-if not all_new_products and existing_df.empty:
-    print("\n❌ No existing data and no new products were found. Exiting.")
+if not all_products:
+    print("\n❌ No new products were found. Exiting.")
 else:
-    new_products_df = pd.DataFrame(all_new_products)
-    print(f"  -> Processed {len(all_new_products)} new products from CSV files")
+    new_products_df = pd.DataFrame(all_products)
+    print(f"\nProcessed {len(new_products_df)} total products from all files.")
     
-    combined_df = pd.concat([existing_df, new_products_df], ignore_index=True)
-    
-    if 'name' in combined_df.columns:
-        initial_rows = len(combined_df)
-        combined_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
-        final_rows = len(combined_df)
-        print(f"De-duplication complete. Removed {initial_rows - final_rows} old or duplicate entries.")
+    # De-duplicate based on the 'name' column, keeping the last entry
+    initial_rows = len(new_products_df)
+    new_products_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
+    final_rows = len(new_products_df)
+    print(f"De-duplication complete. Removed {initial_rows - final_rows} duplicate entries.")
 
-    combined_df.to_csv(output_filename, index=False)
-    print(f"\n✅ Success! Updated master catalog with {len(combined_df)} total products.")
+    new_products_df.to_csv(output_filename, index=False)
+    print(f"\n✅ Success! Created new master catalog '{output_filename}' with {len(new_products_df)} unique products.")
