@@ -1,48 +1,68 @@
-# In components/data_handler.py
-
 import streamlit as st
-import pandas as pd
-from pathlib import Path
+import google.generativeai as genai
+import time
+import json
 
-def load_and_validate_data():
-    """
-    Loads the product catalog CSV from the main project directory.
-    Returns a DataFrame and any issues found.
-    """
-    # The name of your data file
-    file_name = "master_product_catalog.csv"
-    
-    # This creates a path to the file in the parent directory (your main repo)
-    # CWD (Current Working Directory) is usually the repo root where you run `streamlit run`
-    file_path = Path(file_name)
-    
-    # --- Data Loading and Validation ---
+
+def setup_gemini():
+    """Configure the Gemini API and return the model."""
     try:
-        # Check 1: Does the file even exist?
-        if not file_path.is_file():
-            st.error(f"FATAL: The product catalog '{file_name}' was not found in the main repository folder.")
-            return None, None, [f"File not found: {file_name}"]
-
-        # Check 2: Try to read the file
-        product_df = pd.read_csv(file_path)
-
-        # Check 3: Is the file empty?
-        if product_df.empty:
-            st.warning("The product catalog file is empty.")
-            return None, None, ["Data file is empty."]
-
-        # --- (Optional) Add more data validation checks here ---
-        # For example, check for essential columns like 'Model', 'Price', etc.
-        required_columns = ['Model Number', 'Description', 'List Price'] # Example columns
-        # if not all(col in product_df.columns for col in required_columns):
-        #     st.error("The product catalog is missing required columns.")
-        #     return None, None, ["Missing required columns."]
-
-        # If all checks pass, return the DataFrame
-        # Returning empty lists for guidelines and data_issues for now
-        return product_df, [], []
-
+        if "GEMINI_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            return model
+        else:
+            st.error("GEMINI_API_KEY not found in Streamlit secrets.")
+            return None
     except Exception as e:
-        # This will catch any other errors during file reading (e.g., corrupted file)
-        st.error(f"An unexpected error occurred while reading the product catalog: {e}")
-        return None, None, [f"File reading error: {str(e)}"]
+        st.error(f"Gemini API configuration failed: {e}")
+        return None
+
+
+def generate_with_retry(model, prompt, max_retries=3):
+    """Generate content with retry logic and error handling."""
+    for attempt in range(max_retries):
+        try:
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            response = model.generate_content(prompt, safety_settings=safety_settings)
+            return response
+        except Exception as e:
+            if attempt == max_retries - 1:
+                st.error(f"AI generation failed after {max_retries} attempts: {e}")
+                raise e
+            time.sleep(2 ** attempt)  # Exponential backoff
+    return None
+
+
+def validate_against_avixa(model, guidelines, boq_items):
+    """Use AI to validate the BOQ against AVIXA standards."""
+    if not guidelines or not boq_items or not model:
+        return []
+
+    prompt = f"""
+    You are an AVIXA Certified Technology Specialist (CTS). Review the following BOQ against the provided AVIXA standards.
+    List any potential non-compliance issues, missing items (like accessibility components), or areas for improvement.
+    If no issues are found, respond with 'No specific compliance issues found.'
+
+    **AVIXA Standards Summary:**
+    {guidelines}
+
+    **Bill of Quantities to Review:**
+    {json.dumps(boq_items, indent=2)}
+
+    **Your Compliance Review:**
+    """
+    try:
+        response = generate_with_retry(model, prompt)
+        if response and response.text:
+            if "no specific compliance issues" in response.text.lower():
+                return []
+            return [line.strip() for line in response.text.split('\n') if line.strip()]
+        return []
+    except Exception as e:
+        return [f"AVIXA compliance check failed: {str(e)}"]
