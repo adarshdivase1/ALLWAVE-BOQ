@@ -537,7 +537,7 @@ def main():
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         create_multi_room_interface()
         
-        with tab2:
+    with tab2:
         st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         create_room_calculator()
