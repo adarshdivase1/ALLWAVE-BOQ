@@ -86,37 +86,127 @@ You MUST select one product for each of the following roles from the provided li
     return prompt
 
 def _build_component_blueprint(equipment_reqs, room_type):
-    """Dynamically builds the list of required components with much stricter rules."""
+    """Dynamically builds the list of required components with strict rules."""
+    
+    display_size = equipment_reqs['displays'].get('size_inches', 65)
     
     blueprint = {
-        'display': {'category': 'Displays', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 1, 'justification': f"Primary {equipment_reqs['displays'].get('size_inches', 65)}\" display for {room_type}", 'rule': f"Select a DISPLAY, not a mount or cable. Must be close to {equipment_reqs['displays'].get('size_inches', 65)}\"."},
-        'display_mount': {'category': 'Mounts', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 8, 'justification': 'Wall mount for the selected display.', 'rule': "Select a WALL MOUNT or DISPLAY MOUNT. DO NOT select a camera mount, shelf, or rack."},
-        'in_room_controller': {'category': 'Control', 'quantity': 1, 'priority': 3, 'justification': 'In-room touch panel to control meetings.', 'rule': "Select a tabletop TOUCH PANEL or CONTROLLER. DO NOT select a 'Scheduler' or 'Processor'."},
-        'table_connectivity': {'category': 'Cables', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input for wired HDMI presentation.', 'rule': "Select a table cubby, retractor, or wall plate with HDMI."},
-        'network_cables': {'category': 'Cables', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for devices.', 'rule': "Select a standard pack of CAT6 patch cables."},
+        'display': {
+            'category': 'Displays', 
+            'quantity': equipment_reqs['displays'].get('quantity', 1), 
+            'priority': 1, 
+            'justification': f"Primary {display_size}\" 4K display for presentations", 
+            'rule': f"Select a {display_size}\" DISPLAY, MONITOR, or TV. Must be an actual screen, not a mount or cable."
+        },
+        'display_mount': {
+            'category': 'Mounts', 
+            'quantity': equipment_reqs['displays'].get('quantity', 1), 
+            'priority': 8, 
+            'justification': 'Wall mount bracket for the display', 
+            'rule': "Select a wall MOUNT or BRACKET for displays. DO NOT select a camera mount, shelf, or rack."
+        },
+        'in_room_controller': {
+            'category': 'Control', 
+            'quantity': 1, 
+            'priority': 3, 
+            'justification': 'Touch panel for room control', 
+            'rule': "Select a TOUCH PANEL or tabletop CONTROLLER. DO NOT select a scheduler, processor, or switch."
+        },
+        'table_connectivity': {
+            'category': 'Cables', 
+            'quantity': 1, 
+            'priority': 9, 
+            'justification': 'HDMI cable or connectivity box for presentations', 
+            'rule': "Select an HDMI cable, table box, or connectivity solution. Must include HDMI."
+        },
+        'network_cables': {
+            'category': 'Cables', 
+            'quantity': 3, 
+            'priority': 10, 
+            'justification': 'CAT6 network cables for device connectivity', 
+            'rule': "Select CAT6 or Ethernet patch cables. Must be network cables."
+        },
     }
 
+    # Video system
     if equipment_reqs['video_system']['type'] == 'All-in-one Video Bar':
-        blueprint['video_bar'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar with camera, mics, and speakers.', 'rule': "Select a VIDEO BAR like Poly Studio or Logitech Rally Bar. DO NOT select a standalone camera or codec."}
+        blueprint['video_bar'] = {
+            'category': 'Video Conferencing', 
+            'quantity': 1, 
+            'priority': 2, 
+            'justification': 'All-in-one video conferencing system with camera, mics, and speakers', 
+            'rule': "Select a VIDEO BAR like Poly Studio, Logitech Rally Bar, or similar. Must be an all-in-one unit, not a standalone camera or codec."
+        }
     elif equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
-        blueprint['video_codec'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Core video codec.', 'rule': "Select a video CODEC like Poly G7500 or Cisco Codec. DO NOT select a camera."}
-        blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2.1, 'justification': 'PTZ camera for the main video feed.', 'rule': "Select a PTZ CAMERA. DO NOT select a shelf, mount, or cable."}
+        blueprint['video_codec'] = {
+            'category': 'Video Conferencing', 
+            'quantity': 1, 
+            'priority': 2, 
+            'justification': 'Video conferencing codec', 
+            'rule': "Select a CODEC like Poly G7500, Cisco Codec, or similar. DO NOT select a camera or video bar."
+        }
+        blueprint['ptz_camera'] = {
+            'category': 'Video Conferencing', 
+            'quantity': 1, 
+            'priority': 2.1, 
+            'justification': 'PTZ camera for video feed', 
+            'rule': "Select a PTZ CAMERA. Must be a camera device, not a mount, shelf, or cable."
+        }
 
-    if equipment_reqs['audio_system']['dsp_required']:
-        blueprint['dsp'] = {'category': 'Audio', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for audio.', 'rule': "Select a DSP like a Q-SYS Core or Biamp Tesira. DO NOT select a simple amplifier."}
-        blueprint['microphones'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones to cover seating.', 'rule': "Select a MICROPHONE (ceiling or table). DO NOT select a cable or accessory."}
-        blueprint['speakers'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for room audio.', 'rule': "Select ceiling or wall SPEAKERS. DO NOT select a cable or accessory."}
-        blueprint['amplifier'] = {'category': 'Audio', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier to power passive speakers.', 'rule': "Select a power AMPLIFIER. DO NOT select a summing amp or audio accessory."}
+    # Audio system
+    if equipment_reqs['audio_system'].get('dsp_required'):
+        blueprint['dsp'] = {
+            'category': 'Audio', 
+            'quantity': 1, 
+            'priority': 4, 
+            'justification': 'Digital Signal Processor for audio mixing', 
+            'rule': "Select a DSP like Q-SYS Core, Biamp Tesira, or Crestron processor. DO NOT select a simple amplifier or summing device."
+        }
+        blueprint['microphones'] = {
+            'category': 'Audio', 
+            'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 
+            'priority': 5, 
+            'justification': 'Ceiling or table microphones for voice pickup', 
+            'rule': "Select MICROPHONES (ceiling or table). Must be actual microphones, not cables or accessories."
+        }
+        blueprint['speakers'] = {
+            'category': 'Audio', 
+            'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 
+            'priority': 6, 
+            'justification': 'Ceiling or wall speakers for room audio', 
+            'rule': "Select ceiling or wall SPEAKERS. Must be speakers, not cables or accessories."
+        }
+        blueprint['amplifier'] = {
+            'category': 'Audio', 
+            'quantity': 1, 
+            'priority': 7, 
+            'justification': 'Power amplifier for speakers', 
+            'rule': "Select a power AMPLIFIER. Must be an amplifier, not a summing amp or audio accessory."
+        }
 
+    # Infrastructure
     if equipment_reqs['housing']['type'] == 'AV Rack':
-        blueprint['av_rack'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack to house components.', 'rule': "Select a floor-standing AV RACK or enclosure. DO NOT select a shelf or adapter plate."}
+        blueprint['av_rack'] = {
+            'category': 'Infrastructure', 
+            'quantity': 1, 
+            'priority': 12, 
+            'justification': 'Equipment rack for housing AV components', 
+            'rule': "Select a floor-standing AV RACK or enclosure (12U-42U). DO NOT select a shelf, plate, or adapter."
+        }
+    
     if equipment_reqs['power_management']['type'] == 'Rackmount PDU':
-        blueprint['pdu'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit for the rack.', 'rule': "Select a rack-mounted PDU."}
+        blueprint['pdu'] = {
+            'category': 'Infrastructure', 
+            'quantity': 1, 
+            'priority': 11, 
+            'justification': 'Rack-mounted power distribution unit', 
+            'rule': "Select a rack-mounted PDU with multiple outlets."
+        }
 
     return blueprint
 
 def _get_fallback_product(category, product_df, comp_spec):
-    """Get best fallback product, now with keyword filtering based on the component's rule."""
+    """Get best fallback product with strict keyword filtering."""
     matching = product_df[product_df['category'] == category]
     if matching.empty:
         st.error(f"CRITICAL: No products in catalog for category '{category}'!")
@@ -124,40 +214,75 @@ def _get_fallback_product(category, product_df, comp_spec):
 
     rule = comp_spec.get('rule', '').lower()
     
-    # Extract positive keywords (e.g., "wall mount", "touch panel")
-    positive_keywords = re.findall(r'select a(?:n)? ([\w\s]+?)(?:\.|\sdo not)', rule)
-    
-    # Extract negative keywords (e.g., "scheduler", "camera mount")
-    negative_keywords = re.findall(r'do not select a(?:n)? ([\w\s]+?)(?:\.|$)', rule)
-    
-    # Apply filters
-    if positive_keywords:
-        # Require all words from the first positive match to be present
-        for term in positive_keywords[0].strip().split():
-            matching = matching[matching['name'].str.contains(term, case=False, na=False)]
-    
-    if negative_keywords:
-        # Exclude any products matching any word from the negative list
-        for term in negative_keywords[0].strip().split():
-            matching = matching[~matching['name'].str.contains(term, case=False, na=False)]
-
-    if matching.empty:
-        st.warning(f"Fallback for '{category}' with rule '{rule}' found no matches after filtering. Using best guess from original category.")
-        # Revert to unfiltered list if filtering yields nothing
-        matching = product_df[product_df['category'] == category]
-        if matching.empty: return None
-
-    # For displays, find the closest size
-    if 'display' in category.lower():
+    # For displays: strict size matching
+    if category == 'Displays':
         size_match = re.search(r'(\d+)"', rule)
         if size_match:
             target_size = int(size_match.group(1))
-            # Extract size from product name, calculate difference, and sort
-            matching['size_diff'] = matching['name'].str.extract(r'(\d+)"?').astype(float).subtract(target_size).abs()
-            return matching.sort_values('size_diff').iloc[0].to_dict()
+            # Only get actual displays (not accessories)
+            matching = matching[matching['name'].str.contains('Display|Monitor|Screen|TV', case=False, na=False)]
+            # Find closest size
+            matching['size_num'] = matching['name'].str.extract(r'(\d+)"?')[0].astype(float)
+            matching['size_diff'] = abs(matching['size_num'] - target_size)
+            matching = matching.sort_values('size_diff')
+            if not matching.empty:
+                return matching.iloc[0].to_dict()
+    
+    # For mounts: ensure it's actually a mount
+    elif category == 'Mounts':
+        matching = matching[matching['name'].str.contains('Mount|Bracket', case=False, na=False)]
+        matching = matching[~matching['name'].str.contains('Camera|Shelf|Adapter', case=False, na=False)]
+    
+    # For control: ensure it's a touch panel
+    elif category == 'Control':
+        if 'touch panel' in rule or 'controller' in rule:
+            matching = matching[matching['name'].str.contains('Touch|Panel|Controller', case=False, na=False)]
+            matching = matching[~matching['name'].str.contains('Scheduler|Processor|Switch', case=False, na=False)]
+    
+    # For Video Conferencing: distinguish bars from cameras/codecs
+    elif category == 'Video Conferencing':
+        if 'video bar' in rule:
+            matching = matching[matching['name'].str.contains('Bar|Rally Bar|Studio', case=False, na=False)]
+        elif 'codec' in rule:
+            matching = matching[matching['name'].str.contains('Codec|RoomMate', case=False, na=False)]
+            matching = matching[~matching['name'].str.contains('Camera|Bar', case=False, na=False)]
+        elif 'camera' in rule or 'ptz' in rule:
+            matching = matching[matching['name'].str.contains('Camera|PTZ', case=False, na=False)]
+    
+    # For Audio: be specific
+    elif category == 'Audio':
+        if 'microphone' in rule:
+            matching = matching[matching['name'].str.contains('Mic|Microphone', case=False, na=False)]
+        elif 'speaker' in rule:
+            matching = matching[matching['name'].str.contains('Speaker|Loudspeaker', case=False, na=False)]
+        elif 'dsp' in rule:
+            matching = matching[matching['name'].str.contains('DSP|Core|Tesira|Q-SYS', case=False, na=False)]
+        elif 'amplifier' in rule:
+            matching = matching[matching['name'].str.contains('Amplifier|Amp', case=False, na=False)]
+            matching = matching[~matching['name'].str.contains('Summing|Pre', case=False, na=False)]
+    
+    # For Cables: ensure it's the right type
+    elif category == 'Cables':
+        if 'hdmi' in rule:
+            matching = matching[matching['name'].str.contains('HDMI', case=False, na=False)]
+        elif 'network' in rule or 'cat6' in rule:
+            matching = matching[matching['name'].str.contains('CAT6|Network|Ethernet', case=False, na=False)]
+    
+    # For Infrastructure
+    elif category == 'Infrastructure':
+        if 'rack' in rule:
+            matching = matching[matching['name'].str.contains('Rack|Enclosure', case=False, na=False)]
+            matching = matching[~matching['name'].str.contains('Shelf|Plate|Panel', case=False, na=False)]
+        elif 'pdu' in rule:
+            matching = matching[matching['name'].str.contains('PDU|Power', case=False, na=False)]
 
-    # Default: return the median-priced item from the filtered list
-    return matching.sort_values('price').iloc[len(matching)//2].to_dict()
+    if matching.empty:
+        st.warning(f"No products found for {category} with rule: {rule}")
+        return None
+
+    # Return median-priced item
+    matching = matching.sort_values('price')
+    return matching.iloc[len(matching)//2].to_dict()
 
 def _strict_product_match(product_name, product_df, category):
     if product_df is None or len(product_df) == 0: return None
