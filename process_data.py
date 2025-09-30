@@ -30,14 +30,41 @@ def get_brand(row, filename_brand, columns):
         return str(row[brand_col]).strip()
     return filename_brand
 
+def extract_engineering_data(description):
+    """Uses regular expressions to find engineering specs in text."""
+    text = str(description).lower()
+    data = {
+        'rack_units': 0,
+        'power_draw_watts': 0,
+        'hdmi_in': 0,
+        'hdmi_out': 0
+    }
+    
+    # Rack Units (e.g., "1U", "2 RU")
+    ru_match = re.search(r'(\d+)\s?ru', text) or re.search(r'(\d+)u rack', text)
+    if ru_match:
+        data['rack_units'] = int(ru_match.group(1))
+
+    # Power Draw (e.g., "75W", "150 Watts")
+    watt_match = re.search(r'(\d+)\s?w', text)
+    if watt_match:
+        data['power_draw_watts'] = int(watt_match.group(1))
+
+    # HDMI Ports (e.g., "4x HDMI In", "2 HDMI outputs")
+    hdmi_in_match = re.search(r'(\d+)\s?x\s?hdmi\s?(in|input)', text)
+    if hdmi_in_match:
+        data['hdmi_in'] = int(hdmi_in_match.group(1))
+
+    hdmi_out_match = re.search(r'(\d+)\s?x\s?hdmi\s?(out|output)', text)
+    if hdmi_out_match:
+        data['hdmi_out'] = int(hdmi_out_match.group(1))
+
+    return data
+
 def categorize_and_tag_product(description, model):
-    """
-    Analyzes product info to assign a precise sub-category and generate useful metadata tags.
-    The order of this list is CRITICAL. More specific rules must come before general ones.
-    """
+    """Analyzes product info to assign a precise sub-category and generate useful metadata tags."""
     text_to_search = (str(description) + ' ' + str(model)).lower()
     
-    # --- Part 1: Categorization (Order is Critical) ---
     category_rules = [
         ('Control-Scheduler', ['scheduler']),
         ('Control-InRoom', ['touch panel', 'touch screen', 'tsw-', 'ts-', ' tap']),
@@ -63,7 +90,6 @@ def categorize_and_tag_product(description, model):
             category = cat
             break
 
-    # --- Part 2: Tag Generation ---
     tag_rules = {
         'feature': [('wireless_presentation', ['wireless', 'clickshare', 'airtame', 'solstice']), ('interactive', ['interactive', 'touch', 'flip']), ('4k', ['4k', 'uhd'])],
         'tech_spec': [('dante', ['dante']), ('usb_c', ['usb-c']), ('poe', ['poe', 'power over ethernet'])],
@@ -76,11 +102,7 @@ def categorize_and_tag_product(description, model):
             if any(keyword in text_to_search for keyword in keywords):
                 tags[tag_type].add(tag)
 
-    feature_tags = ','.join(sorted(list(tags['feature'])))
-    tech_spec_tags = ','.join(sorted(list(tags['tech_spec'])))
-    compatibility_tags = ','.join(sorted(list(tags['compatibility'])))
-
-    return category, feature_tags, tech_spec_tags, compatibility_tags
+    return category, ','.join(sorted(tags['feature'])), ','.join(sorted(tags['tech_spec'])), ','.join(sorted(tags['compatibility']))
 
 # --- Main Script ---
 new_data_folder = 'data'
@@ -123,12 +145,11 @@ for filename in csv_files:
             desc = str(row.get(desc_col, '')).strip()
             price = pd.to_numeric(row.get(price_col, 0), errors='coerce')
             
-            # Call the new, smarter function to get category and tags
             category, feature_tags, tech_spec_tags, compatibility_tags = categorize_and_tag_product(desc, model)
+            eng_data = extract_engineering_data(desc)
             
             name = f"{model} - {desc.splitlines()[0]}" if desc else model
             
-            # Append the full product data, including new tags
             all_products.append({
                 'category': category,
                 'brand': brand,
@@ -138,6 +159,10 @@ for filename in csv_files:
                 'feature_tags': feature_tags,
                 'tech_spec_tags': tech_spec_tags,
                 'compatibility_tags': compatibility_tags,
+                'rack_units': eng_data['rack_units'],
+                'power_draw_watts': eng_data['power_draw_watts'],
+                'hdmi_in': eng_data['hdmi_in'],
+                'hdmi_out': eng_data['hdmi_out'],
                 'image_url': '',
                 'gst_rate': 18
             })
