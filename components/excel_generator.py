@@ -35,17 +35,25 @@ def _add_image_to_cell(sheet, image_path, cell, height_px):
         sheet[cell] = f"Logo missing: {image_path}"
 
 def _create_sheet_header(sheet):
-    """Creates the standard header with four logos."""
-    sheet.row_dimensions[1].height = 75
+    """Creates the standard header with four logos contained within merged cells."""
+    # Set the height for the two rows that will form the header area
+    sheet.row_dimensions[1].height = 50
+    sheet.row_dimensions[2].height = 50
 
-    # Place logos in their respective positions
-    _add_image_to_cell(sheet, 'assets/company_logo.png', 'A1', 90)
-    _add_image_to_cell(sheet, 'assets/crestron_logo.png', 'C1', 90)
-    _add_image_to_cell(sheet, 'assets/iso_logo.png', 'M1', 90)
-    _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'O1', 90)
+    # Merge cells on the left to create containers for the first two logos
+    sheet.merge_cells('A1:C2')
+    sheet.merge_cells('D1:F2')
 
-# --- Sheet Generation Functions ---
+    # Merge cells on the right for the other two logos
+    sheet.merge_cells('M1:N2')
+    sheet.merge_cells('O1:P2')
 
+    # Place each logo in the top-left corner of its merged container
+    _add_image_to_cell(sheet, 'assets/company_logo.png', 'A1', 95)
+    _add_image_to_cell(sheet, 'assets/crestron_logo.png', 'D1', 95)
+    _add_image_to_cell(sheet, 'assets/iso_logo.png', 'M1', 95)
+    _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'O1', 95)
+    
 def _add_version_control_sheet(workbook, project_details, styles):
     """Creates the Version Control & Contact Details sheet."""
     sheet = workbook.create_sheet(title="Version Control", index=0)
