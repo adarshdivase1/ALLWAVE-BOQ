@@ -103,6 +103,11 @@ def load_and_validate_data():
             df['image_url'] = ''
         if 'gst_rate' not in df.columns:
             df['gst_rate'] = 18
+        if 'feature_tags' not in df.columns:
+            df['feature_tags'] = ''
+        if 'compatibility_tags' not in df.columns:
+            df['compatibility_tags'] = ''
+
 
         try:
             with open("avixa_guidelines.md", "r") as f:
