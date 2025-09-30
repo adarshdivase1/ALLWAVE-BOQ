@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 
 # --- Component Imports ---
+# Make sure your component files are in a 'components' directory.
 try:
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
@@ -22,7 +23,7 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS (with Fully Themed Sidebar) ---
+# --- "Solar Flare" Theme CSS ---
 def load_css():
     st.markdown("""
     <style>
@@ -32,8 +33,8 @@ def load_css():
         --bg-dark: #111827;
         --glass-bg: rgba(17, 24, 39, 0.7);
         --widget-bg: rgba(0, 0, 0, 0.25);
-        --glow-primary: #FFBF00;
-        --glow-secondary: #00BFFF;
+        --glow-primary: #FFBF00; /* Solar Gold */
+        --glow-secondary: #00BFFF; /* Holographic Blue */
         --text-primary: #F9FAFB;
         --text-secondary: #9CA3AF;
         --border-color: rgba(255, 255, 255, 0.2);
@@ -42,14 +43,14 @@ def load_css():
         --animation-speed: 0.4s;
     }
 
-    /* --- Keyframe Animations --- */
+    /* Keyframe Animations */
     @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
     @keyframes shine { 0%{left:-100px} 100%{left:120%} }
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
     @keyframes pulse-glow { 0%, 100% { text-shadow: 0 0 15px var(--glow-primary); } 50% { text-shadow: 0 0 30px var(--glow-primary); } }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     
-    /* --- Global Style --- */
+    /* Global Style */
     .stApp {
         background-color: var(--bg-dark);
         background-image: 
@@ -61,7 +62,7 @@ def load_css():
         color: var(--text-primary);
     }
     
-    /* --- Glassmorphism Containers & Corner Brackets --- */
+    /* Glassmorphism Containers & Corner Brackets */
     .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
     .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
     .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
@@ -70,38 +71,22 @@ def load_css():
     .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
     .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
 
-    /* --- FULLY THEMED WIDGETS (SIDEBAR & MAIN) --- */
-    /* Inputs: Text, Number, Text Area */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea {
-        background-color: var(--widget-bg) !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: var(--border-radius-md) !important;
-        transition: all 0.3s ease;
-    }
-    /* Selectbox Dropdown */
-    [data-baseweb="select"] > div {
-        background-color: var(--widget-bg) !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: var(--border-radius-md) !important;
-    }
+    /* Themed Widgets (Sidebar & Main) */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
+    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
     [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
-    /* Slider */
     [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
     [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
-    /* Glow on Focus for all Widgets */
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] {
-        border-color: var(--glow-primary) !important;
-        box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important;
-    }
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
     
-    /* --- Other Styles --- */
+    /* Login Page Boot-Up Sequence */
     .login-element { animation: fadeInUp 0.8s ease-out both; }
     .login-logo { animation-delay: 0.2s; animation-name: fadeInUp, pulse-glow; animation-duration: 0.8s, 2s; animation-iteration-count: 1, infinite; }
     .login-title { animation-delay: 0.4s; }
     .login-form > div { animation: fadeInUp 0.8s ease-out both; }
     .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
+    
+    /* Other Styles */
     .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
     .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
     .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
@@ -112,7 +97,7 @@ def load_css():
     </style>
     """, unsafe_allow_html=True)
 
-# Helper functions for loader/messages and the login page remain the same
+# Helper functions for loader/messages and the login page
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
     with placeholder.container():
@@ -152,13 +137,23 @@ def main():
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
-    # Session State Init...
+    # --- Initialize Session State ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    # (other session state initializations)
+    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
+    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
+    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
 
+    # --- Load Data and Setup Model ---
     with st.spinner("Initializing system modules..."):
-        product_df, guidelines, data_issues = (None, None, []) # Placeholder for your data loading
-    # (Error handling for data loading)
+        product_df, guidelines, data_issues = load_and_validate_data()
+    if data_issues:
+        with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
+            for issue in data_issues: st.warning(issue)
+    if product_df is None:
+        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
+    model = setup_gemini()
 
     st.markdown('<div class="glass-container interactive-card has-corners"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
@@ -174,33 +169,77 @@ def main():
         st.markdown("---")
         st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
         st.selectbox("Currency", ["INR", "USD"], key="currency_select")
-        st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50, key="gst_hardware")
-        st.number_input("Services GST (%)", value=18, min_value=0, max_value=50, key="gst_services")
+        st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
+        st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
         st.markdown("---")
         st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
-        st.selectbox("Primary Space Type", ["Small Conference Room", "Medium Boardroom", "Large Auditorium"], key="room_type_select") # Example list
+        room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
         st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+        if room_type_key in ROOM_SPECS:
+            spec = ROOM_SPECS[room_type_key]
+            st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Main Content Tabs
+    # --- Main Content Tabs ---
     tab_titles = ["Project Scope", "Room Analysis", "Requirements", "Generate BOQ", "3D Visualization"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs([f"**{title}**" for title in tab_titles])
 
-    def render_tab_content(tab_function, *args):
+    with tab1:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        tab_function(*args)
+        create_multi_room_interface()
         st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Placeholder functions for your actual tab content
-    def placeholder_content(title):
-        st.header(title)
-        st.write("This is a placeholder for the tab's content.")
-
-    with tab1: render_tab_content(placeholder_content, "Project Scope Content")
-    with tab2: render_tab_content(placeholder_content, "Room Analysis Content")
-    with tab3: render_tab_content(placeholder_content, "Requirements Content")
-    with tab4: render_tab_content(placeholder_content, "BOQ Generation Content")
-    with tab5: render_tab_content(placeholder_content, "3D Visualization Content")
+    with tab2:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        create_room_calculator()
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab3:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        technical_reqs = {}
+        st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
+        technical_reqs.update(create_advanced_requirements())
+        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab4:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
+            if not model:
+                show_error_message("AI Model is not available. Please check API key.")
+            else:
+                progress_bar = st.progress(0, text="Initializing generation pipeline...")
+                try:
+                    progress_bar.progress(10, text="🔄 Step 1: Generating initial design with AI...")
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
+                    if boq_items:
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
+                        processed_boq = _remove_exact_duplicates(boq_items)
+                        processed_boq = _correct_quantities(processed_boq)
+                        processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _validate_and_correct_mounts(processed_boq)
+                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
+                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        st.session_state.boq_items = processed_boq
+                        update_boq_content_with_current_items()
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
+                        st.session_state.validation_results = {"issues": avixa_validation.get('avixa_issues', []), "warnings": avixa_validation.get('avixa_warnings', [])}
+                        progress_bar.progress(100, text="Pipeline complete!")
+                        time.sleep(1); progress_bar.empty()
+                        show_success_message("BOQ generation pipeline completed successfully!")
+                        st.rerun()
+                    else:
+                        progress_bar.empty(); show_error_message("Failed to generate BOQ. The AI and fallback system did not return valid items.")
+                except Exception as e:
+                    progress_bar.empty(); show_error_message(f"An error occurred during BOQ generation: {str(e)}")
+        if st.session_state.get('boq_items'):
+            st.markdown("---"); display_boq_results(product_df)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with tab5:
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        create_3d_visualization()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
