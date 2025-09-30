@@ -61,63 +61,85 @@ def extract_engineering_data(description):
 def categorize_and_tag_product(description, model):
     """
     Analyzes product info to assign a precise sub-category and generate useful metadata tags.
-    The order of rules is critical to ensure specific items are categorized correctly.
     """
     text_to_search = (str(description) + ' ' + str(model)).lower()
 
-    # --- MORE GRANULAR AND ORDERED CATEGORY RULES ---
+    # CRITICAL: Order matters - most specific rules first
     category_rules = [
-        # Most specific categories first
-        ('VC-VideoBar', ['video bar', 'soundbar', 'studio x', 'rally bar']),
-        ('Control-Scheduler', ['scheduler', 'room scheduling']),
-        ('Control-InRoom', ['touch panel', 'touch screen', 'tsw-', 'ts-', ' tap', 'ctp18']),
-        ('Audio-Microphone', ['microphone', 'mic', 'mxa9', 'table mic', 'ceiling mic']),
-        ('Audio-Speaker', ['speaker', 'soundbar', 'ceiling speaker']), # Note: VideoBar rule runs first
-        ('Audio-Amplifier', ['amplifier', ' amp']),
-        ('Audio-DSP', ['dsp', 'digital signal processor', 'tesira', 'q-sys', 'biamp', 'core nano']),
-        ('VC-Camera', ['camera', 'ptz', 'e-ptz', 'webcam', 'eagleeye']),
-        ('VC-Codec', ['codec', 'g7500']),
-        ('Control-Processor', ['control processor', 'dmps', 'cp4']),
-        ('Control-Matrix', ['matrix', 'switcher', 'hd-md', 'dm-md']),
-        ('Mounts-Display', ['wall mount', 'display mount', 'flat panel mount']),
-        ('Mounts-Camera', ['camera mount', 'camera shelf']),
-        ('Mounts-Rack', ['rack', 'enclosure', 'credenza']),
-        ('Displays', ['display', 'screen', 'monitor', 'interactive', 'projector']),
-        ('Cables', ['cable', 'adapter', 'extender', 'hdmi', 'connector', 'retractor']), # Catches accessories
-        ('Infrastructure', ['ups', 'pdu', 'power', 'switch', 'rack shelf', 'adapter plate']), # Catches accessories
+        # Video Conferencing - Most specific first
+        ('Video Conferencing', ['video bar', 'rally bar', 'studio x', 'meetup', 'studio soundbar']),
+        ('Video Conferencing', ['codec', 'g7500', 'roommate', 'sx80']),
+        ('Video Conferencing', ['ptz', 'camera', 'eagleeye', 'webcam'], ['mount', 'shelf', 'bracket']),  # Exclude mounts
+        
+        # Control Systems
+        ('Control', ['touch panel', 'touch screen', 'tsw-', 'ts-', 'tap', 'ctp18'], ['scheduler']),  # Exclude schedulers
+        ('Control', ['control processor', 'dmps', 'cp4', 'mc4']),
+        ('Control', ['matrix', 'switcher', 'hd-md', 'dm-md']),
+        
+        # Audio - Very specific
+        ('Audio', ['microphone', 'mic array', 'mxa9', 'ceiling mic', 'table mic'], ['cable', 'adapter']),
+        ('Audio', ['speaker', 'loudspeaker', 'ceiling speaker'], ['cable', 'mount']),
+        ('Audio', ['amplifier', ' amp ', 'power amp'], ['summing']),
+        ('Audio', ['dsp', 'tesira', 'q-sys core', 'biamp', 'digital signal']),
+        
+        # Displays - Exclude accessories
+        ('Displays', ['display', 'monitor', 'screen', 'interactive', 'flip', 'board'], ['mount', 'cable', 'bracket']),
+        ('Displays', ['projector'], ['mount', 'screen']),
+        
+        # Mounts - Be specific about what they mount
+        ('Mounts', ['display mount', 'wall mount', 'flat panel mount'], ['camera']),
+        ('Mounts', ['camera mount', 'camera shelf']),
+        ('Mounts', ['rack mount', 'rack shelf']),
+        
+        # Cables - Only actual cables
+        ('Cables', ['cable', 'hdmi', 'displayport', 'usb cable', 'cat6', 'patch cord']),
+        
+        # Infrastructure
+        ('Infrastructure', ['rack', 'enclosure', 'cabinet'], ['mount', 'shelf']),
+        ('Infrastructure', ['pdu', 'power distribution']),
+        ('Infrastructure', ['ups', 'uninterruptible power']),
+        ('Infrastructure', ['network switch', 'poe switch']),
     ]
     
-    category = 'General' # Default category
-    for cat, keywords in category_rules:
-        if any(keyword in text_to_search for keyword in keywords):
-            # Exclude accessories from primary categories
-            if cat in ['Audio-Microphone', 'Audio-Speaker'] and 'cable' in text_to_search:
-                continue # Skip this rule if it's just cable
-            if cat == 'VC-Camera' and any(kw in text_to_search for kw in ['mount', 'shelf']):
-                continue # Skip if it's a camera mount/shelf
-            if cat == 'Displays' and any(kw in text_to_search for kw in ['mount', 'cable', 'adapter']):
-                continue # Skip if it's a display accessory
-                
+    category = 'General'
+    for rule in category_rules:
+        cat = rule[0]
+        include_keywords = rule[1]
+        exclude_keywords = rule[2] if len(rule) > 2 else []
+        
+        # Must match at least one include keyword
+        has_include = any(keyword in text_to_search for keyword in include_keywords)
+        # Must NOT match any exclude keyword
+        has_exclude = any(keyword in text_to_search for keyword in exclude_keywords)
+        
+        if has_include and not has_exclude:
             category = cat
-            break # Stop after the first, most specific match
+            break
 
-    # Tagging rules
-    tag_rules = {
-        'feature': [('wireless_presentation', ['wireless', 'clickshare', 'airtame', 'solstice']), ('interactive', ['interactive', 'touch', 'flip']), ('4k', ['4k', 'uhd'])],
-        'tech_spec': [('dante', ['dante']), ('usb_c', ['usb-c']), ('poe', ['poe', 'power over ethernet'])],
-        'compatibility': [('zoom_certified', ['zoom certified', 'zoom room']), ('teams_certified', ['teams certified', 'microsoft teams']), ('poly_ecosystem', ['poly']), ('logitech_ecosystem', ['logitech']), ('crestron_ecosystem', ['crestron'])]
-    }
-    
+    # Feature tagging
     tags = {'feature': set(), 'tech_spec': set(), 'compatibility': set()}
-    for tag_type, rules in tag_rules.items():
-        for tag, keywords in rules:
-            if any(keyword in text_to_search for keyword in keywords):
-                tags[tag_type].add(tag)
+    
+    feature_rules = [
+        ('wireless_presentation', ['wireless', 'clickshare', 'airtame', 'solstice']),
+        ('interactive', ['interactive', 'touch display', 'flip']),
+        ('4k', ['4k', 'uhd', '3840']),
+        ('dante', ['dante']),
+        ('usb_c', ['usb-c', 'usb type-c']),
+        ('poe', ['poe', 'power over ethernet']),
+        ('zoom_certified', ['zoom certified', 'zoom room']),
+        ('teams_certified', ['teams certified', 'microsoft teams']),
+    ]
+    
+    for tag, keywords in feature_rules:
+        if any(keyword in text_to_search for keyword in keywords):
+            if tag in ['wireless_presentation', 'interactive', '4k']:
+                tags['feature'].add(tag)
+            elif tag in ['dante', 'usb_c', 'poe']:
+                tags['tech_spec'].add(tag)
+            else:
+                tags['compatibility'].add(tag)
 
-    # Split the main category from the sub-category for the final output
-    main_category = category.split('-')[0]
-
-    return main_category, ','.join(sorted(tags['feature'])), ','.join(sorted(tags['tech_spec'])), ','.join(sorted(tags['compatibility']))
+    return category, ','.join(sorted(tags['feature'])), ','.join(sorted(tags['tech_spec'])), ','.join(sorted(tags['compatibility']))
 
 # --- Main Script ---
 new_data_folder = 'data'
