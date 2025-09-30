@@ -12,7 +12,7 @@ try:
     from components.boq_generator import (
         generate_boq_from_ai, validate_avixa_compliance,
         _remove_exact_duplicates, _remove_duplicate_core_components,
-        _validate_and_correct_mounts, _ensure_system_completeness,
+        _ensure_system_completeness,
         _flag_hallucinated_models, _correct_quantities
     )
     from components.ui_components import (
