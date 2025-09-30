@@ -90,9 +90,15 @@ def create_multi_room_interface():
     with col3:
         st.write(""); st.write("")
         if st.session_state.project_rooms:
+            # Gathers all project details from the sidebar for the Excel export
             project_details = {
-                'project_name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
-                'client_name': st.session_state.get('client_name_input', 'Valued Client'),
+                'Project Name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
+                'Client Name': st.session_state.get('client_name_input', 'Valued Client'),
+                'Location': st.session_state.get('location_input', ''),
+                'Design Engineer': st.session_state.get('design_engineer_input', ''),
+                'Account Manager': st.session_state.get('account_manager_input', ''),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', ''),
+                'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
             excel_data = generate_company_excel(
@@ -100,7 +106,7 @@ def create_multi_room_interface():
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             if excel_data:
-                filename = f"{project_details['project_name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
                 st.download_button(
                     label="📊 Download Full Project BOQ", data=excel_data, file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -162,7 +168,7 @@ def update_boq_content_with_current_items():
         )
     st.session_state.boq_content = boq_content
 
-def display_boq_results(product_df):
+def display_boq_results(product_df, project_details): # Pass project_details here
     """Display BOQ results with interactive editing capabilities."""
     boq_content = st.session_state.get('boq_content')
     validation_results = st.session_state.get('validation_results', {})
@@ -307,8 +313,8 @@ def product_search_interface(product_df, currency):
 
     if search_term:
         mask = product_df.apply(lambda row: search_term.lower() in str(row['name']).lower() or
-                                             search_term.lower() in str(row['brand']).lower() or
-                                             search_term.lower() in str(row['features']).lower(), axis=1)
+                                          search_term.lower() in str(row['brand']).lower() or
+                                          search_term.lower() in str(row['features']).lower(), axis=1)
         search_results = product_df[mask]
         st.write(f"Found {len(search_results)} products:")
 
