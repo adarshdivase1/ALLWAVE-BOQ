@@ -41,14 +41,15 @@ def _create_sheet_header(sheet, styles):
     sheet.row_dimensions[1].height = 65
 
     # Main logo on the left
-    _add_image_to_cell(sheet, 'company_logo.png', 'A1', 60, 120)
+    # NOTE: Ensure 'company_logo.png', etc. are in the same directory as your app script.
+    _add_image_to_cell(sheet, 'assets/company_logo.png', 'A1', 60, 120)
     
     # Crestron logo next to the main logo
-    _add_image_to_cell(sheet, 'crestron_logo.png', 'C1', 55, 100)
+    _add_image_to_cell(sheet, 'assets/crestron_logo.png', 'C1', 55, 100)
 
     # Certification logos on the far right
-    _add_image_to_cell(sheet, 'iso_logo.png', 'N1', 55, 55)
-    _add_image_to_cell(sheet, 'avixa_logo.png', 'O1', 55, 100)
+    _add_image_to_cell(sheet, 'assets/iso_logo.png', 'N1', 55, 55)
+    _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'O1', 55, 100)
 
     # Main title bar below the logos
     sheet.merge_cells('A3:P3')
@@ -84,14 +85,27 @@ def _add_product_image_to_excel(sheet, row_num, image_url, column='P'):
 
 # --- Sheet Population Functions ---
 
-def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, gst_rates):
+def _populate_company_boq_sheet(sheet, items, room_name, project_details, styles, usd_to_inr_rate, gst_rates):
     """Populates a single Excel sheet with detailed BOQ data."""
     _create_sheet_header(sheet, styles)
     
-    # Project Info
-    sheet['C5'] = "Room Name / Room Type"; sheet['E5'] = room_name
-    sheet['C6'] = "Floor"; sheet['C7'] = "Number of Seats"; sheet['C8'] = "Number of Rooms"
-    for cell in ['C5', 'E5', 'C6', 'C7', 'C8']: sheet[cell].font = styles['bold']
+    # Project & Contact Info Section
+    sheet['C5'] = "Project Name"; sheet['E5'] = project_details.get('Project Name', 'N/A')
+    sheet['C6'] = "Client Name"; sheet['E6'] = project_details.get('Client Name', 'N/A')
+    sheet['C7'] = "Location"; sheet['E7'] = project_details.get('Location', 'N/A')
+    sheet['C8'] = "Room Name / Type"; sheet['E8'] = room_name
+
+    sheet['I5'] = "Design Engineer"; sheet['K5'] = project_details.get('Design Engineer', 'N/A')
+    sheet['I6'] = "Account Manager"; sheet['K6'] = project_details.get('Account Manager', 'N/A')
+    sheet['I7'] = "Key Client Personnel"; sheet['K7'] = project_details.get('Key Client Personnel', 'N/A')
+    sheet['I8'] = "Key Comments"; sheet['K8'] = project_details.get('Key Comments', 'N/A')
+
+    # Apply bold style to all labels and values
+    info_cells = ['C5', 'E5', 'C6', 'E6', 'C7', 'E7', 'C8', 'E8', 
+                  'I5', 'K5', 'I6', 'K6', 'I7', 'K7', 'I8', 'K8']
+    for cell_ref in info_cells:
+        sheet[cell_ref].font = styles['bold']
+    sheet['K8'].alignment = Alignment(wrap_text=True) # Wrap comments text
 
     # Table Headers
     headers1 = ['Sr. No.', 'Description of Goods / Services', 'Specifications', 'Make', 'Model No.', 'Qty.', 'Unit Rate (INR)', 'Total', 'SGST\n( In Maharastra)', None, 'CGST\n( In Maharastra)', None, 'Total (TAX)', 'Total Amount (INR)', 'Remarks', 'Reference image']
@@ -331,8 +345,8 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     workbook = openpyxl.Workbook()
     styles = _define_styles()
 
-    project_name = project_details.get('project_name', 'AV Installation Project')
-    client_name = project_details.get('client_name', 'Valued Client')
+    project_name = project_details.get('Project Name', 'AV Installation Project')
+    client_name = project_details.get('Client Name', 'Valued Client')
     gst_rates = project_details.get('gst_rates', {'Electronics': 18, 'Services': 18})
 
     # Add standard sheets first
@@ -347,7 +361,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             safe_room_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:30]
             room_sheet = workbook.create_sheet(title=safe_room_name)
             subtotal, gst, total = _populate_company_boq_sheet(
-                room_sheet, room['boq_items'], room['name'], styles, usd_to_inr_rate, gst_rates
+                room_sheet, room['boq_items'], room['name'], project_details, styles, usd_to_inr_rate, gst_rates
             )
             room['subtotal'], room['gst'], room['total'] = subtotal, gst, total
     
