@@ -15,7 +15,7 @@ except ImportError as e:
     # Define dummy functions to prevent crashes
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
-    def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}, 'control_system': {}, 'housing': {}, 'power_management': {}}
+    def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}, 'control_system': {}}
     def estimate_power_draw(*args): return 100
     ROOM_SPECS = {}
 
@@ -27,35 +27,38 @@ def _perform_engineering_validation(boq_items, product_df):
     warnings = []
     
     # Check 1: Rack Unit (RU) capacity
-    # This assumes your item dictionary contains a 'rack_units' key or can be estimated.
-    rack_items = [item for item in boq_items if item.get('rack_units', 0) > 0 or item['category'] in ['Audio', 'Video Conferencing', 'Infrastructure']]
-    rack_container = next((item for item in boq_items if 'Rack' in item.get('name', '')), None)
+    # Get rackable items by looking for a 'rack_units' column/property in your data
+    # This assumes your product_df has a 'rack_units' column for relevant items.
+    # For this example, we'll estimate based on category.
+    rack_items = []
+    for item in boq_items:
+        # A more robust system would have 'rack_units' in the product data
+        if item['category'] in ['Audio', 'Video Conferencing', 'Infrastructure']:
+            rack_items.append({'name': item['name'], 'rack_units': item.get('rack_units', 1)}) # Default to 1U if not specified
+            
+    rack_container = next((item for item in boq_items if 'Rack' in item.get('name')), None)
     
     if rack_items and rack_container:
-        # Estimate RU for items that don't have it explicitly defined
-        total_ru = sum(item.get('rack_units', 1) for item in rack_items) # Default to 1U if not specified
+        total_ru = sum(item['rack_units'] for item in rack_items)
         rack_size_match = re.search(r'(\d+)U', rack_container['name'])
         if rack_size_match:
             rack_capacity = int(rack_size_match.group(1))
             # Add a buffer for cable management and ventilation
-            if total_ru > rack_capacity:
-                warnings.append(f"🔌 **Engineering Warning (Rack Overflow)**: The estimated **{total_ru}U** of equipment will not fit in the selected **{rack_capacity}U** rack.")
+            if total_ru > rack_capacity * 0.8:
+                warnings.append(f"🔌 Engineering Warning (Rack Overflow): The estimated {total_ru}U of equipment may not fit comfortably in the selected {rack_capacity}U rack, leaving little room for ventilation and cabling.")
 
     # Check 2: Power Draw
+    # This assumes 'power_draw_watts' is a field in your items. We'll use the estimate.
     total_power = sum(item.get('power_draw', 0) for item in boq_items)
     if total_power > 1440: # Assuming 80% load on a standard 15A/120V circuit
-        warnings.append(f"🔌 **Engineering Warning (Power Overload)**: Total system power draw is **{total_power}W**, which may exceed a standard 15A circuit.")
+        warnings.append(f"🔌 Engineering Warning (Power Overload): Total system power draw is {total_power}W, which may exceed a standard 15A circuit.")
             
     return boq_items, warnings
 
 # --- AI Interaction and Parsing ---
 def _parse_ai_product_selection(ai_response_text):
     try:
-        # More robust cleaning to handle markdown code blocks
-        if "```json" in ai_response_text:
-            cleaned = ai_response_text.split("```json")[1].split("```")[0]
-        else:
-             cleaned = ai_response_text.strip().replace("`", "").lstrip("json").strip()
+        cleaned = ai_response_text.strip().replace("`", "").lstrip("json").strip()
         return json.loads(cleaned)
     except Exception as e:
         st.warning(f"Failed to parse AI JSON: {e}. Response was: {ai_response_text[:200]}")
@@ -68,24 +71,24 @@ def _build_comprehensive_boq_prompt(room_type, room_area, avixa_calcs, equipment
 - **Room Type:** {room_type}
 - **Budget Tier:** {budget_tier}
 - **Client Needs:** {features if features else 'Standard functionality for this room type.'}
-- **System Requirements:** {json.dumps(equipment_reqs, indent=2)}
+- **System Requirements:** {equipment_reqs}
 
 # MANDATORY SYSTEM COMPONENTS ({len(required_components)} items)
-You MUST select one product for each of the following roles from the provided product lists.
+You MUST select one product for each of the following roles from the provided lists.
 """
     for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
         prompt += f"\n## {comp_key.replace('_', ' ').upper()} (Category: {comp_spec['category']})\n"
-        prompt += f"   - **Requirement:** {comp_spec['justification']}\n"
-        prompt += f"   - **Rule:** {comp_spec.get('rule', 'Select the best fit.')}\n"
+        prompt += f"    - **Requirement:** {comp_spec['justification']}\n"
+        prompt += f"    - **Rule:** {comp_spec.get('rule', 'Select the best fit.')}\n"
         
         matching_products = product_df[product_df['category'] == comp_spec['category']].head(15)
         if not matching_products.empty:
             for _, prod in matching_products.iterrows():
-                prompt += f"   - {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+                prompt += f"    - {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
         else:
-            prompt += f"   - (No products found in catalog for {comp_spec['category']})\n"
+            prompt += f"    - (No products found in catalog for {comp_spec['category']})\n"
 
-    prompt += "\n# OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT OR COMMENTS)\n"
+    prompt += "\n# OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)\n"
     prompt += "{\n"
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
         comma = "," if i < len(required_components) - 1 else ""
@@ -105,21 +108,21 @@ def _build_component_blueprint(equipment_reqs, room_type):
         'network_cables': {'category': 'Cables', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for IP-enabled devices.', 'rule': "Select a standard pack of CAT6 patch cables."},
     }
 
-    if equipment_reqs.get('video_system', {}).get('type') == 'All-in-one Video Bar':
+    if equipment_reqs['video_system']['type'] == 'All-in-one Video Bar':
         blueprint['video_bar'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar with integrated camera, mics, and speakers.', 'rule': "Select a complete video bar like a Poly Studio or Logitech Rally Bar."}
-    elif equipment_reqs.get('video_system', {}).get('type') == 'Modular Codec + PTZ Camera':
+    elif equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
         blueprint['video_codec'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Core video codec for processing and connectivity.', 'rule': "Select a professional codec like a Poly G7500 or Cisco Codec."}
         blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2.1, 'justification': 'PTZ (Pan-Tilt-Zoom) camera for the main video feed.', 'rule': "Select a PTZ camera like a Poly EagleEye or Logitech Rally Camera."}
 
-    if equipment_reqs.get('audio_system', {}).get('dsp_required'):
+    if equipment_reqs['audio_system']['dsp_required']:
         blueprint['dsp'] = {'category': 'Audio', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for echo cancellation and audio mixing.', 'rule': "Select a DSP like a Q-SYS Core or Biamp Tesira."}
-        blueprint['microphones'] = {'category': 'Audio', 'quantity': equipment_reqs.get('audio_system', {}).get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones to cover the room seating.', 'rule': "Select ceiling or table microphones."}
-        blueprint['speakers'] = {'category': 'Audio', 'quantity': equipment_reqs.get('audio_system', {}).get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for program audio and voice reinforcement.', 'rule': "Select ceiling or wall-mounted speakers."}
+        blueprint['microphones'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones to cover the room seating.', 'rule': "Select ceiling or table microphones."}
+        blueprint['speakers'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for program audio and voice reinforcement.', 'rule': "Select ceiling or wall-mounted speakers."}
         blueprint['amplifier'] = {'category': 'Audio', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier to power the passive speakers.', 'rule': "Select an appropriate power amplifier."}
 
-    if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
+    if equipment_reqs['housing']['type'] == 'AV Rack':
         blueprint['av_rack'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack to house components.', 'rule': "Select a standard AV rack."}
-    if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
+    if equipment_reqs['power_management']['type'] == 'Rackmount PDU':
         blueprint['pdu'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit for the rack.', 'rule': "Select a rack-mounted PDU."}
 
     return blueprint
@@ -142,24 +145,21 @@ def _get_fallback_product(category, product_df, comp_spec):
         filtered = matching[~matching['name'].str.contains("Scheduler", case=False)]
         if not filtered.empty: matching = filtered
     
-    if 'display' in category.lower() and 'size_inches' in equipment_reqs['displays']:
-        target_size = equipment_reqs['displays']['size_inches']
-        # Find closest size
+    if 'display' in category.lower() and 'size_requirement' in comp_spec:
+        target_size = comp_spec['size_requirement']
         matching['size_diff'] = matching['name'].str.extract(r'(\d+)').astype(float).subtract(target_size).abs()
         return matching.sort_values('size_diff').iloc[0].to_dict()
 
-    # Default to a mid-range product instead of the cheapest
     return matching.sort_values('price').iloc[len(matching)//2].to_dict()
 
 def _strict_product_match(product_name, product_df, category):
     if product_df is None or len(product_df) == 0: return None
     filtered_by_cat = product_df[product_df['category'] == category]
-    if filtered_by_cat.empty:
+    if len(filtered_by_cat) == 0:
         filtered_by_cat = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-    search_df = filtered_by_cat if not filtered_by_cat.empty else product_df
+    search_df = filtered_by_cat if len(filtered_by_cat) > 0 else product_df
     exact_match = search_df[search_df['name'].str.lower() == product_name.lower()]
     if not exact_match.empty: return exact_match.iloc[0].to_dict()
-    # Fuzzy match as a backup
     search_terms = product_name.lower().split()[:3]
     for term in search_terms:
         if len(term) > 3:
@@ -168,31 +168,18 @@ def _strict_product_match(product_name, product_df, category):
     return search_df.iloc[0].to_dict() if not search_df.empty else None
 
 def _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs, room_type):
-    boq_items = []
+    boq_items, matched_count = [], 0
     for comp_key, selection in ai_selection.items():
         if comp_key not in required_components: continue
-        comp_spec = required_components[comp_key]
-        category = comp_spec['category']
+        comp_spec, category = required_components[comp_key], required_components[comp_key]['category']
         matched_product = _strict_product_match(selection.get('name', 'N/A'), product_df, category)
-        
         if matched_product:
-            boq_items.append({
-                'category': matched_product['category'], 'name': matched_product['name'], 'brand': matched_product['brand'],
-                'quantity': selection.get('qty', comp_spec['quantity']), 'price': float(matched_product['price']),
-                'justification': comp_spec['justification'], 'specifications': matched_product.get('features', ''),
-                'image_url': matched_product.get('image_url', ''), 'gst_rate': matched_product.get('gst_rate', 18),
-                'matched': True, 'power_draw': estimate_power_draw(matched_product['category'], matched_product['name'])
-            })
+            matched_count += 1
+            boq_items.append({'category': matched_product['category'], 'name': matched_product['name'], 'brand': matched_product['brand'], 'quantity': selection.get('qty', comp_spec['quantity']), 'price': float(matched_product['price']), 'justification': comp_spec['justification'], 'specifications': matched_product.get('features', ''), 'image_url': matched_product.get('image_url', ''), 'gst_rate': matched_product.get('gst_rate', 18), 'matched': True, 'power_draw': estimate_power_draw(matched_product['category'], matched_product['name'])})
         else:
             fallback_product = _get_fallback_product(category, product_df, comp_spec)
             if fallback_product:
-                boq_items.append({
-                    'category': fallback_product['category'], 'name': fallback_product['name'], 'brand': fallback_product['brand'],
-                    'quantity': comp_spec['quantity'], 'price': float(fallback_product['price']),
-                    'justification': comp_spec['justification'] + ' (auto-selected)', 'specifications': fallback_product.get('features', ''),
-                    'image_url': fallback_product.get('image_url', ''), 'gst_rate': fallback_product.get('gst_rate', 18),
-                    'matched': False, 'power_draw': estimate_power_draw(fallback_product['category'], fallback_product['name'])
-                })
+                boq_items.append({'category': fallback_product['category'], 'name': fallback_product['name'], 'brand': fallback_product['brand'], 'quantity': comp_spec['quantity'], 'price': float(fallback_product['price']), 'justification': comp_spec['justification'] + ' (auto-selected)', 'specifications': fallback_product.get('features', ''), 'image_url': fallback_product.get('image_url', ''), 'gst_rate': fallback_product.get('gst_rate', 18), 'matched': False, 'power_draw': estimate_power_draw(fallback_product['category'], fallback_product['name'])})
     if len(boq_items) < len(required_components):
         boq_items = _add_essential_missing_components(boq_items, product_df, required_components)
     return boq_items
@@ -202,55 +189,75 @@ def _remove_exact_duplicates(boq_items):
     seen, unique_items = set(), []
     for item in boq_items:
         if item.get('name') not in seen:
-            seen.add(item.get('name'))
-            unique_items.append(item)
+            seen.add(item.get('name')); unique_items.append(item)
     return unique_items
+
+def _remove_duplicate_core_components(boq_items):
+    final_items, core_categories = [], ['Video Conferencing', 'Control']
+    for item in boq_items:
+        if item.get('category') not in core_categories: final_items.append(item)
+    for category in core_categories:
+        candidates = [item for item in boq_items if item.get('category') == category]
+        if len(candidates) > 1:
+            best_candidate = max(candidates, key=lambda x: x.get('price', 0))
+            final_items.append(best_candidate)
+        elif len(candidates) == 1:
+            final_items.append(candidates[0])
+    return _remove_exact_duplicates(final_items)
+
+def _ensure_system_completeness(boq_items, product_df):
+    has_amplifier = any("Amplifier" in item['name'] for item in boq_items)
+    has_speakers = any("Speaker" in item['name'] for item in boq_items)
+    if has_amplifier and not has_speakers:
+        pass # Logic for adding speakers would go here
+    return boq_items
+
+def _flag_hallucinated_models(boq_items):
+    for item in boq_items:
+        if "Auto-generated" in item.get('specifications', '') or re.search(r'GEN-\d+', item['name']):
+            item['warning'] = "Model is auto-generated and requires verification."
+    return boq_items
 
 def _correct_quantities(boq_items):
     for item in boq_items:
-        try:
-            item['quantity'] = int(float(item.get('quantity', 1)))
-        except (ValueError, TypeError):
-            item['quantity'] = 1
+        try: item['quantity'] = int(float(item.get('quantity', 1)))
+        except (ValueError, TypeError): item['quantity'] = 1
     return boq_items
 
 def _add_essential_missing_components(boq_items, product_df, required_components):
-    boq_categories = {item['category'] for item in boq_items}
-    missing_components = {k: v for k, v in required_components.items() if v['category'] not in boq_categories}
+    boq_item_names = {item['name'] for item in boq_items}
+    required_keys_in_boq = set()
+    for item in boq_items:
+        for key, spec in required_components.items():
+            if item['category'] == spec['category']:
+                required_keys_in_boq.add(key)
 
-    for key, comp_spec in missing_components.items():
-        st.warning(f"Auto-adding missing essential component: {key.replace('_', ' ').title()}")
+    missing_keys = set(required_components.keys()) - required_keys_in_boq
+    for key in missing_keys:
+        comp_spec = required_components[key]
+        st.warning(f"Auto-adding missing essential component: {key}")
         fallback = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
         if fallback:
-            boq_items.append({
-                'category': fallback['category'], 'name': fallback['name'], 'brand': fallback['brand'],
-                'quantity': comp_spec['quantity'], 'price': float(fallback['price']),
-                'justification': f"{comp_spec['justification']} (auto-added)", 'specifications': fallback.get('features', ''),
-                'image_url': fallback.get('image_url', ''), 'gst_rate': fallback.get('gst_rate', 18),
-                'matched': False, 'power_draw': estimate_power_draw(fallback['category'], fallback['name'])
-            })
+            boq_items.append({'category': fallback['category'], 'name': fallback['name'], 'brand': fallback['brand'], 'quantity': comp_spec['quantity'], 'price': float(fallback['price']), 'justification': f"{comp_spec['justification']} (auto-added)", 'specifications': fallback.get('features', ''), 'image_url': fallback.get('image_url', ''), 'gst_rate': fallback.get('gst_rate', 18), 'matched': False})
     return boq_items
     
 def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs):
     required_components = _build_component_blueprint(equipment_reqs, room_type)
     fallback_items = []
-    st.warning("Creating a smart fallback BOQ based on median product choices.")
     for comp_key, comp_spec in required_components.items():
         product = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
         if product:
-            fallback_items.append({
-                'category': product['category'], 'name': product['name'], 'brand': product['brand'],
-                'quantity': comp_spec['quantity'], 'price': float(product['price']),
-                'justification': comp_spec['justification'], 'specifications': product.get('features', ''),
-                'image_url': product.get('image_url', ''), 'gst_rate': product.get('gst_rate', 18),
-                'matched': True, 'power_draw': estimate_power_draw(product['category'], product['name'])
-            })
+            fallback_items.append({'category': product['category'], 'name': product['name'], 'brand': product['brand'], 'quantity': comp_spec['quantity'], 'price': float(product['price']), 'justification': comp_spec['justification'], 'specifications': product.get('features', ''), 'image_url': product.get('image_url', ''), 'gst_rate': product.get('gst_rate', 18), 'matched': True})
     return fallback_items
+
+def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
+    issues, warnings = [], []
+    # (AVIXA validation logic would be fully implemented here)
+    return {'avixa_issues': issues, 'avixa_warnings': warnings}
 
 # --- Core AI Generation Function (MODIFIED) ---
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area, feature_tags):
     """The re-architected core function to get the BOQ from the AI."""
-    global equipment_reqs  # Make it accessible to fallback functions
     length = room_area**0.5 if room_area > 0 else 20
     width = room_area / length if length > 0 else 16
     
@@ -268,14 +275,15 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
                 filtered_df['compatibility_tags'].str.contains(tag, na=False, case=False)
             ]
         if filtered_df.empty:
-            st.warning("Filtering resulted in an empty product list. Using the full catalog to ensure a result.")
+            st.warning("Filtering with the selected features resulted in an empty product list. The AI will use the full catalog to ensure a result.")
             filtered_df = product_df.copy()
         else:
-            st.success(f"Filtered catalog to {len(filtered_df)} products.")
+            st.success(f"Filtered catalog to {len(filtered_df)} products based on your feature requirements.")
     # -----------------------------------------------------------
 
     required_components = _build_component_blueprint(equipment_reqs, room_type)
     
+    # Use the potentially filtered dataframe for the prompt
     prompt = _build_comprehensive_boq_prompt(
         room_type, room_area, avixa_calcs, equipment_reqs, 
         required_components, filtered_df, budget_tier, features
@@ -287,9 +295,11 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         ai_selection = _parse_ai_product_selection(response.text)
         if not ai_selection: raise Exception("Failed to parse valid JSON from AI response.")
         
+        # Use the filtered dataframe to build the final list
         boq_items = _build_boq_from_ai_selection(ai_selection, required_components, filtered_df, equipment_reqs, room_type)
         return boq_items, avixa_calcs, equipment_reqs
     except Exception as e:
-        st.error(f"AI generation failed: {str(e)}")
+        st.error(f"AI generation failed: {str(e)}. Creating a smart fallback BOQ.")
+        # Use the filtered dataframe for the fallback as well
         fallback_items = create_smart_fallback_boq(filtered_df, room_type, equipment_reqs, avixa_calcs)
         return fallback_items, avixa_calcs, equipment_reqs
