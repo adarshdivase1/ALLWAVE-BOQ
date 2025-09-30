@@ -22,7 +22,7 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS (with Sidebar & Login Enhancements) ---
+# --- "Solar Flare" Theme CSS (with Fully Themed Sidebar) ---
 def load_css():
     st.markdown("""
     <style>
@@ -31,10 +31,12 @@ def load_css():
     :root {
         --bg-dark: #111827;
         --glass-bg: rgba(17, 24, 39, 0.7);
+        --widget-bg: rgba(0, 0, 0, 0.25);
         --glow-primary: #FFBF00;
         --glow-secondary: #00BFFF;
         --text-primary: #F9FAFB;
         --text-secondary: #9CA3AF;
+        --border-color: rgba(255, 255, 255, 0.2);
         --border-radius-lg: 16px;
         --border-radius-md: 10px;
         --animation-speed: 0.4s;
@@ -44,18 +46,10 @@ def load_css():
     @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
     @keyframes shine { 0%{left:-100px} 100%{left:120%} }
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
-    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
-    @keyframes spin-reverse { 0%{transform:rotate(0deg)} 100%{transform:rotate(-360deg)} }
-    @keyframes pulse-glow {
-        0%, 100% { text-shadow: 0 0 15px var(--glow-primary); }
-        50% { text-shadow: 0 0 30px var(--glow-primary); }
-    }
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes pulse-glow { 0%, 100% { text-shadow: 0 0 15px var(--glow-primary); } 50% { text-shadow: 0 0 30px var(--glow-primary); } }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     
-    /* --- Global Style with Animated Background & Grain --- */
+    /* --- Global Style --- */
     .stApp {
         background-color: var(--bg-dark);
         background-image: 
@@ -67,80 +61,62 @@ def load_css():
         color: var(--text-primary);
     }
     
-    /* --- Glassmorphism Containers with 3D Tilt --- */
-    .glass-container {
-        background: var(--glass-bg);
-        backdrop-filter: blur(20px);
-        border-radius: var(--border-radius-lg);
-        padding: 2.5rem;
-        margin-bottom: 2rem;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-        position: relative;
-        overflow: hidden;
-        transition: transform 0.5s ease, box-shadow 0.5s ease;
-        transform-style: preserve-3d;
-    }
-    .interactive-card:hover {
-        transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary);
-    }
-
-    /* --- Animated Corner Brackets for Containers & Sidebar --- */
-    .has-corners::before, .has-corners::after {
-        content: ''; position: absolute; width: 30px; height: 30px;
-        border-color: var(--glow-primary); border-style: solid;
-        transition: opacity var(--animation-speed) ease-in-out;
-        animation: flicker 3s infinite alternate;
-    }
+    /* --- Glassmorphism Containers & Corner Brackets --- */
+    .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
+    .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
+    .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
     .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
     .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
     .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
-    /* Make sidebar corners permanently visible */
     .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
 
-    /* --- LOGIN PAGE BOOT-UP SEQUENCE --- */
+    /* --- FULLY THEMED WIDGETS (SIDEBAR & MAIN) --- */
+    /* Inputs: Text, Number, Text Area */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea {
+        background-color: var(--widget-bg) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--border-radius-md) !important;
+        transition: all 0.3s ease;
+    }
+    /* Selectbox Dropdown */
+    [data-baseweb="select"] > div {
+        background-color: var(--widget-bg) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--border-radius-md) !important;
+    }
+    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
+    /* Slider */
+    [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
+    [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
+    /* Glow on Focus for all Widgets */
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] {
+        border-color: var(--glow-primary) !important;
+        box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important;
+    }
+    
+    /* --- Other Styles --- */
     .login-element { animation: fadeInUp 0.8s ease-out both; }
     .login-logo { animation-delay: 0.2s; animation-name: fadeInUp, pulse-glow; animation-duration: 0.8s, 2s; animation-iteration-count: 1, infinite; }
     .login-title { animation-delay: 0.4s; }
-    .login-form > div { animation: fadeInUp 0.8s ease-out both; } /* Target inner divs of st.form */
-    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; }
-    .login-form > div:nth-of-type(2) { animation-delay: 0.7s; }
-    .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
-    
-    /* --- SIDEBAR ENHANCEMENTS --- */
-    .sidebar-container { position: relative; }
-    .stTextInput input:focus, .stSelectbox div:focus-within {
-        border-color: var(--glow-primary) !important;
-        box-shadow: 0 0 15px var(--glow-primary) !important;
-    }
-    
-    /* Other styles remain mostly the same... */
+    .login-form > div { animation: fadeInUp 0.8s ease-out both; }
+    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
     .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
     .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
     .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
     .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
     .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
-    .loader-container { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; }
-    .dual-ring-loader { position: relative; width: 80px; height: 80px; }
-    .dual-ring-loader::before, .dual-ring-loader::after { content: ''; position: absolute; border-radius: 50%; border: 4px solid transparent; animation-duration: 1.2s; animation-timing-function: linear; animation-iteration-count: infinite; }
-    .dual-ring-loader::before { width: 100%; height: 100%; border-top-color: var(--glow-primary); animation-name: spin; }
-    .dual-ring-loader::after { width: 80%; height: 80%; top: 10%; left: 10%; border-bottom-color: var(--glow-secondary); animation-name: spin-reverse; }
-    .stTabs [data-baseweb="tab-list"] { background: transparent; border: 1px solid rgba(255,255,255,0.1); }
-    .stTabs [aria-selected="true"] { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 15px var(--glow-primary); }
-    .stTextInput input, .stTextArea textarea, .stNumberInput input { background-color: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.2) !important; transition: all 0.3s ease; }
     #MainMenu, footer, header { visibility: hidden; }
-    ::-webkit-scrollbar { width: 10px; }
-    ::-webkit-scrollbar-track { background: var(--bg-dark); }
-    ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
+    ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# Helper functions remain unchanged
+# Helper functions for loader/messages and the login page remain the same
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
     with placeholder.container():
-        st.markdown(f'<div class="loader-container"><div class="dual-ring-loader"></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
     time.sleep(duration); placeholder.empty()
 
 def show_success_message(message):
@@ -149,28 +125,16 @@ def show_success_message(message):
 def show_error_message(message):
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
-# --- Re-styled Login Page with Boot-Up Sequence ---
 def show_login_page():
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="centered")
     load_css()
-    
-    st.markdown("""
-    <div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;">
-        <div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div>
-        <div class="login-title">
-            <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
-            <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown("""<div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;"><div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div><div class="login-title"><h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1><p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p></div>""", unsafe_allow_html=True)
     with st.form("login_form"):
-        # The 'login-form' class is used by CSS to target the children for animation
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input")
         st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input")
         st.form_submit_button("Engage", type="primary", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
-
         if st.session_state.get("FormSubmitter:login_form-Engage"):
             email, password = st.session_state.email_input, st.session_state.password_input
             if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
@@ -181,30 +145,32 @@ def show_login_page():
                 show_error_message("Access Denied. Use official AllWave credentials.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Main Application with Themed Sidebar ---
+# The main application function
 def main():
     if not st.session_state.get('authenticated'):
         show_login_page(); return
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
-    # Session State Init... (same as before)
+    # Session State Init...
+    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
+    # (other session state initializations)
 
-    # Main content rendering... (same as before)
-    
+    with st.spinner("Initializing system modules..."):
+        product_df, guidelines, data_issues = (None, None, []) # Placeholder for your data loading
+    # (Error handling for data loading)
+
     st.markdown('<div class="glass-container interactive-card has-corners"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
     with st.sidebar:
-        # We wrap the sidebar content in a div with the new classes for styling
         st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
         st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
         if st.button("🚪 Logout", use_container_width=True):
             show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
-        
         st.markdown("---")
         st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-        st.text_input("Client Name", key="client_name_input")
-        st.text_input("Project Name", key="project_name_input")
+        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+        st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.markdown("---")
         st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
         st.selectbox("Currency", ["INR", "USD"], key="currency_select")
@@ -212,7 +178,7 @@ def main():
         st.number_input("Services GST (%)", value=18, min_value=0, max_value=50, key="gst_services")
         st.markdown("---")
         st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
-        st.selectbox("Primary Space Type", ["Small Conference Room", "Medium Boardroom", "Large Auditorium"], key="room_type_select")
+        st.selectbox("Primary Space Type", ["Small Conference Room", "Medium Boardroom", "Large Auditorium"], key="room_type_select") # Example list
         st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -225,9 +191,11 @@ def main():
         tab_function(*args)
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Placeholder functions for tab content
-    def placeholder_content(title): st.header(title)
-    
+    # Placeholder functions for your actual tab content
+    def placeholder_content(title):
+        st.header(title)
+        st.write("This is a placeholder for the tab's content.")
+
     with tab1: render_tab_content(placeholder_content, "Project Scope Content")
     with tab2: render_tab_content(placeholder_content, "Room Analysis Content")
     with tab3: render_tab_content(placeholder_content, "Requirements Content")
