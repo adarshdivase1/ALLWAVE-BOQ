@@ -1,362 +1,48 @@
+# In components/data_handler.py
+
 import streamlit as st
-import time
-from datetime import datetime
-import base64
+import pandas as pd
 from pathlib import Path
 
-# --- Component Imports ---
-# Make sure your component files are in a 'components' directory.
-# This is a placeholder for your actual imports.
-try:
-    # Example: from components.data_handler import load_and_validate_data
-    # For this example, we'll create dummy functions if imports fail.
-    class DummyROOM_SPECS:
-        def keys(self):
-            return ["Conference Room", "Huddle Room", "Boardroom"]
-    ROOM_SPECS = DummyROOM_SPECS()
-    def load_and_validate_data(): return (None, None, [])
-    def setup_gemini(): return None
-    def create_multi_room_interface(): st.info("Project Scope Interface Placeholder")
-    def create_room_calculator(): st.info("Room Analysis Interface Placeholder")
-    def create_advanced_requirements(): return {}
-    def display_boq_results(df): st.info("BOQ Results Placeholder")
-    def create_3d_visualization(): st.info("3D Visualization Placeholder")
-
-except ImportError:
-    st.warning("Could not import custom components. Using dummy placeholders.")
-    class DummyROOM_SPECS:
-        def keys(self):
-            return ["Conference Room", "Huddle Room", "Boardroom"]
-    ROOM_SPECS = DummyROOM_SPECS()
-    def load_and_validate_data(): return (None, None, [])
-    def setup_gemini(): return None
-    def create_multi_room_interface(): st.info("Project Scope Interface Placeholder")
-    def create_room_calculator(): st.info("Room Analysis Interface Placeholder")
-    def create_advanced_requirements(): return {}
-    def display_boq_results(df): st.info("BOQ Results Placeholder")
-    def create_3d_visualization(): st.info("3D Visualization Placeholder")
-
-
-# --- "Solar Flare" Theme CSS (Enhanced for Branding) ---
-def load_css():
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+def load_and_validate_data():
+    """
+    Loads the product catalog CSV from the main project directory.
+    Returns a DataFrame and any issues found.
+    """
+    # The name of your data file
+    file_name = "master_product_catalog.csv"
     
-    :root {
-        --bg-dark: #111827;
-        --glass-bg: rgba(17, 24, 39, 0.75);
-        --widget-bg: rgba(0, 0, 0, 0.3);
-        --glow-primary: #FFBF00; /* Solar Gold */
-        --glow-secondary: #00BFFF; /* Holographic Blue */
-        --text-primary: #F9FAFB;
-        --text-secondary: #9CA3AF;
-        --border-color: rgba(255, 255, 255, 0.2);
-        --border-radius-lg: 16px;
-        --border-radius-md: 10px;
-        --animation-speed: 0.4s;
-    }
-
-    /* Keyframe Animations */
-    @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-    @keyframes shine { 0%{left:-100px} 100%{left:120%} }
-    @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
-    @keyframes pulse-glow { 0%, 100% { filter: drop-shadow(0 0 10px var(--glow-primary)); } 50% { filter: drop-shadow(0 0 20px var(--glow-primary)); } }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
+    # This creates a path to the file in the parent directory (your main repo)
+    # CWD (Current Working Directory) is usually the repo root where you run `streamlit run`
+    file_path = Path(file_name)
     
-    /* Global Style */
-    .stApp {
-        background-color: var(--bg-dark);
-        background-image: 
-            url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWPj4+NjY19fX2JiYl/f39tbW1+fn5oaGhiYmLS0tLR0dGysrKqqqrZ2dnx8fHU1NTKysp8fHydnp6Fu3UIAAADcElEQVR42p2b65biQAxAW2s3s3N3d3N3/v/H9i7Itp4oMElsoI3z30IJ8DeyZkTRLMAqgTqgso3qSg+sDGCmostvjQYwY8z2N4pMQbjIwkQS5UQcmJXE28j2Uht4RYVGYo8wT6yok5eJMDEs0mGuxKMR4itN4gY2xqkM7gqCchlOINQk4gUCXg0gY2yQhIkfRhgojJgQpE5SDyE5zHyf6kwoIT5sSj/PEpX0vYnL2b3k52TfG0c4w7z/D/3zzLdOOkN8pIe3h/d7b+S+zYdHz2CiD3wzG/AZoP/39b/d3b0eAAAAAElFTSuQmCC),
-            linear-gradient(125deg, #111827, #3730a3, #FFBF00, #00BFFF, #111827);
-        background-size: auto, 400% 400%;
-        animation: aurora 25s ease infinite;
-        font-family: 'Inter', sans-serif;
-        color: var(--text-primary);
-    }
-    
-    /* Glassmorphism Containers & Corner Brackets */
-    .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
-    .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
-    .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
-    .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
-    .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
-    .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
-    .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
-
-    /* Themed Widgets (Sidebar & Main) */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
-    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
-    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
-    [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
-    [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
-    
-    /* Login Page Boot-Up Sequence & Logo */
-    .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
-    .login-main-logo { max-height: 90px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; transition: transform 0.3s ease; filter: drop-shadow(0 0 10px var(--glow-primary)); }
-    .login-main-logo:hover { transform: scale(1.05); filter: drop-shadow(0 0 25px var(--glow-primary)); }
-    .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
-    .stForm { animation: fadeInUp 0.8s ease-out 0.6s both; }
-    
-    /* Other Styles */
-    .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-    .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
-    .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
-    .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
-    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
-    #MainMenu, header { visibility: hidden; }
-    footer { visibility: hidden; }
-    .custom-footer { text-align: center; padding: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; margin-top: 2rem; }
-    ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
-    
-    /* Custom Header/Logo Styles */
-    .logo-container { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: var(--glass-bg); border-bottom: 1px solid var(--border-color); border-radius: var(--border-radius-lg); margin-bottom: 2rem; }
-    .main-logo img { max-height: 50px; }
-    .partner-logos { display: flex; align-items: center; gap: 2rem; }
-    .partner-logos img { max-height: 35px; opacity: 0.7; transition: opacity 0.3s ease, transform 0.3s ease; }
-    .partner-logos img:hover { opacity: 1; transform: scale(1.1); }
-
-    /* CSS for the Sidebar Toggle Button */
-    .sidebar-toggle-container {
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        z-index: 1000;
-    }
-    .sidebar-toggle-container .stButton > button {
-        background-color: var(--widget-bg);
-        color: var(--glow-primary);
-        border: 1px solid var(--border-color);
-        border-radius: 50% !important; /* Make it circular */
-        width: 45px;
-        height: 45px;
-        font-size: 24px;
-        padding: 0;
-        line-height: 1;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        transition: all 0.3s ease;
-    }
-    .sidebar-toggle-container .stButton > button:hover {
-        transform: scale(1.1);
-        background-color: var(--glow-primary);
-        color: var(--bg-dark);
-        box-shadow: 0 0 20px var(--glow-primary);
-        border: 1px solid var(--glow-primary);
-    }
-    .sidebar-toggle-container .stButton > button:focus {
-        box-shadow: 0 0 20px var(--glow-primary) !important;
-        background-color: var(--glow-primary);
-        color: var(--bg-dark);
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- Helper Functions ---
-def show_animated_loader(text="Processing...", duration=2):
-    placeholder = st.empty()
-    with placeholder.container():
-        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
-    time.sleep(duration); placeholder.empty()
-
-def show_success_message(message):
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-def show_error_message(message):
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-@st.cache_data
-def image_to_base64(img_path):
-    """Encodes an image to Base64 to embed in HTML."""
+    # --- Data Loading and Validation ---
     try:
-        with open(img_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except FileNotFoundError:
-        return None
+        # Check 1: Does the file even exist?
+        if not file_path.is_file():
+            st.error(f"FATAL: The product catalog '{file_name}' was not found in the main repository folder.")
+            return None, None, [f"File not found: {file_name}"]
 
-def create_header(main_logo, partner_logos):
-    """Creates the branded header with main and partner logos."""
-    main_logo_b64 = image_to_base64(main_logo)
-    partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
-    
-    partner_html = ""
-    for name, b64 in partner_logos_b64.items():
-        if b64:
-            partner_html += f'<img src="data:image/png;base64,{b64}" alt="{name} Logo" title="{name}">'
+        # Check 2: Try to read the file
+        product_df = pd.read_csv(file_path)
 
-    if main_logo_b64:
-        st.markdown(f"""
-        <div class="logo-container">
-            <div class="main-logo">
-                <img src="data:image/png;base64,{main_logo_b64}" alt="AllWave AV Logo">
-            </div>
-            <div class="partner-logos">
-                {partner_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
+        # Check 3: Is the file empty?
+        if product_df.empty:
+            st.warning("The product catalog file is empty.")
+            return None, None, ["Data file is empty."]
 
-def show_login_page(logo_b64, page_icon_path):
-    st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
-    load_css()
-    
-    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
+        # --- (Optional) Add more data validation checks here ---
+        # For example, check for essential columns like 'Model', 'Price', etc.
+        required_columns = ['Model Number', 'Description', 'List Price'] # Example columns
+        # if not all(col in product_df.columns for col in required_columns):
+        #     st.error("The product catalog is missing required columns.")
+        #     return None, None, ["Missing required columns."]
 
-    st.markdown(f"""
-    <div class="login-container">
-        <div class="glass-container interactive-card has-corners">
-            {logo_html}
-            <div class="login-title">
-                <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
-                <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        # If all checks pass, return the DataFrame
+        # Returning empty lists for guidelines and data_issues for now
+        return product_df, [], []
 
-    with st.form(key="login_form"):
-        st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
-        st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
-        submitted = st.form_submit_button("Engage", use_container_width=True)
-
-        if submitted:
-            email = st.session_state.get('email_input', '')
-            password = st.session_state.get('password_input', '')
-            
-            if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
-                show_animated_loader("Authenticating...", 1.5)
-                st.session_state.authenticated = True
-                st.session_state.user_email = email
-                show_success_message("Authentication Successful. Welcome.")
-                time.sleep(1)
-                st.rerun()
-            else:
-                show_error_message("Access Denied. Use official AllWave credentials.")
-
-
-# The main application function
-def main():
-    # --- 1. INITIALIZE SESSION STATE ---
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'sidebar_state' not in st.session_state:
-        st.session_state.sidebar_state = 'expanded'
-
-    # --- 2. RENDER PAGE BASED ON AUTHENTICATION STATE ---
-    main_logo_path = Path("assets/company_logo.png")
-
-    if not st.session_state.get('authenticated'):
-        # --- RENDER LOGIN PAGE ---
-        main_logo_b64 = image_to_base64(main_logo_path)
-        show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
-    
-    else:
-        # --- RENDER MAIN APPLICATION ---
-        st.set_page_config(
-            page_title="AllWave AV - BOQ Generator",
-            page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀",
-            layout="wide",
-            initial_sidebar_state=st.session_state.sidebar_state
-        )
-        load_css()
-        
-        # --- ROBUST SIDEBAR TOGGLE ---
-        st.markdown('<div class="sidebar-toggle-container">', unsafe_allow_html=True)
-        if st.button("☰", key="sidebar_toggle_btn"):
-            st.session_state.sidebar_state = 'collapsed' if st.session_state.sidebar_state == 'expanded' else 'expanded'
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Initialize other session state variables for the main app
-        if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-        if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-        if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
-        if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
-        if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
-        if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
-
-        # Load Data and Setup Model
-        with st.spinner("Initializing system modules..."):
-            product_df, guidelines, data_issues = load_and_validate_data()
-        if data_issues:
-            with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
-                for issue in data_issues: st.warning(issue)
-        if product_df is None:
-            show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
-        model = setup_gemini()
-
-        # Display Header and Logos
-        partner_logos_paths = {
-            "Crestron": Path("assets/crestron_logo.png"),
-            "AVIXA": Path("assets/avixa_logo.png"),
-            "PSNI Global Alliance": Path("assets/iso_logo.png")
-        }
-        create_header(main_logo_path, partner_logos_paths)
-
-        st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
-
-        with st.sidebar:
-            st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
-            st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
-            if st.button("🚪 Logout", use_container_width=True):
-                show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
-            st.markdown("---")
-            st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-            st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
-            st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
-            st.markdown("---")
-            st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
-            st.selectbox("Currency", ["INR", "USD"], key="currency_select")
-            st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
-            st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
-            st.markdown("---")
-            st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
-            room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
-            st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
-            
-            # This part requires ROOM_SPECS to be a dictionary, adjusted for the dummy class
-            if isinstance(ROOM_SPECS, dict) and room_type_key in ROOM_SPECS:
-                spec = ROOM_SPECS[room_type_key]
-                st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        # Main Content Tabs with Icons
-        tab_titles = ["📝 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
-
-        with tab1:
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            create_multi_room_interface()
-            st.markdown('</div>', unsafe_allow_html=True)
-        with tab2:
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            create_room_calculator()
-            st.markdown('</div>', unsafe_allow_html=True)
-        with tab3:
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            technical_reqs = create_advanced_requirements()
-            st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
-            st.markdown('</div>', unsafe_allow_html=True)
-        with tab4:
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-            if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
-                st.info("BOQ Generation logic would run here.")
-            if st.session_state.get('boq_items'):
-                st.markdown("---"); display_boq_results(product_df)
-            st.markdown('</div>', unsafe_allow_html=True)
-        with tab5:
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            create_3d_visualization()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        # Custom Footer
-        st.markdown(f'<div class="custom-footer">© {datetime.now().year} AllWave AV & GS. All Rights Reserved.</div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        # This will catch any other errors during file reading (e.g., corrupted file)
+        st.error(f"An unexpected error occurred while reading the product catalog: {e}")
+        return None, None, [f"File reading error: {str(e)}"]
