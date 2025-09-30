@@ -14,7 +14,6 @@ def clean_and_validate_product_data(product_df):
     df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     
     # --- ADDED: More aggressive, category-specific price filtering to remove bad data ---
-    # These ranges should reflect your catalog. Adjust as needed.
     price_filters = {
         'Cables': (10, 800),
         'Mounts': (50, 1500),
@@ -25,21 +24,32 @@ def clean_and_validate_product_data(product_df):
         'Infrastructure': (50, 5000)
     }
     
-    # Function to check if a row's price is valid for its category
     def is_valid_price(row):
         category = row['category']
         price = row['price']
         if category in price_filters:
             min_p, max_p = price_filters[category]
             return min_p <= price <= max_p
-        # Default for 'General' or uncategorized - be strict
-        return 100 <= price <= 50000
+        return 100 <= price <= 50000  # strict default
     
-    # Apply the filter and drop rows with invalid prices
     initial_rows = len(df)
     df = df[df.apply(is_valid_price, axis=1)]
     if initial_rows > len(df):
         print(f"Price Validation: Removed {initial_rows - len(df)} products with unrealistic prices.")
+
+    # --- ADDED: Exclude irrelevant products like warranties, kits, accessories ---
+    excluded_patterns = [
+        'year', 'warranty', 'partner', 'bezel', 'tile bridge', 'baffle', 
+        'home os', 'keyboard', 'mouse', 'kit', 'assy only', 'assembly kit'
+    ]
+    def should_exclude(row):
+        name_lower = str(row['name']).lower()
+        return any(pattern in name_lower for pattern in excluded_patterns)
+
+    before_exclusion = len(df)
+    df = df[~df.apply(should_exclude, axis=1)]
+    if before_exclusion > len(df):
+        print(f"Exclusion Filter: Removed {before_exclusion - len(df)} non-product entries.")
 
     # Clean category names
     category_mapping = {
@@ -108,7 +118,6 @@ def load_and_validate_data():
         if 'compatibility_tags' not in df.columns:
             df['compatibility_tags'] = ''
 
-
         try:
             with open("avixa_guidelines.md", "r") as f:
                 guidelines = f.read()
@@ -128,8 +137,8 @@ def load_and_validate_data():
 def get_sample_product_data():
     """Provide comprehensive sample products."""
     return [{
-        'name': 'Samsung 55" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
-        'price': 1200, 'features': '55" 4K UHD, 500-nit, 16/7',
+        'name': 'Samsung 55\" QM55R 4K Display', 'brand': 'Samsung', 'category': 'Displays',
+        'price': 1200, 'features': '55\" 4K UHD, 500-nit, 16/7',
         'image_url': '', 'gst_rate': 18
     }]
 
