@@ -286,47 +286,8 @@ def main():
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
         st.markdown('</div>', unsafe_### How to Set Up and Run This Application
 
-1.  **Create a Project Directory:**
-    * Make a new folder for your project (e.g., `av_boq_app`).
-    * Inside this folder, create a file named `main_app.py` and paste the code above into it.
 
-2.  **Organize Your Files:**
-    * Create a sub-folder named `assets` inside your project directory. Place your four logo images (`company_logo.png`, `crestron_logo.png`, `avixa_logo.png`, `iso_logo.png`) inside this `assets` folder.
-    * Create another sub-folder named `components`. Place all your other Python files (`data_handler.py`, `gemini_handler.py`, `boq_generator.py`, etc.) inside this `components` folder.
 
-    Your final file structure should look like this:
-
-    ```
-    av_boq_app/
-    ├── main_app.py
-    ├── assets/
-    │   ├── company_logo.png
-    │   ├── crestron_logo.png
-    │   ├── avixa_logo.png
-    │   └── iso_logo.png
-    └── components/
-        ├── __init__.py
-        ├── data_handler.py
-        ├── gemini_handler.py
-        ├── boq_generator.py
-        ├── ui_components.py
-        └── visualizer.py
-    ```
-
-3.  **Install Libraries:**
-    * Make sure you have Streamlit and other necessary libraries installed. Open your terminal or command prompt and run:
-        ```bash
-        pip install streamlit pandas
-        ```
-
-4.  **Run the App:**
-    * In your terminal, navigate to your project directory (`av_boq_app`).
-    * Run the following command:
-        ```bash
-        streamlit run main_app.py
-        ```
-
-Your new, visually impressive application will now open in your web browser. True)
     with tab4:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
         st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
