@@ -1,6 +1,8 @@
 import streamlit as st
 import time
 from datetime import datetime
+import base64
+from pathlib import Path
 
 # --- Component Imports ---
 # Make sure your component files are in a 'components' directory.
@@ -23,7 +25,7 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS ---
+# --- "Solar Flare" Theme CSS (Enhanced) ---
 def load_css():
     st.markdown("""
     <style>
@@ -31,8 +33,8 @@ def load_css():
     
     :root {
         --bg-dark: #111827;
-        --glass-bg: rgba(17, 24, 39, 0.7);
-        --widget-bg: rgba(0, 0, 0, 0.25);
+        --glass-bg: rgba(17, 24, 39, 0.75);
+        --widget-bg: rgba(0, 0, 0, 0.3);
         --glow-primary: #FFBF00; /* Solar Gold */
         --glow-secondary: #00BFFF; /* Holographic Blue */
         --text-primary: #F9FAFB;
@@ -49,6 +51,8 @@ def load_css():
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
     @keyframes pulse-glow { 0%, 100% { text-shadow: 0 0 15px var(--glow-primary); } 50% { text-shadow: 0 0 30px var(--glow-primary); } }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
     
     /* Global Style */
     .stApp {
@@ -92,12 +96,43 @@ def load_css():
     .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
     .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
     .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
-    #MainMenu, footer, header { visibility: hidden; }
+    #MainMenu, header { visibility: hidden; }
+    footer { visibility: hidden; }
+    .custom-footer { text-align: center; padding: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; margin-top: 2rem; }
     ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
+    
+    /* Custom Header/Logo Styles */
+    .logo-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 2rem;
+        background: var(--glass-bg);
+        border-bottom: 1px solid var(--border-color);
+        border-radius: var(--border-radius-lg);
+        margin-bottom: 2rem;
+    }
+    .main-logo img {
+        max-height: 50px;
+    }
+    .partner-logos {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+    }
+    .partner-logos img {
+        max-height: 35px;
+        opacity: 0.7;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .partner-logos img:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# Helper functions for loader/messages and the login page
+# --- Helper Functions ---
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
     with placeholder.container():
@@ -110,10 +145,49 @@ def show_success_message(message):
 def show_error_message(message):
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
+@st.cache_data
+def image_to_base64(img_path):
+    """Encodes an image to Base64 to embed in HTML."""
+    try:
+        with open(img_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        st.warning(f"Logo file not found: {img_path}. Please create an 'assets' folder and place logos inside.")
+        return None
+
+def create_header(main_logo, partner_logos):
+    """Creates the branded header with main and partner logos."""
+    main_logo_b64 = image_to_base64(main_logo)
+    partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
+    
+    partner_html = ""
+    for name, b64 in partner_logos_b64.items():
+        if b64:
+            partner_html += f'<img src="data:image/png;base64,{b64}" alt="{name} Logo" title="{name}">'
+
+    if main_logo_b64:
+        st.markdown(f"""
+        <div class="logo-container">
+            <div class="main-logo">
+                <img src="data:image/png;base64,{main_logo_b64}" alt="AllWave AV Logo">
+            </div>
+            <div class="partner-logos">
+                {partner_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
 def show_login_page():
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="centered")
     load_css()
-    st.markdown("""<div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;"><div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div><div class="login-title"><h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1><p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p></div>""", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;">
+        <div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div>
+        <div class="login-title">
+            <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
+            <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
+        </div>
+    """, unsafe_allow_html=True)
     with st.form("login_form"):
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input")
@@ -134,6 +208,7 @@ def show_login_page():
 def main():
     if not st.session_state.get('authenticated'):
         show_login_page(); return
+
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
@@ -155,7 +230,18 @@ def main():
         show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
     model = setup_gemini()
 
-    st.markdown('<div class="glass-container interactive-card has-corners"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
+    # --- Display Header and Logos ---
+    # Create an 'assets' folder in the same directory as your script
+    # and place your logo files there.
+    main_logo_path = Path("assets/company_logo.png")
+    partner_logos_paths = {
+        "Crestron": Path("assets/crestron_logo.png"),
+        "AVIXA": Path("assets/avixa_logo.png"),
+        "PSNI Global Alliance": Path("assets/iso_logo.png") # Assuming iso_logo.png is the PSNI logo
+    }
+    create_header(main_logo_path, partner_logos_paths)
+
+    st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
     with st.sidebar:
         st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
@@ -180,9 +266,9 @@ def main():
             st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- Main Content Tabs ---
-    tab_titles = ["Project Scope", "Room Analysis", "Requirements", "Generate BOQ", "3D Visualization"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([f"**{title}**" for title in tab_titles])
+    # --- Main Content Tabs with Icons ---
+    tab_titles = ["📝 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
@@ -198,7 +284,49 @@ def main():
         st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_### How to Set Up and Run This Application
+
+1.  **Create a Project Directory:**
+    * Make a new folder for your project (e.g., `av_boq_app`).
+    * Inside this folder, create a file named `main_app.py` and paste the code above into it.
+
+2.  **Organize Your Files:**
+    * Create a sub-folder named `assets` inside your project directory. Place your four logo images (`company_logo.png`, `crestron_logo.png`, `avixa_logo.png`, `iso_logo.png`) inside this `assets` folder.
+    * Create another sub-folder named `components`. Place all your other Python files (`data_handler.py`, `gemini_handler.py`, `boq_generator.py`, etc.) inside this `components` folder.
+
+    Your final file structure should look like this:
+
+    ```
+    av_boq_app/
+    ├── main_app.py
+    ├── assets/
+    │   ├── company_logo.png
+    │   ├── crestron_logo.png
+    │   ├── avixa_logo.png
+    │   └── iso_logo.png
+    └── components/
+        ├── __init__.py
+        ├── data_handler.py
+        ├── gemini_handler.py
+        ├── boq_generator.py
+        ├── ui_components.py
+        └── visualizer.py
+    ```
+
+3.  **Install Libraries:**
+    * Make sure you have Streamlit and other necessary libraries installed. Open your terminal or command prompt and run:
+        ```bash
+        pip install streamlit pandas
+        ```
+
+4.  **Run the App:**
+    * In your terminal, navigate to your project directory (`av_boq_app`).
+    * Run the following command:
+        ```bash
+        streamlit run main_app.py
+        ```
+
+Your new, visually impressive application will now open in your web browser. True)
     with tab4:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
         st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
@@ -240,6 +368,9 @@ def main():
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
         create_3d_visualization()
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Custom Footer ---
+    st.markdown(f'<div class="custom-footer">© {datetime.now().year} AllWave AV & GS. All Rights Reserved.</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
