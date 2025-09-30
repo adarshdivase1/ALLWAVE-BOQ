@@ -264,80 +264,58 @@ def _build_component_blueprint(equipment_reqs, room_type):
     return blueprint
 
 def _get_fallback_product(category, product_df, comp_spec):
-    """Get best fallback product with strict keyword filtering."""
+    """Get best fallback product with strict validation."""
     matching = product_df[product_df['category'] == category]
     if matching.empty:
-        st.error(f"CRITICAL: No products in catalog for category '{category}'!")
+        st.error(f"No products found for category: {category}")
         return None
 
     rule = comp_spec.get('rule', '').lower()
+    expected_type = None
     
-    # For displays: strict size matching
-    if category == 'Displays':
+    # Determine what type of product we're looking for
+    if 'display' in rule and category == 'Displays':
+        expected_type = 'display'
         size_match = re.search(r'(\d+)"', rule)
         if size_match:
             target_size = int(size_match.group(1))
-            # Only get actual displays (not accessories)
-            matching = matching[matching['name'].str.contains('Display|Monitor|Screen|TV', case=False, na=False)]
-            # Find closest size
             matching['size_num'] = matching['name'].str.extract(r'(\d+)"?')[0].astype(float)
+            matching = matching[matching['size_num'].notna()]
             matching['size_diff'] = abs(matching['size_num'] - target_size)
             matching = matching.sort_values('size_diff')
-            if not matching.empty:
-                return matching.iloc[0].to_dict()
+    elif 'mount' in rule and category == 'Mounts':
+        expected_type = 'mount'
+    elif 'video bar' in rule:
+        expected_type = 'video_bar'
+    elif 'codec' in rule:
+        expected_type = 'codec'
+    elif 'camera' in rule or 'ptz' in rule:
+        expected_type = 'camera'
+    elif 'microphone' in rule or 'mic' in rule:
+        expected_type = 'microphone'
+    elif 'speaker' in rule:
+        expected_type = 'speaker'
+    elif 'touch panel' in rule or 'controller' in rule:
+        expected_type = 'touch_panel'
+    elif 'rack' in rule and category == 'Infrastructure':
+        expected_type = 'rack'
     
-    # For mounts: ensure it's actually a mount
-    elif category == 'Mounts':
-        matching = matching[matching['name'].str.contains('Mount|Bracket', case=False, na=False)]
-        matching = matching[~matching['name'].str.contains('Camera|Shelf|Adapter', case=False, na=False)]
+    # Apply validation filter
+    if expected_type:
+        validated = []
+        for _, product in matching.iterrows():
+            if _validate_product_type(product.to_dict(), expected_type):
+                validated.append(product)
+        
+        if validated:
+            matching = pd.DataFrame(validated)
+        else:
+            st.warning(f"No validated products found for {expected_type} in {category}")
+            return None
     
-    # For control: ensure it's a touch panel
-    elif category == 'Control':
-        if 'touch panel' in rule or 'controller' in rule:
-            matching = matching[matching['name'].str.contains('Touch|Panel|Controller', case=False, na=False)]
-            matching = matching[~matching['name'].str.contains('Scheduler|Processor|Switch', case=False, na=False)]
-    
-    # For Video Conferencing: distinguish bars from cameras/codecs
-    elif category == 'Video Conferencing':
-        if 'video bar' in rule:
-            matching = matching[matching['name'].str.contains('Bar|Rally Bar|Studio', case=False, na=False)]
-        elif 'codec' in rule:
-            matching = matching[matching['name'].str.contains('Codec|RoomMate', case=False, na=False)]
-            matching = matching[~matching['name'].str.contains('Camera|Bar', case=False, na=False)]
-        elif 'camera' in rule or 'ptz' in rule:
-            matching = matching[matching['name'].str.contains('Camera|PTZ', case=False, na=False)]
-    
-    # For Audio: be specific
-    elif category == 'Audio':
-        if 'microphone' in rule:
-            matching = matching[matching['name'].str.contains('Mic|Microphone', case=False, na=False)]
-        elif 'speaker' in rule:
-            matching = matching[matching['name'].str.contains('Speaker|Loudspeaker', case=False, na=False)]
-        elif 'dsp' in rule:
-            matching = matching[matching['name'].str.contains('DSP|Core|Tesira|Q-SYS', case=False, na=False)]
-        elif 'amplifier' in rule:
-            matching = matching[matching['name'].str.contains('Amplifier|Amp', case=False, na=False)]
-            matching = matching[~matching['name'].str.contains('Summing|Pre', case=False, na=False)]
-    
-    # For Cables: ensure it's the right type
-    elif category == 'Cables':
-        if 'hdmi' in rule:
-            matching = matching[matching['name'].str.contains('HDMI', case=False, na=False)]
-        elif 'network' in rule or 'cat6' in rule:
-            matching = matching[matching['name'].str.contains('CAT6|Network|Ethernet', case=False, na=False)]
-    
-    # For Infrastructure
-    elif category == 'Infrastructure':
-        if 'rack' in rule:
-            matching = matching[matching['name'].str.contains('Rack|Enclosure', case=False, na=False)]
-            matching = matching[~matching['name'].str.contains('Shelf|Plate|Panel', case=False, na=False)]
-        elif 'pdu' in rule:
-            matching = matching[matching['name'].str.contains('PDU|Power', case=False, na=False)]
-
     if matching.empty:
-        st.warning(f"No products found for {category} with rule: {rule}")
         return None
-
+    
     # Return median-priced item
     matching = matching.sort_values('price')
     return matching.iloc[len(matching)//2].to_dict()
