@@ -85,10 +85,20 @@ def load_css():
     
     /* Login Page Boot-Up Sequence & Logo */
     .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
-    .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
-    .login-title { animation-delay: 0.4s; }
-    .login-form > div { animation: fadeInUp 0.8s ease-out both; }
-    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
+    /* --- LOGO CSS UPDATED HERE --- */
+    .login-main-logo { 
+        max-height: 90px; /* Increased from 60px */
+        margin-bottom: 2rem; 
+        animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; 
+        transition: transform 0.3s ease; /* Added for smooth hover effect */
+        filter: drop-shadow(0 0 10px var(--glow-primary)); /* Base glow */
+    }
+    .login-main-logo:hover {
+        transform: scale(1.05);
+        filter: drop-shadow(0 0 25px var(--glow-primary)); /* Brighter glow on hover */
+    }
+    .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
+    .stForm { animation: fadeInUp 0.8s ease-out 0.6s both; }
     
     /* Other Styles */
     .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
@@ -179,12 +189,14 @@ def create_header(main_logo, partner_logos):
     else:
         st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
 
+# --- NEW, CORRECTED LOGIN PAGE FUNCTION ---
 def show_login_page(logo_b64, page_icon_path):
     st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
     load_css()
     
     logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
+    # Use st.markdown for the static layout parts
     st.markdown(f"""
     <div class="login-container">
         <div class="glass-container interactive-card has-corners">
@@ -193,31 +205,30 @@ def show_login_page(logo_b64, page_icon_path):
                 <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
                 <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
             </div>
-            
-            <form>
-                <div class="login-form">
-                    {st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")}
-                    {st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")}
-                    <button type="submit" name="Engage" class="st-emotion-cache-73o5de e1i5pmfg9">Engage</button>
-                </div>
-            </form>
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Custom form handling logic
-    if 'Engage' in st.query_params:
-        email = st.session_state.get('email_input', '')
-        password = st.session_state.get('password_input', '')
-        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
-            show_animated_loader("Authenticating...", 1.5)
-            st.session_state.authenticated = True
-            st.session_state.user_email = email
-            show_success_message("Authentication Successful. Welcome.")
-            time.sleep(1)
-            st.rerun()
-        else:
-            show_error_message("Access Denied. Use official AllWave credentials.")
+
+    # Use Streamlit's native st.form for inputs and the button
+    with st.form(key="login_form"):
+        st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
+        st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
+        submitted = st.form_submit_button("Engage", use_container_width=True)
+
+        if submitted:
+            email = st.session_state.get('email_input', '')
+            password = st.session_state.get('password_input', '')
+            
+            if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
+                show_animated_loader("Authenticating...", 1.5)
+                st.session_state.authenticated = True
+                st.session_state.user_email = email
+                show_success_message("Authentication Successful. Welcome.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                show_error_message("Access Denied. Use official AllWave credentials.")
+
 
 # The main application function
 def main():
