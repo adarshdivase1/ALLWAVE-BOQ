@@ -69,7 +69,7 @@ def create_advanced_requirements():
 
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
-    st.subheader("Multi-Room Project Management")
+    
 
     col1, col2, col3 = st.columns([2, 1, 1])
 
