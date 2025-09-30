@@ -12,8 +12,8 @@ try:
     from components.boq_generator import (
         generate_boq_from_ai, validate_avixa_compliance,
         _remove_exact_duplicates, _remove_duplicate_core_components,
-        _ensure_system_completeness, _flag_hallucinated_models, 
-        _correct_quantities, _perform_engineering_validation
+        _validate_and_correct_mounts, _ensure_system_completeness,
+        _flag_hallucinated_models, _correct_quantities
     )
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
@@ -103,7 +103,7 @@ def load_css():
     .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
     .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
     .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
-    .stButton > button[kind="primary"] { background: linear-gradient(90deg, var(--glow-primary), #d32f2f); border: none; }
+    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
     #MainMenu, header { visibility: hidden; }
     footer { visibility: hidden; }
     .custom-footer { text-align: center; padding: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; margin-top: 2rem; }
@@ -240,7 +240,7 @@ def main():
     partner_logos_paths = {
         "Crestron": Path("assets/crestron_logo.png"),
         "AVIXA": Path("assets/avixa_logo.png"),
-        "ISO Certified": Path("assets/iso_logo.png")
+        "PSNI Global Alliance": Path("assets/iso_logo.png")
     }
     create_header(main_logo_path, partner_logos_paths)
 
@@ -267,6 +267,7 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
         
+        # ===== NEW FIELDS ADDED HERE =====
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
         st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
@@ -274,18 +275,9 @@ def main():
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
         st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
         st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
-        st.markdown('</div>', unsafe_allow_html=True)
+        # ==================================
 
-        # --- NEW: UI for selecting specific feature tags ---
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>✨ Key Feature Requirements</h3>', unsafe_allow_html=True)
-        st.session_state.feature_tags = st.multiselect(
-            "Select required features:",
-            ['wireless_presentation', 'interactive', '4k', 'zoom_certified', 'teams_certified'],
-            key="feature_multiselect"
-        )
         st.markdown('</div>', unsafe_allow_html=True)
-        # --------------------------------------------------
         
         # Financial Config Section
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
@@ -374,35 +366,23 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    progress_bar.progress(10, text="🔄 Step 1: Generating initial design with AI...")
-                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
-                        model, product_df, guidelines, st.session_state.room_type_select, 
-                        st.session_state.budget_tier_slider, st.session_state.features_text_area, 
-                        technical_reqs, 
-                        st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
-                        st.session_state.get('feature_tags', []) # <-- NEWLY ADDED
-                    )
-                    
+                    # ... (rest of the code for generation remains the same) ...
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
                     if boq_items:
-                        progress_bar.progress(50, text="⚙️ Step 2: Applying correction & validation rules...")
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
                         processed_boq = _remove_exact_duplicates(boq_items)
                         processed_boq = _correct_quantities(processed_boq)
                         processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _validate_and_correct_mounts(processed_boq)
                         processed_boq = _ensure_system_completeness(processed_boq, product_df)
                         processed_boq = _flag_hallucinated_models(processed_boq)
-                        
-                        progress_bar.progress(80, text="✅ Step 3: Verifying AVIXA & Engineering standards...")
-                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
-                        processed_boq, engineering_warnings = _perform_engineering_validation(processed_boq, product_df) # <-- NEWLY ADDED
-                        
                         st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
-                        
-                        # UPDATED to include engineering warnings
-                        all_issues = avixa_validation.get('avixa_issues', [])
-                        all_warnings = avixa_validation.get('avixa_warnings', []) + engineering_warnings
-                        st.session_state.validation_results = {"issues": all_issues, "warnings": all_warnings}
-                        
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
+                        st.session_state.validation_results = {"issues": avixa_validation.get('avixa_issues', []), "warnings": avixa_validation.get('avixa_warnings', [])}
                         progress_bar.progress(100, text="Pipeline complete!")
                         time.sleep(1); progress_bar.empty()
                         show_success_message("BOQ generation pipeline completed successfully!")
@@ -414,6 +394,7 @@ def main():
 
         if st.session_state.get('boq_items'):
             st.markdown("---")
+            # ===== PASSING NEW DETAILS TO THE DISPLAY FUNCTION =====
             project_details = {
                 "Project Name": st.session_state.get("project_name_input", ""),
                 "Client Name": st.session_state.get("client_name_input", ""),
@@ -424,6 +405,7 @@ def main():
                 "Key Comments": st.session_state.get("comments_input", "")
             }
             display_boq_results(product_df, project_details)
+            # =======================================================
         st.markdown('</div>', unsafe_allow_html=True)
 
     with tab5:
