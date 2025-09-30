@@ -74,8 +74,19 @@ def load_css():
     .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
     .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
     
+    /* Style Streamlit tab containers */
+    .stTabs [data-baseweb="tab-panel"] {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border-radius: var(--border-radius-lg);
+        padding: 2.5rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        margin-top: 1rem;
+    }
+    
     /* Sidebar Styles */
-    .st-emotion-cache-16txtl3 { padding: 2rem 1rem; } /* Main sidebar container */
+    .st-emotion-cache-16txtl3 { padding: 2rem 1rem; }
     .user-info { margin-bottom: 1rem; }
     .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); }
     .user-info p { color: var(--text-secondary); word-wrap: break-word; font-size: 0.95rem; }
@@ -97,6 +108,21 @@ def load_css():
     .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
     .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
     .login-form { animation: fadeInUp 0.8s ease-out 0.6s both; }
+    
+    /* Section Headers within Tabs */
+    .section-header {
+        text-align: center;
+        color: var(--text-primary);
+        margin-bottom: 1.5rem;
+        font-size: 1.75rem;
+        font-weight: 600;
+    }
+    
+    .section-divider {
+        border: none;
+        border-top: 1px solid var(--border-color);
+        margin: 1.5rem 0;
+    }
     
     /* Other Styles */
     .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
@@ -170,7 +196,6 @@ def show_login_page(logo_b64, page_icon_path):
     
     logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
-    # Render the static HTML part of the login page
     st.markdown(f"""
     <div class="login-container">
         <div class="glass-container interactive-card has-corners">
@@ -183,7 +208,6 @@ def show_login_page(logo_b64, page_icon_path):
     </div>
     """, unsafe_allow_html=True)
 
-    # Use st.form for login inputs and button
     with st.form(key="login_form", clear_on_submit=True):
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
@@ -191,7 +215,6 @@ def show_login_page(logo_b64, page_icon_path):
         submitted = st.form_submit_button("Engage", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Handle form submission
     if submitted:
         if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
             show_animated_loader("Authenticating...", 1.5)
@@ -203,7 +226,6 @@ def show_login_page(logo_b64, page_icon_path):
         else:
             show_error_message("Access Denied. Use official AllWave credentials.")
 
-# The main application function
 def main():
     # --- Define asset paths ---
     main_logo_path = Path("assets/company_logo.png")
@@ -248,7 +270,6 @@ def main():
 
     # --- Sidebar ---
     with st.sidebar:
-        # User Info Section
         st.markdown(f'''
         <div class="user-info">
             <h3>👤 Welcome</h3>
@@ -263,11 +284,9 @@ def main():
         
         st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
         
-        # Mission Parameters Section
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
         
-        # ===== NEW FIELDS ADDED HERE =====
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
         st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
@@ -275,11 +294,9 @@ def main():
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
         st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
         st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
-        # ==================================
-
+        
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Financial Config Section
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
         st.selectbox("Currency", ["INR", "USD"], key="currency_select")
@@ -297,7 +314,6 @@ def main():
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Environment Design Section
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
         room_type_key = st.selectbox(
@@ -321,7 +337,7 @@ def main():
             st.markdown(f"""
             <div class="info-box">
                 <p>
-                    <b>📐 Area:</b> {area_start}-{area_end} sq ft<br>
+                    <b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
                     <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
                     <b>🎯 Primary Use:</b> {primary_use}
                 </p>
@@ -329,133 +345,126 @@ def main():
             """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- Main Content Tabs with Icons ---
-    tab_titles = ["📝 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    # --- Main Content Tabs ---
+    tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
-        with st.container():
-           st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-           st.markdown('<h2 style="text-align: center; color: var(--text-primary); margin-top: 0;">Multi-Room Project Management</h2>', unsafe_allow_html=True)
-           st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-           create_multi_room_interface()
-           st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header">Multi-Room Project Management</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        create_multi_room_interface()
         
     with tab2:
-        with st.container():
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary);">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
-            st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-            create_room_calculator()
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        create_room_calculator()
         
     with tab3:
-        with st.container():
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary);">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
-            st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-            technical_reqs = {}
-            st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
-            technical_reqs.update(create_advanced_requirements())
-            technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        technical_reqs = {}
+        st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
+        technical_reqs.update(create_advanced_requirements())
+        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
         
     with tab4:
-        with st.container():
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-            st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-            
-            if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
-                if not model:
-                    show_error_message("AI Model is not available. Please check API key.")
-                else:
-                    progress_bar = st.progress(0, text="Initializing generation pipeline...")
-                    try:
-                        boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
-                            model, product_df, guidelines, 
-                            st.session_state.room_type_select, 
-                            st.session_state.budget_tier_slider, 
-                            st.session_state.features_text_area, 
-                            technical_reqs, 
-                            st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-                        )
-                        
-                        if boq_items:
-                            progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
-                            processed_boq = _remove_exact_duplicates(boq_items)
-                            processed_boq = _correct_quantities(processed_boq)
-                            processed_boq = _remove_duplicate_core_components(processed_boq)
-                            processed_boq = _ensure_system_completeness(processed_boq, product_df)
-                            processed_boq = _flag_hallucinated_models(processed_boq, product_df)
-                            
-                            progress_bar.progress(75, text="🔍 Step 3: Running AVIXA compliance validation...")
-                            validation_results = validate_avixa_compliance(
-                                processed_boq, 
-                                avixa_calcs, 
-                                equipment_reqs, 
-                                st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16)
-                            )
-                            
-                            progress_bar.progress(100, text="✅ BOQ generation complete!")
-                            time.sleep(0.5)
-                            progress_bar.empty()
-                            
-                            st.session_state.boq_items = processed_boq
-                            st.session_state.validation_results = validation_results
-                            st.session_state.boq_content = update_boq_content_with_current_items(processed_boq)
-                            
-                            show_success_message(f"Successfully generated BOQ with {len(processed_boq)} line items.")
-                        else:
-                            progress_bar.empty()
-                            show_error_message("No BOQ items were generated. Please refine your requirements.")
-                    
-                    except Exception as e:
+        st.markdown('<h2 class="section-header">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
+            if not model:
+                show_error_message("AI Model is not available. Please check API key.")
+            else:
+                progress_bar = st.progress(0, text="Initializing generation pipeline...")
+                try:
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
+                    if boq_items:
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
+                        processed_boq = _remove_exact_duplicates(boq_items)
+                        processed_boq = _correct_quantities(processed_boq)
+                        processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
+                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        st.session_state.boq_items = processed_boq
+                        update_boq_content_with_current_items()
+                        if st.session_state.project_rooms:
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, product_df)
+                        st.session_state.validation_results = avixa_validation
+                        progress_bar.progress(100, text="✅ BOQ generation complete!")
+                        time.sleep(0.5)
                         progress_bar.empty()
-                        show_error_message(f"BOQ Generation Failed: {str(e)}")
-                        st.exception(e)
-            
-            if st.session_state.boq_items:
-                st.markdown("<hr style='border-color: var(--border-color); margin: 2rem 0;'>", unsafe_allow_html=True)
-                display_boq_results(
-                    st.session_state.boq_items, 
-                    st.session_state.validation_results, 
-                    st.session_state.gst_rates,
-                    st.session_state.get('project_name_input', 'Unnamed Project'),
-                    st.session_state.get('client_name_input', ''),
-                    st.session_state.get('location_input', ''),
-                    st.session_state.get('design_engineer_input', ''),
-                    st.session_state.get('account_manager_input', ''),
-                    st.session_state.get('client_personnel_input', ''),
-                    st.session_state.get('comments_input', '')
-                )
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+                        show_success_message("BOQ Generated Successfully with AVIXA Compliance Check")
+                    else:
+                        progress_bar.empty()
+                        show_error_message("Failed to generate BOQ. Please check your inputs and try again.")
+                except Exception as e:
+                    progress_bar.empty()
+                    show_error_message(f"Error during BOQ generation: {str(e)}")
+                    st.exception(e)
+        
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        if st.session_state.boq_items:
+            display_boq_results(
+                st.session_state.boq_items,
+                st.session_state.validation_results,
+                st.session_state.gst_rates,
+                st.session_state.get('project_name_input', 'Untitled Project'),
+                st.session_state.get('client_name_input', 'N/A'),
+                st.session_state.get('location_input', 'N/A'),
+                st.session_state.get('design_engineer_input', 'N/A'),
+                st.session_state.get('account_manager_input', 'N/A'),
+                st.session_state.get('client_personnel_input', 'N/A'),
+                st.session_state.get('comments_input', '')
+            )
+        else:
+            st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
     with tab5:
-        with st.container():
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary);">3D Space Visualization</h2>', unsafe_allow_html=True)
-            st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-            
-            if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
-                show_animated_loader("Rendering 3D environment...", 2)
+        st.markdown('<h2 class="section-header">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        room_length = st.session_state.get('room_length_input', 24)
+        room_width = st.session_state.get('room_width_input', 16)
+        ceiling_height = st.session_state.get('ceiling_height_input', 10)
+        
+        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
+            with st.spinner("Rendering 3D environment..."):
                 viz_html = create_3d_visualization(
-                    st.session_state.room_type_select,
-                    st.session_state.get('room_length_input', 24),
-                    st.session_state.get('room_width_input', 16),
-                    st.session_state.get('ceiling_height_input', 10)
+                    room_type_key,
+                    room_length,
+                    room_width,
+                    ceiling_height,
+                    st.session_state.boq_items
                 )
-                st.components.v1.html(viz_html, height=600, scrolling=False)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Footer
-    st.markdown(f'''
+                if viz_html:
+                    st.components.v1.html(viz_html, height=600, scrolling=False)
+                    show_success_message("3D Visualization rendered successfully")
+                else:
+                    show_error_message("Failed to generate 3D visualization")
+        
+        st.markdown("""
+        <div class="info-box" style="margin-top: 1.5rem;">
+            <p>
+                <b>💡 Visualization Controls:</b><br>
+                • <b>Rotate:</b> Left-click and drag<br>
+                • <b>Zoom:</b> Scroll wheel<br>
+                • <b>Pan:</b> Right-click and drag<br>
+                • Equipment placement is based on AVIXA standards and room acoustics
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- Footer ---
+    st.markdown(f"""
     <div class="custom-footer">
-        <p>© {datetime.now().year} AllWave AV & GS | Professional AV Solutions | Powered by AI & AVIXA Standards</p>
+        <p>© {datetime.now().year} AllWave Audio Visual & General Services | Powered by AI-driven Design Engine</p>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Built with Streamlit • Gemini AI • AVIXA Standards Compliance</p>
     </div>
-    ''', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()
