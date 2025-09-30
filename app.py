@@ -85,18 +85,8 @@ def load_css():
     
     /* Login Page Boot-Up Sequence & Logo */
     .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
-    /* --- LOGO CSS UPDATED HERE --- */
-    .login-main-logo { 
-        max-height: 90px; /* Increased from 60px */
-        margin-bottom: 2rem; 
-        animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; 
-        transition: transform 0.3s ease; /* Added for smooth hover effect */
-        filter: drop-shadow(0 0 10px var(--glow-primary)); /* Base glow */
-    }
-    .login-main-logo:hover {
-        transform: scale(1.05);
-        filter: drop-shadow(0 0 25px var(--glow-primary)); /* Brighter glow on hover */
-    }
+    .login-main-logo { max-height: 90px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; transition: transform 0.3s ease; filter: drop-shadow(0 0 10px var(--glow-primary)); }
+    .login-main-logo:hover { transform: scale(1.05); filter: drop-shadow(0 0 25px var(--glow-primary)); }
     .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
     .stForm { animation: fadeInUp 0.8s ease-out 0.6s both; }
     
@@ -112,37 +102,43 @@ def load_css():
     ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
     
     /* Custom Header/Logo Styles */
-    .logo-container {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 1rem 2rem;
-        background: var(--glass-bg);
-        border-bottom: 1px solid var(--border-color);
-        border-radius: var(--border-radius-lg);
-        margin-bottom: 2rem;
+    .logo-container { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: var(--glass-bg); border-bottom: 1px solid var(--border-color); border-radius: var(--border-radius-lg); margin-bottom: 2rem; }
+    .main-logo img { max-height: 50px; }
+    .partner-logos { display: flex; align-items: center; gap: 2rem; }
+    .partner-logos img { max-height: 35px; opacity: 0.7; transition: opacity 0.3s ease, transform 0.3s ease; }
+    .partner-logos img:hover { opacity: 1; transform: scale(1.1); }
+
+    /* --- NEW: CSS for the Sidebar Toggle Button --- */
+    .sidebar-toggle-btn {
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        z-index: 1000;
+        display: inline-block;
+        background-color: var(--widget-bg);
+        color: var(--glow-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 50%;
+        width: 45px;
+        height: 45px;
+        text-align: center;
+        line-height: 45px;
+        font-size: 24px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        text-decoration: none;
     }
-    .main-logo img {
-        max-height: 50px;
-    }
-    .partner-logos {
-        display: flex;
-        align-items: center;
-        gap: 2rem;
-    }
-    .partner-logos img {
-        max-height: 35px;
-        opacity: 0.7;
-        transition: opacity 0.3s ease, transform 0.3s ease;
-    }
-    .partner-logos img:hover {
-        opacity: 1;
+    .sidebar-toggle-btn:hover {
         transform: scale(1.1);
+        background-color: var(--glow-primary);
+        color: var(--bg-dark);
+        box-shadow: 0 0 20px var(--glow-primary);
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- Helper Functions ---
+# --- Helper Functions (No changes needed here) ---
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
     with placeholder.container():
@@ -162,7 +158,6 @@ def image_to_base64(img_path):
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
-        # Return a placeholder or None if the image is not found
         return None
 
 def create_header(main_logo, partner_logos):
@@ -189,14 +184,12 @@ def create_header(main_logo, partner_logos):
     else:
         st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
 
-# --- NEW, CORRECTED LOGIN PAGE FUNCTION ---
 def show_login_page(logo_b64, page_icon_path):
     st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
     load_css()
     
     logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
-    # Use st.markdown for the static layout parts
     st.markdown(f"""
     <div class="login-container">
         <div class="glass-container interactive-card has-corners">
@@ -209,7 +202,6 @@ def show_login_page(logo_b64, page_icon_path):
     </div>
     """, unsafe_allow_html=True)
 
-    # Use Streamlit's native st.form for inputs and the button
     with st.form(key="login_form"):
         st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
         st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
@@ -232,8 +224,16 @@ def show_login_page(logo_b64, page_icon_path):
 
 # The main application function
 def main():
+    # --- NEW: Initialize and manage sidebar state ---
+    if 'sidebar_state' not in st.session_state:
+        st.session_state.sidebar_state = 'expanded'
+
+    if st.query_params.get('toggle_sidebar'):
+        st.session_state.sidebar_state = 'collapsed' if st.session_state.sidebar_state == 'expanded' else 'expanded'
+        st.query_params.clear()
+        st.rerun()
+        
     # --- Define asset paths ---
-    # Create an 'assets' folder in the same directory as your script and place logos there.
     main_logo_path = Path("assets/company_logo.png")
     
     # --- Handle Authentication and Login Page ---
@@ -242,9 +242,18 @@ def main():
         show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
         return
 
-    # --- Main App Configuration ---
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
+    # --- UPDATED: Main App Configuration ---
+    st.set_page_config(
+        page_title="AllWave AV - BOQ Generator", 
+        page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", 
+        layout="wide", 
+        initial_sidebar_state=st.session_state.sidebar_state
+    )
     load_css()
+    
+    # --- NEW: Add the HTML for the button to the page ---
+    st.markdown('<a href="?toggle_sidebar=True" target="_self" class="sidebar-toggle-btn">&#9776;</a>', unsafe_allow_html=True)
+
 
     # --- Initialize Session State ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
