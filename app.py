@@ -266,8 +266,17 @@ def main():
         # Mission Parameters Section
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+        
+        # ===== NEW FIELDS ADDED HERE =====
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
+        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+        st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
+        st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
+        st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
+        st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
+        st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
+        # ==================================
+
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Financial Config Section
@@ -357,7 +366,7 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    progress_bar.progress(10, text="🔄 Step 1: Generating initial design with AI...")
+                    # ... (rest of the code for generation remains the same) ...
                     boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
@@ -382,8 +391,21 @@ def main():
                         progress_bar.empty(); show_error_message("Failed to generate BOQ. The AI and fallback system did not return valid items.")
                 except Exception as e:
                     progress_bar.empty(); show_error_message(f"An error occurred during BOQ generation: {str(e)}")
+
         if st.session_state.get('boq_items'):
-            st.markdown("---"); display_boq_results(product_df)
+            st.markdown("---")
+            # ===== PASSING NEW DETAILS TO THE DISPLAY FUNCTION =====
+            project_details = {
+                "Project Name": st.session_state.get("project_name_input", ""),
+                "Client Name": st.session_state.get("client_name_input", ""),
+                "Location": st.session_state.get("location_input", ""),
+                "Design Engineer": st.session_state.get("design_engineer_input", ""),
+                "Account Manager": st.session_state.get("account_manager_input", ""),
+                "Key Client Personnel": st.session_state.get("client_personnel_input", ""),
+                "Key Comments": st.session_state.get("comments_input", "")
+            }
+            display_boq_results(product_df, project_details)
+            # =======================================================
         st.markdown('</div>', unsafe_allow_html=True)
 
     with tab5:
