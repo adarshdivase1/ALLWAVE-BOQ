@@ -13,26 +13,33 @@ def clean_and_validate_product_data(product_df):
     # Clean price data - remove unrealistic prices
     df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     
-    # Category-specific price filtering
+    # --- ADDED: More aggressive, category-specific price filtering to remove bad data ---
+    # These ranges should reflect your catalog. Adjust as needed.
     price_filters = {
-        'Cables': (10, 500),
-        'Mounts': (30, 1000),
-        'Displays': (500, 20000),
-        'Audio': (50, 5000),
-        'Video Conferencing': (200, 10000),
-        'Control': (100, 8000),
-        'Infrastructure': (100, 5000)
+        'Cables': (10, 800),
+        'Mounts': (50, 1500),
+        'Displays': (400, 25000),
+        'Audio': (100, 15000),
+        'Video Conferencing': (200, 20000),
+        'Control': (150, 10000),
+        'Infrastructure': (50, 5000)
     }
     
+    # Function to check if a row's price is valid for its category
     def is_valid_price(row):
         category = row['category']
         price = row['price']
         if category in price_filters:
             min_p, max_p = price_filters[category]
             return min_p <= price <= max_p
-        return 100 <= price <= 50000  # Default range
+        # Default for 'General' or uncategorized - be strict
+        return 100 <= price <= 50000
     
+    # Apply the filter and drop rows with invalid prices
+    initial_rows = len(df)
     df = df[df.apply(is_valid_price, axis=1)]
+    if initial_rows > len(df):
+        print(f"Price Validation: Removed {initial_rows - len(df)} products with unrealistic prices.")
 
     # Clean category names
     category_mapping = {
@@ -151,8 +158,6 @@ def match_product_in_database(product_name, brand, product_df):
         return None
     except Exception:
         return None
-
-# --- NEWLY ADDED FUNCTIONS ---
 
 def normalize_category(category_text, product_name):
     """Normalize category names to standard categories."""
