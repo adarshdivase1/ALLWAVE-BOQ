@@ -3,38 +3,26 @@ import time
 from datetime import datetime
 import base64
 from pathlib import Path
+import pandas as pd # It's good practice to import pandas here if you pass dataframes
 
 # --- Component Imports ---
-# Make sure your component files are in a 'components' directory.
-# This is a placeholder for your actual imports.
+# This section now properly imports your real functions from the 'components' folder.
 try:
-    # Example: from components.data_handler import load_and_validate_data
-    # For this example, we'll create dummy functions if imports fail.
-    class DummyROOM_SPECS:
-        def keys(self):
-            return ["Conference Room", "Huddle Room", "Boardroom"]
-    ROOM_SPECS = DummyROOM_SPECS()
-    def load_and_validate_data(): return (None, None, [])
-    def setup_gemini(): return None
-    def create_multi_room_interface(): st.info("Project Scope Interface Placeholder")
-    def create_room_calculator(): st.info("Room Analysis Interface Placeholder")
-    def create_advanced_requirements(): return {}
-    def display_boq_results(df): st.info("BOQ Results Placeholder")
-    def create_3d_visualization(): st.info("3D Visualization Placeholder")
+    from components.data_handler import load_and_validate_data
+    # Assuming other component files exist based on your previous scripts
+    from components.gemini_handler import setup_gemini
+    from components.ui_components import (
+        create_multi_room_interface, 
+        create_room_calculator, 
+        create_advanced_requirements,
+        display_boq_results
+    )
+    from components.visualizer import create_3d_visualization, ROOM_SPECS
 
-except ImportError:
-    st.warning("Could not import custom components. Using dummy placeholders.")
-    class DummyROOM_SPECS:
-        def keys(self):
-            return ["Conference Room", "Huddle Room", "Boardroom"]
-    ROOM_SPECS = DummyROOM_SPECS()
-    def load_and_validate_data(): return (None, None, [])
-    def setup_gemini(): return None
-    def create_multi_room_interface(): st.info("Project Scope Interface Placeholder")
-    def create_room_calculator(): st.info("Room Analysis Interface Placeholder")
-    def create_advanced_requirements(): return {}
-    def display_boq_results(df): st.info("BOQ Results Placeholder")
-    def create_3d_visualization(): st.info("3D Visualization Placeholder")
+except ImportError as e:
+    # This error will now be more specific if a component is missing.
+    st.error(f"Fatal Error: A required component could not be imported. Please ensure all files are in the 'components' directory. Details: {e}")
+    st.stop()
 
 
 # --- "Solar Flare" Theme CSS (Enhanced for Branding) ---
@@ -283,11 +271,14 @@ def main():
         # Load Data and Setup Model
         with st.spinner("Initializing system modules..."):
             product_df, guidelines, data_issues = load_and_validate_data()
+        
         if data_issues:
             with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
                 for issue in data_issues: st.warning(issue)
+        
         if product_df is None:
             show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
+        
         model = setup_gemini()
 
         # Display Header and Logos
@@ -305,21 +296,23 @@ def main():
             st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
             if st.button("🚪 Logout", use_container_width=True):
                 show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
+            
             st.markdown("---")
             st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
             st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
             st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
+            
             st.markdown("---")
             st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
             st.selectbox("Currency", ["INR", "USD"], key="currency_select")
             st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
             st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
+            
             st.markdown("---")
             st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
             room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
             st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
             
-            # This part requires ROOM_SPECS to be a dictionary, adjusted for the dummy class
             if isinstance(ROOM_SPECS, dict) and room_type_key in ROOM_SPECS:
                 spec = ROOM_SPECS[room_type_key]
                 st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
@@ -333,23 +326,41 @@ def main():
             st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
             create_multi_room_interface()
             st.markdown('</div>', unsafe_allow_html=True)
+        
         with tab2:
             st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
             create_room_calculator()
             st.markdown('</div>', unsafe_allow_html=True)
+
         with tab3:
             st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
             technical_reqs = create_advanced_requirements()
             st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
             st.markdown('</div>', unsafe_allow_html=True)
+
         with tab4:
             st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
             st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+            
             if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
-                st.info("BOQ Generation logic would run here.")
+                st.info("BOQ Generation logic would run here based on inputs.")
+                # Example of how you would gather all inputs to pass to a generation function
+                # all_inputs = {
+                #     "client": st.session_state.client_name_input,
+                #     "project": st.session_state.project_name_input,
+                #     "room_type": st.session_state.room_type_select,
+                #     "budget": st.session_state.budget_tier_slider,
+                #     "features": st.session_state.features_text_area,
+                #     "tech_reqs": technical_reqs
+                # }
+                # st.session_state.boq_items = your_boq_generation_function(model, product_df, all_inputs)
+            
             if st.session_state.get('boq_items'):
-                st.markdown("---"); display_boq_results(product_df)
+                st.markdown("---")
+                display_boq_results(product_df)
+
             st.markdown('</div>', unsafe_allow_html=True)
+
         with tab5:
             st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
             create_3d_visualization()
