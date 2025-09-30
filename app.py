@@ -334,12 +334,12 @@ def main():
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
-        with st.container():
-            st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-            st.markdown('<h2 style="text-align: center; color: var(--text-primary); margin-top: 0;">Multi-Room Project Management</h2>', unsafe_allow_html=True)
-            st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
-            create_multi_room_interface()
-            st.markdown('</div>', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary); margin-top: 0;">Multi-Room Project Management</h2>', unsafe_allow_html=True)
+        st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
+        create_multi_room_interface()
+        st.markdown('</div>', unsafe_allow_html=True)
         
     with tab2:
         with st.container():
