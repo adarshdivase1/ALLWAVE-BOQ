@@ -38,18 +38,19 @@ def _add_image_to_cell(sheet, image_path, cell, height, width):
 
 def _create_sheet_header(sheet, styles):
     """Creates the standard header with logos and title for a sheet."""
-    # 1. Set a taller row height to comfortably fit all logos
     sheet.row_dimensions[1].height = 65
 
-    # 2. Add the main logo on the far left
+    # Main logo on the left
     _add_image_to_cell(sheet, 'company_logo.png', 'A1', 60, 120)
+    
+    # Crestron logo next to the main logo
+    _add_image_to_cell(sheet, 'crestron_logo.png', 'C1', 55, 100)
 
-    # 3. Add the certification logos on the far right, with proper spacing
-    _add_image_to_cell(sheet, 'crestron_logo.png', 'L1', 55, 100)
+    # Certification logos on the far right
     _add_image_to_cell(sheet, 'iso_logo.png', 'N1', 55, 55)
     _add_image_to_cell(sheet, 'avixa_logo.png', 'O1', 55, 100)
 
-    # 4. Add the main title bar below the logos
+    # Main title bar below the logos
     sheet.merge_cells('A3:P3')
     header_cell = sheet['A3']
     header_cell.value = "All Wave AV Systems Pvt. Ltd."
@@ -200,10 +201,8 @@ def _populate_company_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate
 
 def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     """Adds the Proposal Summary sheet."""
-    # Check if sheet exists to avoid creating duplicates
     if "Proposal Summary" in workbook.sheetnames:
         summary_sheet = workbook["Proposal Summary"]
-        # Clear existing data except header
         for row in range(summary_sheet.max_row, 6, -1):
             summary_sheet.delete_rows(row, 1)
     else:
@@ -220,13 +219,11 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
         summary_sheet.append([])
         summary_sheet.append(headers)
         
-        # Style header row
         header_row_idx = summary_sheet.max_row
         for cell in summary_sheet[header_row_idx]:
             cell.fill = styles['table_header_fill']
             cell.font = styles['table_header']
 
-    # Populate data
     grand_total = 0
     for room in rooms_data:
         if room.get('total'):
@@ -240,7 +237,6 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     summary_sheet.append(["Grand Total", "", "", grand_total])
     total_row_idx = summary_sheet.max_row
 
-    # Style data and total rows
     for row in summary_sheet.iter_rows(min_row=8, max_row=total_row_idx):
         for cell in row:
             if isinstance(cell.value, (int, float)):
@@ -339,8 +335,8 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     client_name = project_details.get('client_name', 'Valued Client')
     gst_rates = project_details.get('gst_rates', {'Electronics': 18, 'Services': 18})
 
-    # Add standard sheets first, in the desired order
-    _add_proposal_summary_sheet(workbook, [], styles) # Create summary sheet shell
+    # Add standard sheets first
+    _add_proposal_summary_sheet(workbook, [], styles) 
     _add_scope_of_work_sheet(workbook, styles)
     _add_version_control_sheet(workbook, project_name, client_name, styles)
     _add_terms_conditions_sheet(workbook, styles)
@@ -355,10 +351,10 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             )
             room['subtotal'], room['gst'], room['total'] = subtotal, gst, total
     
-    # After all rooms are processed, re-populate the summary sheet with the final data
+    # Re-populate the summary sheet with the final data
     _add_proposal_summary_sheet(workbook, rooms_data, styles)
 
-    # Remove the default sheet created by openpyxl
+    # Remove the default sheet
     if "Sheet" in workbook.sheetnames:
         del workbook["Sheet"]
 
