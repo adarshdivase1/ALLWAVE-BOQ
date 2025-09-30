@@ -23,223 +23,924 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS ---
+# --- "Cyberpunk Aurora" Theme CSS ---
 def load_css():
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
     
     :root {
-        --bg-dark: #111827;
-        --glass-bg: rgba(17, 24, 39, 0.7);
-        --widget-bg: rgba(0, 0, 0, 0.25);
-        --glow-primary: #FFBF00; /* Solar Gold */
-        --glow-secondary: #00BFFF; /* Holographic Blue */
-        --text-primary: #F9FAFB;
-        --text-secondary: #9CA3AF;
-        --border-color: rgba(255, 255, 255, 0.2);
-        --border-radius-lg: 16px;
-        --border-radius-md: 10px;
-        --animation-speed: 0.4s;
+        /* Core Colors */
+        --bg-primary: #0a0e1a;
+        --bg-secondary: #0f1729;
+        --bg-tertiary: #141d33;
+        
+        /* Glassmorphism */
+        --glass-bg: rgba(15, 23, 41, 0.85);
+        --glass-light: rgba(255, 255, 255, 0.03);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        
+        /* Neon Colors */
+        --neon-cyan: #00ffff;
+        --neon-pink: #ff00ff;
+        --neon-yellow: #ffff00;
+        --neon-green: #00ff00;
+        --neon-orange: #ff9500;
+        --neon-purple: #9945ff;
+        
+        /* Gradients */
+        --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --gradient-cyber: linear-gradient(135deg, #00ffff 0%, #ff00ff 50%, #ffff00 100%);
+        --gradient-holographic: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00, #00ffff);
+        
+        /* Text */
+        --text-primary: #ffffff;
+        --text-secondary: #94a3b8;
+        --text-tertiary: #64748b;
+        
+        /* Spacing & Borders */
+        --border-radius-sm: 8px;
+        --border-radius-md: 12px;
+        --border-radius-lg: 20px;
+        --border-radius-xl: 28px;
+        
+        /* Shadows */
+        --shadow-neon: 0 0 40px rgba(0, 255, 255, 0.5);
+        --shadow-deep: 0 20px 60px -10px rgba(0, 0, 0, 0.8);
     }
 
-    /* Keyframe Animations */
-    @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-    @keyframes shine { 0%{left:-100px} 100%{left:120%} }
-    @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
-    @keyframes pulse-glow { 0%, 100% { text-shadow: 0 0 15px var(--glow-primary); } 50% { text-shadow: 0 0 30px var(--glow-primary); } }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    /* ============ KEYFRAME ANIMATIONS ============ */
     
-    /* Global Style */
+    @keyframes matrix-rain {
+        0% { transform: translateY(-100%); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translateY(100vh); opacity: 0; }
+    }
+    
+    @keyframes holographic {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    @keyframes cyber-glitch {
+        0%, 100% { clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%); transform: translate(0); }
+        33% { clip-path: polygon(0 15%, 100% 22%, 100% 85%, 0 92%); transform: translate(-2px, 2px); }
+        66% { clip-path: polygon(0 8%, 100% 12%, 100% 95%, 0 88%); transform: translate(2px, -2px); }
+    }
+    
+    @keyframes neon-pulse {
+        0%, 100% { 
+            box-shadow: 
+                0 0 10px var(--neon-cyan),
+                0 0 20px var(--neon-cyan),
+                0 0 30px var(--neon-cyan),
+                inset 0 0 10px rgba(0, 255, 255, 0.1);
+        }
+        50% { 
+            box-shadow: 
+                0 0 20px var(--neon-cyan),
+                0 0 40px var(--neon-cyan),
+                0 0 60px var(--neon-cyan),
+                inset 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+    }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        33% { transform: translateY(-10px) rotate(1deg); }
+        66% { transform: translateY(5px) rotate(-1deg); }
+    }
+    
+    @keyframes scan-line {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100%); }
+    }
+    
+    @keyframes data-stream {
+        0% { background-position: 0 0; }
+        100% { background-position: 0 100%; }
+    }
+    
+    @keyframes rotate-3d {
+        0% { transform: perspective(1000px) rotateY(0deg); }
+        100% { transform: perspective(1000px) rotateY(360deg); }
+    }
+    
+    /* ============ GLOBAL STYLES ============ */
+    
     .stApp {
-        background-color: var(--bg-dark);
+        background: var(--bg-primary);
+        position: relative;
+        overflow-x: hidden;
+    }
+    
+    /* Matrix Background Effect */
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
         background-image: 
-            url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWPj4+NjY19fX2JiYl/f39tbW1+fn5oaGhiYmLS0tLR0dGysrKqqqrZ2dnx8fHU1NTKysp8fHydnp6Fu3UIAAADcElEQVR42p2b65biQAxAW2s3s3N3d3N3/v/H9i7Itp4oMElsoI3z30IJ8DeyZkTRLMAqgTqgso3qSg+sDGCmostvjQYwY8z2N4pMQbjIwkQS5UQcmJXE28j2Uht4RYVGYo8wT6yok5eJMDEs0mGuxKMR4itN4gY2xqkM7gqCchlOINQk4gUCXg0gY2yQhIkfRhgojJgQpE5SDyE5zHyf6kwoIT5sSj/PEpX0vYnL2b3k52TfG0c4w7z/D/3zzLdOOkN8pIe3h/d7b+S+zYdHz2CiD3wzG/AZoP/39b/d3b0eAAAAAElFTSuQmCC),
-            linear-gradient(125deg, #111827, #3730a3, #FFBF00, #00BFFF, #111827);
-        background-size: auto, 400% 400%;
-        animation: aurora 25s ease infinite;
-        font-family: 'Inter', sans-serif;
+            repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 255, 255, 0.03) 2px,
+                rgba(0, 255, 255, 0.03) 4px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                rgba(255, 0, 255, 0.03) 2px,
+                rgba(255, 0, 255, 0.03) 4px
+            );
+        pointer-events: none;
+        z-index: 1;
+    }
+    
+    /* Animated Background Gradient */
+    .stApp::after {
+        content: '';
+        position: fixed;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(
+            circle at 20% 80%,
+            rgba(0, 255, 255, 0.1) 0%,
+            transparent 50%
+        ),
+        radial-gradient(
+            circle at 80% 20%,
+            rgba(255, 0, 255, 0.1) 0%,
+            transparent 50%
+        ),
+        radial-gradient(
+            circle at 40% 40%,
+            rgba(255, 255, 0, 0.05) 0%,
+            transparent 50%
+        );
+        animation: holographic 20s ease infinite;
+        pointer-events: none;
+        z-index: 0;
+    }
+    
+    /* ============ TYPOGRAPHY ============ */
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Orbitron', monospace !important;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    
+    p, span, div {
+        font-family: 'Rajdhani', sans-serif;
+        letter-spacing: 0.02em;
+    }
+    
+    /* ============ GLASS CONTAINERS ============ */
+    
+    .glass-container {
+        background: linear-gradient(135deg, 
+            rgba(15, 23, 41, 0.9) 0%, 
+            rgba(20, 29, 51, 0.8) 100%);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-radius: var(--border-radius-lg);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 
+            0 8px 32px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+        padding: 2.5rem;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+        z-index: 10;
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Holographic Border Effect */
+    .glass-container::before {
+        content: '';
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        right: -2px;
+        bottom: -2px;
+        background: var(--gradient-holographic);
+        background-size: 400% 400%;
+        border-radius: var(--border-radius-lg);
+        opacity: 0;
+        z-index: -1;
+        animation: holographic 4s ease infinite;
+        transition: opacity 0.3s ease;
+    }
+    
+    .glass-container:hover::before {
+        opacity: 0.8;
+    }
+    
+    /* Scan Line Effect */
+    .glass-container::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, 
+            transparent, 
+            var(--neon-cyan), 
+            transparent);
+        animation: scan-line 3s linear infinite;
+        opacity: 0.6;
+    }
+    
+    /* ============ INTERACTIVE CARDS ============ */
+    
+    .interactive-card {
+        transform-style: preserve-3d;
+        transform: perspective(1000px) rotateX(0deg) rotateY(0deg);
+        transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .interactive-card:hover {
+        transform: perspective(1000px) rotateX(2deg) rotateY(-5deg) scale(1.02);
+        box-shadow: 
+            0 25px 60px rgba(0, 255, 255, 0.3),
+            0 0 100px rgba(255, 0, 255, 0.2),
+            inset 0 0 30px rgba(255, 255, 255, 0.05);
+    }
+    
+    /* ============ CYBER CORNERS ============ */
+    
+    .cyber-corners {
+        position: relative;
+    }
+    
+    .cyber-corners::before,
+    .cyber-corners::after,
+    .cyber-corners .corner-tl,
+    .cyber-corners .corner-tr,
+    .cyber-corners .corner-bl,
+    .cyber-corners .corner-br {
+        content: '';
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        border: 2px solid;
+        border-image: linear-gradient(45deg, var(--neon-cyan), var(--neon-pink)) 1;
+    }
+    
+    .cyber-corners::before {
+        top: -1px;
+        left: -1px;
+        border-right: none;
+        border-bottom: none;
+    }
+    
+    .cyber-corners::after {
+        top: -1px;
+        right: -1px;
+        border-left: none;
+        border-bottom: none;
+    }
+    
+    .cyber-corners .corner-bl {
+        bottom: -1px;
+        left: -1px;
+        border-right: none;
+        border-top: none;
+    }
+    
+    .cyber-corners .corner-br {
+        bottom: -1px;
+        right: -1px;
+        border-left: none;
+        border-top: none;
+    }
+    
+    /* ============ ANIMATED HEADERS ============ */
+    
+    .animated-header {
+        font-family: 'Orbitron', monospace;
+        font-size: 3.5rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, 
+            var(--neon-cyan) 0%, 
+            var(--neon-pink) 25%, 
+            var(--neon-yellow) 50%, 
+            var(--neon-cyan) 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: holographic 3s linear infinite;
+        text-align: center;
+        position: relative;
+        text-shadow: 
+            0 0 30px rgba(0, 255, 255, 0.5),
+            0 0 60px rgba(255, 0, 255, 0.3);
+        margin-bottom: 1rem;
+    }
+    
+    .animated-header::after {
+        content: attr(data-text);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+        text-shadow: 
+            0 0 10px var(--neon-cyan),
+            0 0 20px var(--neon-pink),
+            0 0 30px var(--neon-cyan);
+        opacity: 0.5;
+        animation: cyber-glitch 2s infinite;
+    }
+    
+    /* ============ BUTTONS ============ */
+    
+    .stButton > button {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 600;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.1) 0%, 
+            rgba(255, 0, 255, 0.1) 100%);
+        color: var(--text-primary);
+        border: 2px solid transparent;
+        border-image: linear-gradient(45deg, var(--neon-cyan), var(--neon-pink)) 1;
+        border-radius: var(--border-radius-md);
+        padding: 0.9rem 2.5rem;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 
+            0 4px 15px rgba(0, 255, 255, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    
+    .stButton > button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, 
+            transparent, 
+            rgba(255, 255, 255, 0.3), 
+            transparent);
+        transition: left 0.5s ease;
+    }
+    
+    .stButton > button:hover::before {
+        left: 100%;
+    }
+    
+    .stButton > button:hover {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.3) 0%, 
+            rgba(255, 0, 255, 0.3) 100%);
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 
+            0 8px 25px rgba(0, 255, 255, 0.4),
+            0 0 40px rgba(255, 0, 255, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        border-image: linear-gradient(45deg, var(--neon-yellow), var(--neon-green)) 1;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0) scale(0.98);
+    }
+    
+    /* Primary Button Special Style */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, var(--neon-cyan), var(--neon-pink));
+        border: none;
+        color: var(--bg-primary);
+        font-weight: 700;
+        animation: neon-pulse 2s ease infinite;
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, var(--neon-pink), var(--neon-yellow));
+        animation: none;
+    }
+    
+    /* ============ INPUT FIELDS ============ */
+    
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea,
+    .stSelectbox > div[data-baseweb="select"] > div,
+    .stMultiSelect > div[data-baseweb="select"] > div {
+        font-family: 'Space Mono', monospace;
+        background: linear-gradient(135deg, 
+            rgba(15, 23, 41, 0.95) 0%, 
+            rgba(20, 29, 51, 0.95) 100%);
+        color: var(--text-primary);
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        border-radius: var(--border-radius-md);
+        padding: 0.75rem 1rem;
+        transition: all 0.3s ease;
+        box-shadow: 
+            inset 0 2px 4px rgba(0, 0, 0, 0.2),
+            0 0 10px rgba(0, 255, 255, 0.1);
+    }
+    
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stTextArea textarea:focus,
+    .stSelectbox > div[data-baseweb="select"] > div[aria-expanded="true"],
+    .stMultiSelect > div[data-baseweb="select"] > div[aria-expanded="true"] {
+        border-color: var(--neon-cyan);
+        box-shadow: 
+            0 0 20px rgba(0, 255, 255, 0.4),
+            inset 0 0 10px rgba(0, 255, 255, 0.1);
+        outline: none;
+    }
+    
+    /* Input placeholders */
+    input::placeholder,
+    textarea::placeholder {
+        color: var(--text-tertiary);
+        font-style: italic;
+    }
+    
+    /* ============ SLIDERS ============ */
+    
+    div[data-baseweb="slider"] {
+        margin: 1rem 0;
+    }
+    
+    div[data-baseweb="slider"] > div {
+        background: linear-gradient(90deg, 
+            var(--neon-cyan) 0%, 
+            var(--neon-pink) 50%, 
+            var(--neon-yellow) 100%);
+        height: 6px;
+        border-radius: 3px;
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+    }
+    
+    div[data-baseweb="slider"] div[role="slider"] {
+        background: radial-gradient(circle, var(--neon-cyan), var(--neon-pink));
+        border: 2px solid var(--text-primary);
+        width: 24px;
+        height: 24px;
+        box-shadow: 
+            0 0 20px var(--neon-cyan),
+            0 0 40px rgba(0, 255, 255, 0.5);
+        transition: all 0.3s ease;
+    }
+    
+    div[data-baseweb="slider"] div[role="slider"]:hover {
+        transform: scale(1.2);
+        box-shadow: 
+            0 0 30px var(--neon-cyan),
+            0 0 60px rgba(0, 255, 255, 0.7);
+    }
+    
+    /* ============ TABS ============ */
+    
+    .stTabs [data-baseweb="tab-list"] {
+        background: linear-gradient(135deg, 
+            rgba(15, 23, 41, 0.8) 0%, 
+            rgba(20, 29, 51, 0.8) 100%);
+        border-radius: var(--border-radius-lg);
+        padding: 0.5rem;
+        border: 1px solid rgba(0, 255, 255, 0.2);
+        gap: 0.5rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: transparent;
+        color: var(--text-secondary);
+        border-radius: var(--border-radius-md);
+        padding: 0.75rem 1.5rem;
+        border: 1px solid transparent;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(0, 255, 255, 0.1);
+        color: var(--neon-cyan);
+        border-color: rgba(0, 255, 255, 0.3);
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.2) 0%, 
+            rgba(255, 0, 255, 0.2) 100%);
+        color: var(--text-primary) !important;
+        border: 1px solid var(--neon-cyan);
+        box-shadow: 
+            0 0 20px rgba(0, 255, 255, 0.4),
+            inset 0 0 10px rgba(0, 255, 255, 0.1);
+    }
+    
+    /* ============ SIDEBAR ============ */
+    
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, 
+            var(--bg-secondary) 0%, 
+            var(--bg-tertiary) 100%);
+        border-right: 1px solid rgba(0, 255, 255, 0.2);
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+    
+    section[data-testid="stSidebar"] .stMarkdown {
         color: var(--text-primary);
     }
     
-    /* Glassmorphism Containers & Corner Brackets */
-    .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
-    .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
-    .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
-    .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
-    .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
-    .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
-    .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
-
-    /* Themed Widgets (Sidebar & Main) */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
-    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
-    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
-    [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
-    [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
+    section[data-testid="stSidebar"] h3 {
+        color: var(--neon-cyan);
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+    }
     
-    /* Login Page Boot-Up Sequence */
-    .login-element { animation: fadeInUp 0.8s ease-out both; }
-    .login-logo { animation-delay: 0.2s; animation-name: fadeInUp, pulse-glow; animation-duration: 0.8s, 2s; animation-iteration-count: 1, infinite; }
-    .login-title { animation-delay: 0.4s; }
-    .login-form > div { animation: fadeInUp 0.8s ease-out both; }
-    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
+    /* ============ PROGRESS BAR ============ */
     
-    /* Other Styles */
-    .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-    .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
-    .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
-    .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
-    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
-    #MainMenu, footer, header { visibility: hidden; }
-    ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
+    .stProgress > div > div {
+        background: linear-gradient(90deg, 
+            var(--neon-cyan) 0%, 
+            var(--neon-pink) 50%, 
+            var(--neon-yellow) 100%);
+        background-size: 200% 100%;
+        animation: holographic 2s linear infinite;
+        border-radius: var(--border-radius-sm);
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+    }
+    
+    /* ============ METRICS ============ */
+    
+    [data-testid="metric-container"] {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.05) 0%, 
+            rgba(255, 0, 255, 0.05) 100%);
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        border-radius: var(--border-radius-md);
+        padding: 1.5rem;
+        box-shadow: 
+            0 4px 15px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        transition: all 0.3s ease;
+    }
+    
+    [data-testid="metric-container"]:hover {
+        border-color: var(--neon-cyan);
+        box-shadow: 
+            0 8px 25px rgba(0, 255, 255, 0.3),
+            inset 0 0 20px rgba(0, 255, 255, 0.05);
+        transform: translateY(-2px);
+    }
+    
+    [data-testid="metric-container"] label {
+        font-family: 'Rajdhani', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+    
+    [data-testid="metric-container"] [data-testid="metric-value"] {
+        font-family: 'Orbitron', monospace;
+        font-weight: 700;
+        color: var(--neon-cyan);
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        font-size: 2rem;
+    }
+    
+    /* ============ LOADER ANIMATION ============ */
+    
+    .loading-spinner {
+        width: 80px;
+        height: 80px;
+        position: relative;
+        margin: 2rem auto;
+    }
+    
+    .loading-spinner::before,
+    .loading-spinner::after {
+        content: '';
+        position: absolute;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        animation: rotate-3d 2s linear infinite;
+    }
+    
+    .loading-spinner::before {
+        width: 100%;
+        height: 100%;
+        border-top-color: var(--neon-cyan);
+        border-bottom-color: var(--neon-pink);
+        animation-direction: normal;
+    }
+    
+    .loading-spinner::after {
+        width: 70%;
+        height: 70%;
+        top: 15%;
+        left: 15%;
+        border-left-color: var(--neon-yellow);
+        border-right-color: var(--neon-green);
+        animation-direction: reverse;
+        animation-duration: 1.5s;
+    }
+    
+    /* ============ SCROLLBAR ============ */
+    
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: var(--bg-secondary);
+        border-radius: var(--border-radius-sm);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, 
+            var(--neon-cyan) 0%, 
+            var(--neon-pink) 100%);
+        border-radius: var(--border-radius-sm);
+        border: 2px solid var(--bg-secondary);
+        box-shadow: 
+            0 0 10px rgba(0, 255, 255, 0.5),
+            inset 0 0 5px rgba(255, 255, 255, 0.2);
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, 
+            var(--neon-pink) 0%, 
+            var(--neon-yellow) 100%);
+        box-shadow: 
+            0 0 20px rgba(255, 0, 255, 0.7),
+            inset 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+    
+    /* ============ EXPANDER ============ */
+    
+    .streamlit-expanderHeader {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.1) 0%, 
+            rgba(255, 0, 255, 0.1) 100%);
+        border-radius: var(--border-radius-md);
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.2) 0%, 
+            rgba(255, 0, 255, 0.2) 100%);
+        border-color: var(--neon-cyan);
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+    }
+    
+    /* ============ DATA GRID EFFECT ============ */
+    
+    .data-grid {
+        position: relative;
+        background: 
+            repeating-linear-gradient(
+                0deg,
+                rgba(0, 255, 255, 0.03) 0px,
+                transparent 1px,
+                transparent 2px,
+                rgba(0, 255, 255, 0.03) 3px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                rgba(255, 0, 255, 0.03) 3px
+            );
+        animation: data-stream 20s linear infinite;
+    }
+    
+    /* ============ FLOATING PARTICLES ============ */
+    
+    .particle {
+        position: absolute;
+        width: 4px;
+        height: 4px;
+        background: var(--neon-cyan);
+        border-radius: 50%;
+        box-shadow: 0 0 10px var(--neon-cyan);
+        animation: float 6s ease-in-out infinite;
+        opacity: 0.6;
+    }
+    
+    /* ============ DATAFRAME STYLING ============ */
+    
+    .dataframe {
+        border: 1px solid rgba(0, 255, 255, 0.3) !important;
+        border-radius: var(--border-radius-md) !important;
+        background: var(--glass-bg) !important;
+        overflow: hidden !important;
+    }
+    
+    .dataframe thead th {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.2) 0%, 
+            rgba(255, 0, 255, 0.2) 100%) !important;
+        color: var(--text-primary) !important;
+        font-family: 'Rajdhani', sans-serif !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+        border-bottom: 2px solid var(--neon-cyan) !important;
+        padding: 1rem !important;
+    }
+    
+    .dataframe tbody tr {
+        background: rgba(15, 23, 41, 0.5) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .dataframe tbody tr:hover {
+        background: rgba(0, 255, 255, 0.1) !important;
+        box-shadow: inset 0 0 20px rgba(0, 255, 255, 0.1) !important;
+    }
+    
+    .dataframe tbody td {
+        color: var(--text-primary) !important;
+        font-family: 'Space Mono', monospace !important;
+        padding: 0.75rem 1rem !important;
+        border-bottom: 1px solid rgba(0, 255, 255, 0.1) !important;
+    }
+    
+    /* ============ ALERT BOXES ============ */
+    
+    .stAlert {
+        background: linear-gradient(135deg, 
+            rgba(15, 23, 41, 0.95) 0%, 
+            rgba(20, 29, 51, 0.95) 100%) !important;
+        border-left: 4px solid var(--neon-cyan) !important;
+        border-radius: var(--border-radius-md) !important;
+        box-shadow: 
+            0 4px 15px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        animation: neon-pulse 3s ease infinite !important;
+    }
+    
+    .stAlert[data-baseweb="notification"][kind="error"] {
+        border-left-color: #ff0055 !important;
+    }
+    
+    .stAlert[data-baseweb="notification"][kind="success"] {
+        border-left-color: var(--neon-green) !important;
+    }
+    
+    .stAlert[data-baseweb="notification"][kind="warning"] {
+        border-left-color: var(--neon-orange) !important;
+    }
+    
+    .stAlert[data-baseweb="notification"][kind="info"] {
+        border-left-color: var(--neon-cyan) !important;
+    }
+    
+    /* ============ CODE BLOCKS ============ */
+    
+    code {
+        font-family: 'Space Mono', monospace !important;
+        background: rgba(0, 255, 255, 0.1) !important;
+        color: var(--neon-cyan) !important;
+        padding: 0.2rem 0.4rem !important;
+        border-radius: var(--border-radius-sm) !important;
+        border: 1px solid rgba(0, 255, 255, 0.3) !important;
+    }
+    
+    pre {
+        background: var(--bg-secondary) !important;
+        border: 1px solid rgba(0, 255, 255, 0.3) !important;
+        border-radius: var(--border-radius-md) !important;
+        padding: 1.5rem !important;
+        box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* ============ CHECKBOX & RADIO ============ */
+    
+    .stCheckbox, .stRadio {
+        font-family: 'Rajdhani', sans-serif !important;
+    }
+    
+    input[type="checkbox"],
+    input[type="radio"] {
+        accent-color: var(--neon-cyan) !important;
+        cursor: pointer !important;
+    }
+    
+    /* ============ FILE UPLOADER ============ */
+    
+    .stFileUploader {
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.05) 0%, 
+            rgba(255, 0, 255, 0.05) 100%) !important;
+        border: 2px dashed rgba(0, 255, 255, 0.4) !important;
+        border-radius: var(--border-radius-lg) !important;
+        padding: 2rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stFileUploader:hover {
+        border-color: var(--neon-cyan) !important;
+        background: linear-gradient(135deg, 
+            rgba(0, 255, 255, 0.1) 0%, 
+            rgba(255, 0, 255, 0.1) 100%) !important;
+        box-shadow: 0 0 30px rgba(0, 255, 255, 0.2) !important;
+    }
+    
+    /* ============ DOWNLOAD BUTTON ============ */
+    
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, 
+            var(--neon-green) 0%, 
+            var(--neon-cyan) 100%) !important;
+        color: var(--bg-primary) !important;
+        font-weight: 700 !important;
+        border: none !important;
+    }
+    
+    .stDownloadButton > button:hover {
+        background: linear-gradient(135deg, 
+            var(--neon-cyan) 0%, 
+            var(--neon-green) 100%) !important;
+        box-shadow: 
+            0 8px 25px rgba(0, 255, 255, 0.5),
+            0 0 40px rgba(0, 255, 0, 0.3) !important;
+    }
+    
+    /* ============ RESPONSIVE DESIGN ============ */
+    
+    @media (max-width: 768px) {
+        .animated-header {
+            font-size: 2rem;
+        }
+        
+        .glass-container {
+            padding: 1.5rem;
+            border-radius: var(--border-radius-md);
+        }
+        
+        .stButton > button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+    }
+    
+    /* ============ UTILITY CLASSES ============ */
+    
+    .text-glow {
+        text-shadow: 
+            0 0 10px var(--neon-cyan),
+            0 0 20px var(--neon-cyan),
+            0 0 30px var(--neon-cyan);
+    }
+    
+    .cyber-border {
+        border: 1px solid;
+        border-image: linear-gradient(45deg, 
+            var(--neon-cyan), 
+            var(--neon-pink), 
+            var(--neon-yellow)) 1;
+    }
+    
+    .holographic-text {
+        background: var(--gradient-holographic);
+        background-size: 400% 400%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: holographic 3s ease infinite;
+    }
+    
+    /* ============ HIDE STREAMLIT BRANDING ============ */
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
     </style>
     """, unsafe_allow_html=True)
-
-# Helper functions for loader/messages and the login page
-def show_animated_loader(text="Processing...", duration=2):
-    placeholder = st.empty()
-    with placeholder.container():
-        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
-    time.sleep(duration); placeholder.empty()
-
-def show_success_message(message):
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-def show_error_message(message):
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-def show_login_page():
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="centered")
-    load_css()
-    st.markdown("""<div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;"><div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div><div class="login-title"><h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1><p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p></div>""", unsafe_allow_html=True)
-    with st.form("login_form"):
-        st.markdown('<div class="login-form">', unsafe_allow_html=True)
-        st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input")
-        st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input")
-        st.form_submit_button("Engage", type="primary", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        if st.session_state.get("FormSubmitter:login_form-Engage"):
-            email, password = st.session_state.email_input, st.session_state.password_input
-            if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
-                show_animated_loader("Authenticating...", 1.5)
-                st.session_state.authenticated = True; st.session_state.user_email = email;
-                show_success_message("Authentication Successful. Welcome."); time.sleep(1); st.rerun()
-            else:
-                show_error_message("Access Denied. Use official AllWave credentials.")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# The main application function
-def main():
-    if not st.session_state.get('authenticated'):
-        show_login_page(); return
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
-    load_css()
-
-    # --- Initialize Session State ---
-    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
-    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
-    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
-    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
-
-    # --- Load Data and Setup Model ---
-    with st.spinner("Initializing system modules..."):
-        product_df, guidelines, data_issues = load_and_validate_data()
-    if data_issues:
-        with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
-            for issue in data_issues: st.warning(issue)
-    if product_df is None:
-        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
-    model = setup_gemini()
-
-    st.markdown('<div class="glass-container interactive-card has-corners"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
-        st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
-        if st.button("🚪 Logout", use_container_width=True):
-            show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
-        st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
-        st.selectbox("Currency", ["INR", "USD"], key="currency_select")
-        st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
-        st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
-        room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
-        st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
-        if room_type_key in ROOM_SPECS:
-            spec = ROOM_SPECS[room_type_key]
-            st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # --- Main Content Tabs ---
-    tab_titles = ["Project Scope", "Room Analysis", "Requirements", "Generate BOQ", "3D Visualization"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([f"**{title}**" for title in tab_titles])
-
-    with tab1:
-        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        create_multi_room_interface()
-        st.markdown('</div>', unsafe_allow_html=True)
-    with tab2:
-        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        create_room_calculator()
-        st.markdown('</div>', unsafe_allow_html=True)
-    with tab3:
-        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        technical_reqs = {}
-        st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
-        technical_reqs.update(create_advanced_requirements())
-        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        st.markdown('</div>', unsafe_allow_html=True)
-    with tab4:
-        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
-            if not model:
-                show_error_message("AI Model is not available. Please check API key.")
-            else:
-                progress_bar = st.progress(0, text="Initializing generation pipeline...")
-                try:
-                    progress_bar.progress(10, text="🔄 Step 1: Generating initial design with AI...")
-                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
-                    if boq_items:
-                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
-                        processed_boq = _remove_exact_duplicates(boq_items)
-                        processed_boq = _correct_quantities(processed_boq)
-                        processed_boq = _remove_duplicate_core_components(processed_boq)
-                        processed_boq = _validate_and_correct_mounts(processed_boq)
-                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
-                        processed_boq = _flag_hallucinated_models(processed_boq)
-                        st.session_state.boq_items = processed_boq
-                        update_boq_content_with_current_items()
-                        if st.session_state.project_rooms:
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
-                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
-                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, st.session_state.room_type_select)
-                        st.session_state.validation_results = {"issues": avixa_validation.get('avixa_issues', []), "warnings": avixa_validation.get('avixa_warnings', [])}
-                        progress_bar.progress(100, text="Pipeline complete!")
-                        time.sleep(1); progress_bar.empty()
-                        show_success_message("BOQ generation pipeline completed successfully!")
-                        st.rerun()
-                    else:
-                        progress_bar.empty(); show_error_message("Failed to generate BOQ. The AI and fallback system did not return valid items.")
-                except Exception as e:
-                    progress_bar.empty(); show_error_message(f"An error occurred during BOQ generation: {str(e)}")
-        if st.session_state.get('boq_items'):
-            st.markdown("---"); display_boq_results(product_df)
-        st.markdown('</div>', unsafe_allow_html=True)
-    with tab5:
-        st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
-        create_3d_visualization()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
