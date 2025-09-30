@@ -184,7 +184,6 @@ def show_login_page(logo_b64, page_icon_path):
     """, unsafe_allow_html=True)
 
     # Use st.form for login inputs and button
-    # This is placed outside the markdown to be rendered correctly by Streamlit
     with st.form(key="login_form", clear_on_submit=True):
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
@@ -247,7 +246,7 @@ def main():
 
     st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
-    # --- Sidebar (UPDATED CODE) ---
+    # --- Sidebar ---
     with st.sidebar:
         # User Info Section
         st.markdown(f'''
@@ -306,7 +305,6 @@ def main():
         
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
-            # Safely get values from the spec dictionary using .get() with default fallbacks
             area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
             cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
             primary_use = spec.get('primary_use', 'N/A')
@@ -328,19 +326,28 @@ def main():
 
     with tab1:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">Multi-Room Project Management</h2>', unsafe_allow_html=True)
+        st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
         create_multi_room_interface()
         st.markdown('</div>', unsafe_allow_html=True)
+        
     with tab2:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
+        st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
         create_room_calculator()
         st.markdown('</div>', unsafe_allow_html=True)
+        
     with tab3:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
+        st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
         technical_reqs = {}
         st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
         st.markdown('</div>', unsafe_allow_html=True)
+        
     with tab4:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
         st.markdown('<h2 style="text-align: center; color: var(--text-primary);">BOQ Generation Engine</h2>', unsafe_allow_html=True)
@@ -378,8 +385,11 @@ def main():
         if st.session_state.get('boq_items'):
             st.markdown("---"); display_boq_results(product_df)
         st.markdown('</div>', unsafe_allow_html=True)
+
     with tab5:
         st.markdown('<div class="glass-container interactive-card has-corners">', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; color: var(--text-primary);">3D Room Visualizer</h2>', unsafe_allow_html=True)
+        st.markdown('<hr style="border-color: var(--border-color); margin-bottom: 2rem;">', unsafe_allow_html=True)
         create_3d_visualization()
         st.markdown('</div>', unsafe_allow_html=True)
 
