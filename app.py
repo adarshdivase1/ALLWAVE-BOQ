@@ -73,11 +73,20 @@ def load_css():
     .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
     .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
     .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
-    .sidebar-container.has-corners::before, .sidebar-container.has-corners::after { opacity: 1; }
+    
+    /* Sidebar Styles */
+    .st-emotion-cache-16txtl3 { padding: 2rem 1rem; } /* Main sidebar container */
+    .user-info { margin-bottom: 1rem; }
+    .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); }
+    .user-info p { color: var(--text-secondary); word-wrap: break-word; font-size: 0.95rem; }
+    .sidebar-section { margin-top: 1.5rem; }
+    .sidebar-section h3 { margin-bottom: 1rem; color: var(--text-primary); }
+    .info-box { background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color); }
+    .info-box p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.6; }
 
     /* Themed Widgets (Sidebar & Main) */
     .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
-    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
+    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !importanT; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
     [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
     [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
     [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
@@ -86,9 +95,8 @@ def load_css():
     /* Login Page Boot-Up Sequence & Logo */
     .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
     .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
-    .login-title { animation-delay: 0.4s; }
-    .login-form > div { animation: fadeInUp 0.8s ease-out both; }
-    .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
+    .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
+    .login-form { animation: fadeInUp 0.8s ease-out 0.6s both; }
     
     /* Other Styles */
     .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
@@ -102,33 +110,11 @@ def load_css():
     ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
     
     /* Custom Header/Logo Styles */
-    .logo-container {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 1rem 2rem;
-        background: var(--glass-bg);
-        border-bottom: 1px solid var(--border-color);
-        border-radius: var(--border-radius-lg);
-        margin-bottom: 2rem;
-    }
-    .main-logo img {
-        max-height: 50px;
-    }
-    .partner-logos {
-        display: flex;
-        align-items: center;
-        gap: 2rem;
-    }
-    .partner-logos img {
-        max-height: 35px;
-        opacity: 0.7;
-        transition: opacity 0.3s ease, transform 0.3s ease;
-    }
-    .partner-logos img:hover {
-        opacity: 1;
-        transform: scale(1.1);
-    }
+    .logo-container { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: var(--glass-bg); border-bottom: 1px solid var(--border-color); border-radius: var(--border-radius-lg); margin-bottom: 2rem; }
+    .main-logo img { max-height: 50px; }
+    .partner-logos { display: flex; align-items: center; gap: 2rem; }
+    .partner-logos img { max-height: 35px; opacity: 0.7; transition: opacity 0.3s ease, transform 0.3s ease; }
+    .partner-logos img:hover { opacity: 1; transform: scale(1.1); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -152,7 +138,6 @@ def image_to_base64(img_path):
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
-        # Return a placeholder or None if the image is not found
         return None
 
 def create_header(main_logo, partner_logos):
@@ -185,6 +170,7 @@ def show_login_page(logo_b64, page_icon_path):
     
     logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
+    # Render the static HTML part of the login page
     st.markdown(f"""
     <div class="login-container">
         <div class="glass-container interactive-card has-corners">
@@ -193,22 +179,21 @@ def show_login_page(logo_b64, page_icon_path):
                 <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
                 <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
             </div>
-            
-            <form>
-                <div class="login-form">
-                    {st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")}
-                    {st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")}
-                    <button type="submit" name="Engage" class="st-emotion-cache-73o5de e1i5pmfg9">Engage</button>
-                </div>
-            </form>
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Custom form handling logic
-    if 'Engage' in st.query_params:
-        email = st.session_state.get('email_input', '')
-        password = st.session_state.get('password_input', '')
+
+    # Use st.form for login inputs and button
+    # This is placed outside the markdown to be rendered correctly by Streamlit
+    with st.form(key="login_form", clear_on_submit=True):
+        st.markdown('<div class="login-form">', unsafe_allow_html=True)
+        email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
+        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
+        submitted = st.form_submit_button("Engage", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Handle form submission
+    if submitted:
         if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
             show_animated_loader("Authenticating...", 1.5)
             st.session_state.authenticated = True
@@ -222,7 +207,6 @@ def show_login_page(logo_b64, page_icon_path):
 # The main application function
 def main():
     # --- Define asset paths ---
-    # Create an 'assets' folder in the same directory as your script and place logos there.
     main_logo_path = Path("assets/company_logo.png")
     
     # --- Handle Authentication and Login Page ---
@@ -263,27 +247,79 @@ def main():
 
     st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
+    # --- Sidebar (UPDATED CODE) ---
     with st.sidebar:
-        st.markdown('<div class="sidebar-container has-corners">', unsafe_allow_html=True)
-        st.markdown(f'<div style="margin-bottom: 1rem;"><h3 style="color: white;">👤 Welcome</h3><p style="color: var(--text-secondary); word-wrap: break-word;">{st.session_state.get("user_email", "Unknown")}</p></div>', unsafe_allow_html=True)
+        # User Info Section
+        st.markdown(f'''
+        <div class="user-info">
+            <h3>👤 Welcome</h3>
+            <p>{st.session_state.get("user_email", "Unknown User")}</p>
+        </div>
+        ''', unsafe_allow_html=True)
+        
         if st.button("🚪 Logout", use_container_width=True):
-            show_animated_loader("De-authorizing...", 1); st.session_state.clear(); st.rerun()
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">🚀 Mission Parameters</h3>', unsafe_allow_html=True)
+            show_animated_loader("De-authorizing...", 1)
+            st.session_state.clear()
+            st.rerun()
+        
+        st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
+        
+        # Mission Parameters Section
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">⚙️ Financial Config</h3>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Financial Config Section
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
         st.selectbox("Currency", ["INR", "USD"], key="currency_select")
-        st.session_state.gst_rates['Electronics'] = st.number_input("Hardware GST (%)", value=18, min_value=0, max_value=50)
-        st.session_state.gst_rates['Services'] = st.number_input("Services GST (%)", value=18, min_value=0, max_value=50)
-        st.markdown("---")
-        st.markdown('<h3 style="color: var(--text-primary);">🌐 Environment Design</h3>', unsafe_allow_html=True)
-        room_type_key = st.selectbox("Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
-        st.select_slider("Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], value="Standard", key="budget_tier_slider")
+        st.session_state.gst_rates['Electronics'] = st.number_input(
+            "Hardware GST (%)", 
+            value=18, 
+            min_value=0, 
+            max_value=50
+        )
+        st.session_state.gst_rates['Services'] = st.number_input(
+            "Services GST (%)", 
+            value=18, 
+            min_value=0, 
+            max_value=50
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Environment Design Section
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
+        room_type_key = st.selectbox(
+            "Primary Space Type", 
+            list(ROOM_SPECS.keys()), 
+            key="room_type_select"
+        )
+        st.select_slider(
+            "Budget Tier", 
+            options=["Economy", "Standard", "Premium", "Enterprise"], 
+            value="Standard", 
+            key="budget_tier_slider"
+        )
+        
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
-            st.markdown(f"""<div style="background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color);"><p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;"><b>📐 Area:</b> {spec.get('area_sqft', ('N/A', 'N/A'))[0]}-{spec.get('area_sqft', ('N/A', 'N/A'))[1]} sq ft<br><b>⚡ Complexity:</b> {spec.get('complexity', 'N/A')}</p></div>""", unsafe_allow_html=True)
+            # Safely get values from the spec dictionary using .get() with default fallbacks
+            area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
+            cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
+            primary_use = spec.get('primary_use', 'N/A')
+            
+            st.markdown(f"""
+            <div class="info-box">
+                <p>
+                    <b>📐 Area:</b> {area_start}-{area_end} sq ft<br>
+                    <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
+                    <b>🎯 Primary Use:</b> {primary_use}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- Main Content Tabs with Icons ---
