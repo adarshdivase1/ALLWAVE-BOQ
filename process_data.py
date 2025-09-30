@@ -40,17 +40,14 @@ def extract_engineering_data(description):
         'hdmi_out': 0
     }
     
-    # Rack Units (e.g., "1U", "2 RU")
     ru_match = re.search(r'(\d+)\s?ru', text) or re.search(r'(\d+)u rack', text)
     if ru_match:
         data['rack_units'] = int(ru_match.group(1))
 
-    # Power Draw (e.g., "75W", "150 Watts")
     watt_match = re.search(r'(\d+)\s?w', text)
     if watt_match:
         data['power_draw_watts'] = int(watt_match.group(1))
 
-    # HDMI Ports (e.g., "4x HDMI In", "2 HDMI outputs")
     hdmi_in_match = re.search(r'(\d+)\s?x\s?hdmi\s?(in|input)', text)
     if hdmi_in_match:
         data['hdmi_in'] = int(hdmi_in_match.group(1))
@@ -62,34 +59,49 @@ def extract_engineering_data(description):
     return data
 
 def categorize_and_tag_product(description, model):
-    """Analyzes product info to assign a precise sub-category and generate useful metadata tags."""
+    """
+    Analyzes product info to assign a precise sub-category and generate useful metadata tags.
+    The order of rules is critical to ensure specific items are categorized correctly.
+    """
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    
+
+    # --- MORE GRANULAR AND ORDERED CATEGORY RULES ---
     category_rules = [
-        ('Control-Scheduler', ['scheduler']),
-        ('Control-InRoom', ['touch panel', 'touch screen', 'tsw-', 'ts-', ' tap']),
-        ('Control-Processor', ['control processor', 'dmps']),
-        ('Control-Matrix', ['matrix', 'switcher']),
-        ('Mounts-Camera', ['camera mount']),
-        ('Mounts-Display', ['wall mount', 'display mount']),
-        ('Mounts-Rack', ['rack', 'enclosure', 'credenza']),
+        # Most specific categories first
         ('VC-VideoBar', ['video bar', 'soundbar', 'studio x', 'rally bar']),
+        ('Control-Scheduler', ['scheduler', 'room scheduling']),
+        ('Control-InRoom', ['touch panel', 'touch screen', 'tsw-', 'ts-', ' tap', 'ctp18']),
+        ('Audio-Microphone', ['microphone', 'mic', 'mxa9', 'table mic', 'ceiling mic']),
+        ('Audio-Speaker', ['speaker', 'soundbar', 'ceiling speaker']), # Note: VideoBar rule runs first
+        ('Audio-Amplifier', ['amplifier', ' amp']),
+        ('Audio-DSP', ['dsp', 'digital signal processor', 'tesira', 'q-sys', 'biamp', 'core nano']),
         ('VC-Camera', ['camera', 'ptz', 'e-ptz', 'webcam', 'eagleeye']),
         ('VC-Codec', ['codec', 'g7500']),
-        ('Audio-DSP', ['dsp', 'digital signal processor', 'tesira', 'q-sys']),
-        ('Audio-Microphone', ['microphone', 'mic', 'mxa9']),
-        ('Audio-Amplifier', ['amplifier', 'amp']),
-        ('Audio-Speaker', ['speaker', 'soundbar']),
+        ('Control-Processor', ['control processor', 'dmps', 'cp4']),
+        ('Control-Matrix', ['matrix', 'switcher', 'hd-md', 'dm-md']),
+        ('Mounts-Display', ['wall mount', 'display mount', 'flat panel mount']),
+        ('Mounts-Camera', ['camera mount', 'camera shelf']),
+        ('Mounts-Rack', ['rack', 'enclosure', 'credenza']),
         ('Displays', ['display', 'screen', 'monitor', 'interactive', 'projector']),
-        ('Cables', ['cable', 'adapter', 'extender', 'hdmi', 'connector']),
-        ('Infrastructure', ['ups', 'pdu', 'power', 'switch']),
+        ('Cables', ['cable', 'adapter', 'extender', 'hdmi', 'connector', 'retractor']), # Catches accessories
+        ('Infrastructure', ['ups', 'pdu', 'power', 'switch', 'rack shelf', 'adapter plate']), # Catches accessories
     ]
-    category = 'General'
+    
+    category = 'General' # Default category
     for cat, keywords in category_rules:
         if any(keyword in text_to_search for keyword in keywords):
+            # Exclude accessories from primary categories
+            if cat in ['Audio-Microphone', 'Audio-Speaker'] and 'cable' in text_to_search:
+                continue # Skip this rule if it's just cable
+            if cat == 'VC-Camera' and any(kw in text_to_search for kw in ['mount', 'shelf']):
+                continue # Skip if it's a camera mount/shelf
+            if cat == 'Displays' and any(kw in text_to_search for kw in ['mount', 'cable', 'adapter']):
+                continue # Skip if it's a display accessory
+                
             category = cat
-            break
+            break # Stop after the first, most specific match
 
+    # Tagging rules
     tag_rules = {
         'feature': [('wireless_presentation', ['wireless', 'clickshare', 'airtame', 'solstice']), ('interactive', ['interactive', 'touch', 'flip']), ('4k', ['4k', 'uhd'])],
         'tech_spec': [('dante', ['dante']), ('usb_c', ['usb-c']), ('poe', ['poe', 'power over ethernet'])],
@@ -102,7 +114,10 @@ def categorize_and_tag_product(description, model):
             if any(keyword in text_to_search for keyword in keywords):
                 tags[tag_type].add(tag)
 
-    return category, ','.join(sorted(tags['feature'])), ','.join(sorted(tags['tech_spec'])), ','.join(sorted(tags['compatibility']))
+    # Split the main category from the sub-category for the final output
+    main_category = category.split('-')[0]
+
+    return main_category, ','.join(sorted(tags['feature'])), ','.join(sorted(tags['tech_spec'])), ','.join(sorted(tags['compatibility']))
 
 # --- Main Script ---
 new_data_folder = 'data'
@@ -145,13 +160,13 @@ for filename in csv_files:
             desc = str(row.get(desc_col, '')).strip()
             price = pd.to_numeric(row.get(price_col, 0), errors='coerce')
             
-            category, feature_tags, tech_spec_tags, compatibility_tags = categorize_and_tag_product(desc, model)
+            main_category, feature_tags, tech_spec_tags, compatibility_tags = categorize_and_tag_product(desc, model)
             eng_data = extract_engineering_data(desc)
             
             name = f"{model} - {desc.splitlines()[0]}" if desc else model
             
             all_products.append({
-                'category': category,
+                'category': main_category,
                 'brand': brand,
                 'name': name,
                 'price': price if pd.notna(price) else 0.0,
