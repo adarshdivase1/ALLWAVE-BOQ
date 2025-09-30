@@ -16,6 +16,64 @@ except ImportError as e:
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
     def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}, 'control_system': {}}
+
+    def _validate_product_type(product, expected_type):
+    """
+    Returns True only if the product name actually matches the expected type.
+    This prevents selecting accessories when we need core equipment.
+    """
+    name_lower = product.get('name', '').lower()
+    
+    validation_rules = {
+        'display': {
+            'required': ['display', 'monitor', 'screen', 'tv'],
+            'forbidden': ['mount', 'bracket', 'cable', 'adapter', 'stand alone']
+        },
+        'mount': {
+            'required': ['mount', 'bracket'],
+            'forbidden': ['camera mount', 'shelf']  # Unless we specifically want camera mount
+        },
+        'video_bar': {
+            'required': ['bar', 'rally bar', 'studio', 'meetup'],
+            'forbidden': ['camera', 'codec', 'mount']
+        },
+        'codec': {
+            'required': ['codec', 'roommate', 'sx80'],
+            'forbidden': ['camera', 'bar']
+        },
+        'camera': {
+            'required': ['camera', 'ptz'],
+            'forbidden': ['mount', 'shelf', 'bracket']
+        },
+        'microphone': {
+            'required': ['mic', 'microphone'],
+            'forbidden': ['cable', 'adapter', 'stand']
+        },
+        'speaker': {
+            'required': ['speaker', 'loudspeaker'],
+            'forbidden': ['cable', 'mount', 'bracket']
+        },
+        'touch_panel': {
+            'required': ['touch', 'panel', 'controller'],
+            'forbidden': ['scheduler', 'processor']
+        },
+        'rack': {
+            'required': ['rack', 'enclosure', 'cabinet'],
+            'forbidden': ['shelf', 'plate', 'mount']
+        },
+    }
+    
+    if expected_type not in validation_rules:
+        return True  # No specific rules, accept it
+    
+    rules = validation_rules[expected_type]
+    
+    # Must have at least one required keyword
+    has_required = any(req in name_lower for req in rules['required'])
+    # Must NOT have any forbidden keywords
+    has_forbidden = any(forb in name_lower for forb in rules['forbidden'])
+    
+    return has_required and not has_forbidden
     def estimate_power_draw(*args): return 100
     ROOM_SPECS = {}
 
