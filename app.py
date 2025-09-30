@@ -5,7 +5,6 @@ import base64
 from pathlib import Path
 
 # --- Component Imports ---
-# Make sure your component files are in a 'components' directory.
 try:
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
@@ -25,7 +24,6 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS (Enhanced for Branding) ---
 def load_css():
     st.markdown("""
     <style>
@@ -35,17 +33,17 @@ def load_css():
         --bg-dark: #111827;
         --glass-bg: rgba(17, 24, 39, 0.75);
         --widget-bg: rgba(0, 0, 0, 0.3);
-        --glow-primary: #FFBF00; /* Solar Gold */
-        --glow-secondary: #00BFFF; /* Holographic Blue */
+        --glow-primary: #FFBF00;
+        --glow-secondary: #00BFFF;
         --text-primary: #F9FAFB;
-        --text-secondary: #9CA3AF;
+        --text-secondary: #D1D5DB;
+        --text-muted: #9CA3AF;
         --border-color: rgba(255, 255, 255, 0.2);
         --border-radius-lg: 16px;
         --border-radius-md: 10px;
         --animation-speed: 0.4s;
     }
 
-    /* Keyframe Animations */
     @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
     @keyframes shine { 0%{left:-100px} 100%{left:120%} }
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
@@ -54,7 +52,6 @@ def load_css():
     @keyframes spin { 100% { transform: rotate(360deg); } }
     @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
     
-    /* Global Style */
     .stApp {
         background-color: var(--bg-dark);
         background-image: 
@@ -66,15 +63,40 @@ def load_css():
         color: var(--text-primary);
     }
     
-    /* Glassmorphism Containers & Corner Brackets */
-    .glass-container { background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius-lg); padding: 2.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; transition: transform 0.5s ease, box-shadow 0.5s ease; transform-style: preserve-3d; }
-    .interactive-card:hover { transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); }
-    .has-corners::before, .has-corners::after { content: ''; position: absolute; width: 30px; height: 30px; border-color: var(--glow-primary); border-style: solid; transition: opacity var(--animation-speed) ease-in-out; animation: flicker 3s infinite alternate; }
+    .glass-container { 
+        background: var(--glass-bg); 
+        backdrop-filter: blur(20px); 
+        border-radius: var(--border-radius-lg); 
+        padding: 2.5rem; 
+        margin-bottom: 2rem; 
+        border: 1px solid var(--border-color); 
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); 
+        position: relative; 
+        overflow: hidden; 
+        transition: transform 0.5s ease, box-shadow 0.5s ease; 
+        transform-style: preserve-3d; 
+    }
+    
+    .interactive-card:hover { 
+        transform: perspective(1200px) rotateX(4deg) rotateY(-6deg) scale3d(1.03, 1.03, 1.03); 
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px var(--glow-primary); 
+    }
+    
+    .has-corners::before, .has-corners::after { 
+        content: ''; 
+        position: absolute; 
+        width: 30px; 
+        height: 30px; 
+        border-color: var(--glow-primary); 
+        border-style: solid; 
+        transition: opacity var(--animation-speed) ease-in-out; 
+        animation: flicker 3s infinite alternate; 
+    }
+    
     .interactive-card.has-corners:hover::before, .interactive-card.has-corners:hover::after { opacity: 1; }
     .has-corners::before { top: 20px; left: 20px; border-width: 2px 0 0 2px; opacity: 0; }
     .has-corners::after { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; opacity: 0; }
     
-    /* Style Streamlit tab containers */
     .stTabs [data-baseweb="tab-panel"] {
         background: var(--glass-bg);
         backdrop-filter: blur(20px);
@@ -85,66 +107,237 @@ def load_css():
         margin-top: 1rem;
     }
     
+    /* Improved text visibility */
+    .stMarkdown, .stMarkdown p, .stMarkdown li {
+        color: var(--text-secondary) !important;
+    }
+    
+    label, .stMarkdown label {
+        color: var(--text-primary) !important;
+        font-weight: 500 !important;
+    }
+    
     /* Sidebar Styles */
     .st-emotion-cache-16txtl3 { padding: 2rem 1rem; }
     .user-info { margin-bottom: 1rem; }
-    .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); }
+    .user-info h3 { margin-bottom: 0.5rem; color: var(--text-primary); font-weight: 600; }
     .user-info p { color: var(--text-secondary); word-wrap: break-word; font-size: 0.95rem; }
     .sidebar-section { margin-top: 1.5rem; }
-    .sidebar-section h3 { margin-bottom: 1rem; color: var(--text-primary); }
-    .info-box { background: var(--widget-bg); padding: 1rem; border-radius: var(--border-radius-md); margin-top: 1rem; border: 1px solid var(--border-color); }
+    .sidebar-section h3 { margin-bottom: 1rem; color: var(--text-primary); font-weight: 600; }
+    .info-box { 
+        background: var(--widget-bg); 
+        padding: 1rem; 
+        border-radius: var(--border-radius-md); 
+        margin-top: 1rem; 
+        border: 1px solid var(--border-color); 
+    }
     .info-box p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.6; }
 
-    /* Themed Widgets (Sidebar & Main) */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea { background-color: var(--widget-bg) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; transition: all 0.3s ease; }
-    [data-baseweb="select"] > div { background-color: var(--widget-bg) !important; color: var(--text-primary) !importanT; border: 1px solid var(--border-color) !important; border-radius: var(--border-radius-md) !important; }
-    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
-    [data-baseweb="slider"] div[role="slider"] { background-color: var(--glow-primary) !important; box-shadow: 0 0 10px var(--glow-primary); border: none !important; }
-    [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
+    /* Themed Widgets */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea { 
+        background-color: var(--widget-bg) !important; 
+        color: var(--text-primary) !important; 
+        border: 1px solid var(--border-color) !important; 
+        border-radius: var(--border-radius-md) !important; 
+        transition: all 0.3s ease; 
+    }
     
-    /* Login Page Boot-Up Sequence & Logo */
+    [data-baseweb="select"] > div { 
+        background-color: var(--widget-bg) !important; 
+        color: var(--text-primary) !important; 
+        border: 1px solid var(--border-color) !important; 
+        border-radius: var(--border-radius-md) !important; 
+    }
+    
+    [data-baseweb="select"] svg { fill: var(--text-secondary) !important; }
+    [data-baseweb="slider"] div[role="slider"] { 
+        background-color: var(--glow-primary) !important; 
+        box-shadow: 0 0 10px var(--glow-primary); 
+        border: none !important; 
+    }
+    [data-baseweb="slider"] > div:first-of-type { 
+        background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); 
+    }
+    
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, 
+    [data-baseweb="select"] > div[aria-expanded="true"] { 
+        border-color: var(--glow-primary) !important; 
+        box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; 
+    }
+    
+    /* Login Page */
     .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
-    .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
+    .login-main-logo { 
+        max-height: 60px; 
+        margin-bottom: 2rem; 
+        animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; 
+    }
     .login-title { animation: fadeInUp 0.8s ease-out 0.4s both; }
     .login-form { animation: fadeInUp 0.8s ease-out 0.6s both; }
     
-    /* Section Headers within Tabs */
+    /* Section Headers - Each with unique color gradient */
     .section-header {
         text-align: center;
-        color: var(--text-primary);
         margin-bottom: 1.5rem;
         font-size: 1.75rem;
-        font-weight: 600;
+        font-weight: 700;
+        padding: 0.5rem;
+        border-radius: var(--border-radius-md);
+    }
+    
+    .section-header-project {
+        background: linear-gradient(90deg, #10B981, #34D399);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .section-header-room {
+        background: linear-gradient(90deg, #3B82F6, #60A5FA);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .section-header-requirements {
+        background: linear-gradient(90deg, #8B5CF6, #A78BFA);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .section-header-boq {
+        background: linear-gradient(90deg, #F59E0B, #FBBF24);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .section-header-viz {
+        background: linear-gradient(90deg, #EC4899, #F472B6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     
     .section-divider {
         border: none;
-        border-top: 1px solid var(--border-color);
+        border-top: 2px solid var(--border-color);
         margin: 1.5rem 0;
+        opacity: 0.5;
     }
     
-    /* Other Styles */
-    .animated-header { text-align: center; background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 300% 300%; animation: aurora 8s linear infinite; font-size: 3.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-    .stButton > button { background: transparent; color: var(--text-primary); border: 2px solid var(--glow-primary); border-radius: var(--border-radius-md); padding: 0.75rem 2rem; font-weight: 600; font-size: 1rem; transition: all var(--animation-speed) ease; position: relative; overflow: hidden; }
-    .stButton > button::before { content: ''; position: absolute; top: 0; height: 100%; width: 50px; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); animation: shine 3.5s infinite linear; }
-    .stButton > button:hover { background: var(--glow-primary); color: var(--bg-dark); box-shadow: 0 0 25px var(--glow-primary); transform: scale(1.05); }
-    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); border: none; }
+    /* Main animated header - kept distinct */
+    .animated-header { 
+        text-align: center; 
+        background: linear-gradient(90deg, var(--glow-primary), var(--text-primary), var(--glow-secondary)); 
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
+        background-clip: text; 
+        background-size: 300% 300%; 
+        animation: aurora 8s linear infinite; 
+        font-size: 3.5rem; 
+        font-weight: 700; 
+        margin-bottom: 0.5rem; 
+    }
+    
+    .stButton > button { 
+        background: transparent; 
+        color: var(--text-primary); 
+        border: 2px solid var(--glow-primary); 
+        border-radius: var(--border-radius-md); 
+        padding: 0.75rem 2rem; 
+        font-weight: 600; 
+        font-size: 1rem; 
+        transition: all var(--animation-speed) ease; 
+        position: relative; 
+        overflow: hidden; 
+    }
+    
+    .stButton > button::before { 
+        content: ''; 
+        position: absolute; 
+        top: 0; 
+        height: 100%; 
+        width: 50px; 
+        transform: skewX(-20deg); 
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent); 
+        animation: shine 3.5s infinite linear; 
+    }
+    
+    .stButton > button:hover { 
+        background: var(--glow-primary); 
+        color: var(--bg-dark); 
+        box-shadow: 0 0 25px var(--glow-primary); 
+        transform: scale(1.05); 
+    }
+    
+    .stButton > button[kind="primary"] { 
+        background: linear-gradient(90deg, #d32f2f, var(--glow-primary)); 
+        border: none; 
+    }
+    
     #MainMenu, header { visibility: hidden; }
     footer { visibility: hidden; }
-    .custom-footer { text-align: center; padding: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; margin-top: 2rem; }
-    ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: linear-gradient(var(--glow-secondary), var(--glow-primary)); border-radius: 10px; }
     
-    /* Custom Header/Logo Styles */
-    .logo-container { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: var(--glass-bg); border-bottom: 1px solid var(--border-color); border-radius: var(--border-radius-lg); margin-bottom: 2rem; }
+    .custom-footer { 
+        text-align: center; 
+        padding: 1.5rem; 
+        color: var(--text-secondary); 
+        font-size: 0.9rem; 
+        margin-top: 2rem; 
+    }
+    
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
+    ::-webkit-scrollbar-thumb { 
+        background: linear-gradient(var(--glow-secondary), var(--glow-primary)); 
+        border-radius: 10px; 
+    }
+    
+    .logo-container { 
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between; 
+        padding: 1rem 2rem; 
+        background: var(--glass-bg); 
+        border-bottom: 1px solid var(--border-color); 
+        border-radius: var(--border-radius-lg); 
+        margin-bottom: 2rem; 
+    }
+    
     .main-logo img { max-height: 50px; }
     .partner-logos { display: flex; align-items: center; gap: 2rem; }
-    .partner-logos img { max-height: 35px; opacity: 0.7; transition: opacity 0.3s ease, transform 0.3s ease; }
+    .partner-logos img { 
+        max-height: 35px; 
+        opacity: 0.7; 
+        transition: opacity 0.3s ease, transform 0.3s ease; 
+    }
     .partner-logos img:hover { opacity: 1; transform: scale(1.1); }
+    
+    /* Improve metric visibility */
+    [data-testid="stMetricValue"] {
+        color: var(--text-primary) !important;
+        font-weight: 600 !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        color: var(--text-secondary) !important;
+    }
+    
+    /* Improve expander visibility */
+    .streamlit-expanderHeader {
+        color: var(--text-primary) !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Improve table text */
+    .stDataFrame, .stTable {
+        color: var(--text-primary) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- Helper Functions ---
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
     with placeholder.container():
@@ -159,7 +352,6 @@ def show_error_message(message):
 
 @st.cache_data
 def image_to_base64(img_path):
-    """Encodes an image to Base64 to embed in HTML."""
     try:
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
@@ -167,7 +359,6 @@ def image_to_base64(img_path):
         return None
 
 def create_header(main_logo, partner_logos):
-    """Creates the branded header with main and partner logos."""
     main_logo_b64 = image_to_base64(main_logo)
     partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
     
@@ -227,20 +418,16 @@ def show_login_page(logo_b64, page_icon_path):
             show_error_message("Access Denied. Use official AllWave credentials.")
 
 def main():
-    # --- Define asset paths ---
     main_logo_path = Path("assets/company_logo.png")
     
-    # --- Handle Authentication and Login Page ---
     if not st.session_state.get('authenticated'):
         main_logo_b64 = image_to_base64(main_logo_path)
         show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
         return
 
-    # --- Main App Configuration ---
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
-    # --- Initialize Session State ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
     if 'boq_content' not in st.session_state: st.session_state.boq_content = None
     if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
@@ -248,7 +435,6 @@ def main():
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
     if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
 
-    # --- Load Data and Setup Model ---
     with st.spinner("Initializing system modules..."):
         product_df, guidelines, data_issues = load_and_validate_data()
     if data_issues:
@@ -258,7 +444,6 @@ def main():
         show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
     model = setup_gemini()
 
-    # --- Display Header and Logos ---
     partner_logos_paths = {
         "Crestron": Path("assets/crestron_logo.png"),
         "AVIXA": Path("assets/avixa_logo.png"),
@@ -268,7 +453,6 @@ def main():
 
     st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
-    # --- Sidebar ---
     with st.sidebar:
         st.markdown(f'''
         <div class="user-info">
@@ -345,30 +529,34 @@ def main():
             """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- Main Content Tabs ---
     tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
-        st.markdown('<h2 class="section-header">Multi-Room Project Management</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header section-header-project">Multi-Room Project Management</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         create_multi_room_interface()
         
-    with tab2:
-        st.markdown('<h2 class="section-header">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
+        with tab2:
+        st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         create_room_calculator()
         
     with tab3:
-        st.markdown('<h2 class="section-header">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         technical_reqs = {}
-        st.text_area("🎯 Specific Client Needs & Features:", key="features_text_area", placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'", height=100)
+        st.text_area(
+            "🎯 Specific Client Needs & Features:",
+            key="features_text_area",
+            placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'",
+            height=100
+        )
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
         
     with tab4:
-        st.markdown('<h2 class="section-header">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
         if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
@@ -377,7 +565,13 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(model, product_df, guidelines, st.session_state.room_type_select, st.session_state.budget_tier_slider, st.session_state.features_text_area, technical_reqs, st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16))
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
+                        model, product_df, guidelines,
+                        st.session_state.room_type_select,
+                        st.session_state.budget_tier_slider,
+                        st.session_state.get('features_text_area', ''),
+                        technical_reqs
+                    )
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
                         processed_boq = _remove_exact_duplicates(boq_items)
@@ -423,7 +617,7 @@ def main():
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
     with tab5:
-        st.markdown('<h2 class="section-header">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
         room_length = st.session_state.get('room_length_input', 24)
