@@ -21,7 +21,8 @@ def clean_and_validate_product_data(product_df):
         'Audio': (50, 5000),
         'Video Conferencing': (200, 10000),
         'Control': (100, 8000),
-        'Infrastructure': (100, 5000)
+        'Infrastructure': (100, 5000),
+        'Solution-Kit': (1000, 50000) # Added price range for kits
     }
     
     def is_valid_price(row):
@@ -152,20 +153,23 @@ def match_product_in_database(product_name, brand, product_df):
     except Exception:
         return None
 
-# --- NEWLY ADDED FUNCTIONS ---
-
 def normalize_category(category_text, product_name):
     """Normalize category names to standard categories."""
-    category_lower = category_text.lower()
-    product_lower = product_name.lower()
+    category_lower = str(category_text).lower()
+    product_lower = str(product_name).lower()
 
-    if any(term in category_lower or term in product_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
+    # --- NEW: Added rule for Solution Kits at the top for priority ---
+    if any(term in category_lower or term in product_lower for term in ['kit', 'bundle', 'room solution']):
+        return 'Solution-Kit'
+    # -----------------------------------------------------------------
+    
+    elif any(term in category_lower or term in product_lower for term in ['display', 'monitor', 'screen', 'projector', 'tv']):
         return 'Displays'
     elif any(term in category_lower or term in product_lower for term in ['audio', 'speaker', 'microphone', 'sound', 'amplifier']):
         return 'Audio'
     elif any(term in category_lower or term in product_lower for term in ['video', 'conferencing', 'camera', 'codec', 'rally']):
         return 'Video Conferencing'
-    elif any(term in category_lower or term in product_lower for term in ['control', 'processor', 'switch', 'matrix']):
+    elif any(term in category_lower or term in product_lower for term in ['control', 'processor', 'switch', 'matrix', 'touch panel', 'tsw-', 'tap']):
         return 'Control'
     elif any(term in category_lower or term in product_lower for term in ['mount', 'bracket', 'rack', 'stand']):
         return 'Mounts'
