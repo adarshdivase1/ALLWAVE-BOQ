@@ -25,7 +25,7 @@ except ImportError as e:
     st.stop()
 
 
-# --- "Solar Flare" Theme CSS (Enhanced for Branding) ---
+# --- "Solar Flare" Theme CSS (Enhanced) ---
 def load_css():
     st.markdown("""
     <style>
@@ -49,7 +49,7 @@ def load_css():
     @keyframes aurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
     @keyframes shine { 0%{left:-100px} 100%{left:120%} }
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.6} }
-    @keyframes pulse-glow { 0%, 100% { filter: drop-shadow(0 0 10px var(--glow-primary)); } 50% { filter: drop-shadow(0 0 20px var(--glow-primary)); } }
+    @keyframes pulse-glow { 0%, 100% { text-shadow: 0 0 15px var(--glow-primary); } 50% { text-shadow: 0 0 30px var(--glow-primary); } }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { 100% { transform: rotate(360deg); } }
     @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
@@ -83,9 +83,9 @@ def load_css():
     [data-baseweb="slider"] > div:first-of-type { background-image: linear-gradient(to right, var(--glow-primary), var(--glow-secondary)); }
     .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus, [data-baseweb="select"] > div[aria-expanded="true"] { border-color: var(--glow-primary) !important; box-shadow: 0 0 15px rgba(255, 191, 0, 0.5) !important; }
     
-    /* Login Page Boot-Up Sequence & Logo */
-    .login-container { max-width: 450px; margin: 4rem auto; text-align: center; }
-    .login-main-logo { max-height: 60px; margin-bottom: 2rem; animation: fadeInUp 0.8s ease-out 0.2s both, pulse-glow 2.5s infinite ease-in-out; }
+    /* Login Page Boot-Up Sequence */
+    .login-element { animation: fadeInUp 0.8s ease-out both; }
+    .login-logo { animation-delay: 0.2s; animation-name: fadeInUp, pulse-glow; animation-duration: 0.8s, 2s; animation-iteration-count: 1, infinite; }
     .login-title { animation-delay: 0.4s; }
     .login-form > div { animation: fadeInUp 0.8s ease-out both; }
     .login-form > div:nth-of-type(1) { animation-delay: 0.6s; } .login-form > div:nth-of-type(2) { animation-delay: 0.7s; } .login-form > div:nth-of-type(3) { animation-delay: 0.8s; }
@@ -152,7 +152,7 @@ def image_to_base64(img_path):
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
-        # Return a placeholder or None if the image is not found
+        st.warning(f"Logo file not found: {img_path}. Please create an 'assets' folder and place logos inside.")
         return None
 
 def create_header(main_logo, partner_logos):
@@ -176,63 +176,40 @@ def create_header(main_logo, partner_logos):
             </div>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
 
-def show_login_page(logo_b64, page_icon_path):
-    st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
+def show_login_page():
+    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="centered")
     load_css()
-    
-    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
-
-    st.markdown(f"""
-    <div class="login-container">
-        <div class="glass-container interactive-card has-corners">
-            {logo_html}
-            <div class="login-title">
-                <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
-                <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
-            </div>
-            
-            <form>
-                <div class="login-form">
-                    {st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")}
-                    {st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")}
-                    <button type="submit" name="Engage" class="st-emotion-cache-73o5de e1i5pmfg9">Engage</button>
-                </div>
-            </form>
+    st.markdown("""
+    <div class="glass-container interactive-card has-corners" style="max-width: 450px; margin: 4rem auto;">
+        <div class="login-logo" style="font-size: 3rem; text-align: center; margin-bottom: 1rem;">🚀</div>
+        <div class="login-title">
+            <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
+            <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
         </div>
-    </div>
     """, unsafe_allow_html=True)
-    
-    # Custom form handling logic
-    if 'Engage' in st.query_params:
-        email = st.session_state.get('email_input', '')
-        password = st.session_state.get('password_input', '')
-        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
-            show_animated_loader("Authenticating...", 1.5)
-            st.session_state.authenticated = True
-            st.session_state.user_email = email
-            show_success_message("Authentication Successful. Welcome.")
-            time.sleep(1)
-            st.rerun()
-        else:
-            show_error_message("Access Denied. Use official AllWave credentials.")
+    with st.form("login_form"):
+        st.markdown('<div class="login-form">', unsafe_allow_html=True)
+        st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input")
+        st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input")
+        st.form_submit_button("Engage", type="primary", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        if st.session_state.get("FormSubmitter:login_form-Engage"):
+            email, password = st.session_state.email_input, st.session_state.password_input
+            if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
+                show_animated_loader("Authenticating...", 1.5)
+                st.session_state.authenticated = True; st.session_state.user_email = email;
+                show_success_message("Authentication Successful. Welcome."); time.sleep(1); st.rerun()
+            else:
+                show_error_message("Access Denied. Use official AllWave credentials.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # The main application function
 def main():
-    # --- Define asset paths ---
-    # Create an 'assets' folder in the same directory as your script and place logos there.
-    main_logo_path = Path("assets/company_logo.png")
-    
-    # --- Handle Authentication and Login Page ---
     if not st.session_state.get('authenticated'):
-        main_logo_b64 = image_to_base64(main_logo_path)
-        show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
-        return
+        show_login_page(); return
 
-    # --- Main App Configuration ---
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
     # --- Initialize Session State ---
@@ -254,6 +231,9 @@ def main():
     model = setup_gemini()
 
     # --- Display Header and Logos ---
+    # Create an 'assets' folder in the same directory as your script
+    # and place your logo files there.
+    main_logo_path = Path("assets/company_logo.png")
     partner_logos_paths = {
         "Crestron": Path("assets/crestron_logo.png"),
         "AVIXA": Path("assets/avixa_logo.png"),
