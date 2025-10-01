@@ -694,5 +694,8 @@ def generate_company_excel(rooms_data, project_details, usd_to_inr_rate=83.0, gs
     # Add Scope of Work sheet
     _add_scope_of_work_sheet(workbook, styles)
 
-    workbook.save(output_path)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output.getvalue()
     return output_path
