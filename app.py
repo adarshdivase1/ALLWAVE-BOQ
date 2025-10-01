@@ -8,11 +8,10 @@ from pathlib import Path
 try:
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
+    # MODIFIED: Corrected the import statement to only include available functions
     from components.boq_generator import (
-        generate_boq_from_ai, validate_avixa_compliance,
-        _remove_exact_duplicates, _remove_duplicate_core_components,
-        _ensure_system_completeness,
-        _flag_hallucinated_models, _correct_quantities
+        generate_boq_from_ai,
+        validate_avixa_compliance
     )
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
@@ -58,7 +57,7 @@ def image_to_base64(img_path):
 def create_header(main_logo, partner_logos):
     main_logo_b64 = image_to_base64(main_logo)
     partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
-    
+
     partner_html = ""
     for name, b64 in partner_logos_b64.items():
         if b64:
@@ -81,7 +80,7 @@ def create_header(main_logo, partner_logos):
 def show_login_page(logo_b64, page_icon_path):
     st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
     load_css()
-    
+
     logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
     st.markdown(f"""
@@ -116,7 +115,7 @@ def show_login_page(logo_b64, page_icon_path):
 
 def main():
     main_logo_path = Path("assets/company_logo.png")
-    
+
     if not st.session_state.get('authenticated'):
         main_logo_b64 = image_to_base64(main_logo_path)
         show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
@@ -157,17 +156,17 @@ def main():
             <p>{st.session_state.get("user_email", "Unknown User")}</p>
         </div>
         ''', unsafe_allow_html=True)
-        
+
         if st.button("🚪 Logout", use_container_width=True):
             show_animated_loader("De-authorizing...", 1)
             st.session_state.clear()
             st.rerun()
-        
+
         st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
-        
+
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-        
+
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
         st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
@@ -175,46 +174,46 @@ def main():
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
         st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
         st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
-        
+
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
         st.selectbox("Currency", ["INR", "USD"], key="currency_select")
         st.session_state.gst_rates['Electronics'] = st.number_input(
-            "Hardware GST (%)", 
-            value=18, 
-            min_value=0, 
+            "Hardware GST (%)",
+            value=18,
+            min_value=0,
             max_value=50
         )
         st.session_state.gst_rates['Services'] = st.number_input(
-            "Services GST (%)", 
-            value=18, 
-            min_value=0, 
+            "Services GST (%)",
+            value=18,
+            min_value=0,
             max_value=50
         )
         st.markdown('</div>', unsafe_allow_html=True)
-        
+
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
         room_type_key = st.selectbox(
-            "Primary Space Type", 
-            list(ROOM_SPECS.keys()), 
+            "Primary Space Type",
+            list(ROOM_SPECS.keys()),
             key="room_type_select"
         )
         st.select_slider(
-            "Budget Tier", 
-            options=["Economy", "Standard", "Premium", "Enterprise"], 
-            value="Standard", 
+            "Budget Tier",
+            options=["Economy", "Standard", "Premium", "Enterprise"],
+            value="Standard",
             key="budget_tier_slider"
         )
-        
+
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
             area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
             cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
             primary_use = spec.get('primary_use', 'N/A')
-            
+
             st.markdown(f"""
             <div class="info-box">
                 <p>
@@ -233,12 +232,12 @@ def main():
         st.markdown('<h2 class="section-header section-header-project">Multi-Room Project Management</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         create_multi_room_interface()
-        
+
     with tab2:
         st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        create_room_calculator()
-        
+        room_area = create_room_calculator() # Store the returned room_area
+
     with tab3:
         st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -251,12 +250,14 @@ def main():
         )
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        
+        # Add checkbox for ADA compliance to technical_reqs
+        technical_reqs['ada_compliance'] = st.session_state.get('ada_compliance_checkbox', False)
+
+
     with tab4:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
-        # MODIFIED: The main generation button logic
+
         if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
             if not model:
                 show_error_message("AI Model is not available. Please check API key.")
@@ -265,32 +266,30 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    # The generate_boq_from_ai function now returns the specific room_archetype used
+                    current_room_area = st.session_state.get('room_length_input', 20) * st.session_state.get('room_width_input', 15)
                     boq_items, room_archetype, equipment_reqs = generate_boq_from_ai(
-                        model, product_df, guidelines, # Pass the full parsed guidelines dict
+                        model, product_df, guidelines,
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
                         st.session_state.get('features_text_area', ''),
                         technical_reqs,
-                        st.session_state.get('room_area', 250) # Assuming room_area is stored in session_state
+                        current_room_area
                     )
-                    
+
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying correction rules...")
-                        # Post-processing steps can be simplified as some logic is now in the generator
                         st.session_state.boq_items = boq_items
                         update_boq_content_with_current_items()
-                        
+
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
-                        # The validation function now uses the specific room_archetype's rules
                         avixa_validation = validate_avixa_compliance(
-                            boq_items, 
-                            room_archetype, 
+                            boq_items,
+                            room_archetype,
                             technical_reqs,
-                            guidelines # Pass global config
+                            guidelines
                         )
                         st.session_state.validation_results = avixa_validation
-                        
+
                         progress_bar.progress(100, text="✅ BOQ generation and validation complete!")
                         time.sleep(0.5)
                         progress_bar.empty()
@@ -302,10 +301,10 @@ def main():
                     progress_bar.empty()
                     show_error_message(f"Error during BOQ generation: {str(e)}")
                     st.exception(e)
-        
+
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
-        # CORRECTED CODE
+
+        # MODIFIED: Corrected the call to display_boq_results
         if st.session_state.boq_items:
             # First, gather all project details into a single dictionary
             project_details = {
@@ -323,15 +322,15 @@ def main():
             display_boq_results(product_df, project_details)
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
-    
+
     with tab5:
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
+
         room_length = st.session_state.get('room_length_input', 24)
         room_width = st.session_state.get('room_width_input', 16)
         ceiling_height = st.session_state.get('ceiling_height_input', 10)
-        
+
         if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
             with st.spinner("Rendering 3D environment..."):
                 viz_html = create_3d_visualization(
@@ -346,7 +345,7 @@ def main():
                     show_success_message("3D Visualization rendered successfully")
                 else:
                     show_error_message("Failed to generate 3D visualization")
-        
+
         st.markdown("""
         <div class="info-box" style="margin-top: 1.5rem;">
             <p>
