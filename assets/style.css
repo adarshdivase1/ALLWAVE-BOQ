@@ -1173,3 +1173,191 @@ footer { visibility: hidden; }
         padding: var(--spacing-lg);
     }
 }
+/* ============================================
+    DROPDOWN MENU STYLES
+    ============================================ */
+
+[data-baseweb="popover"] {
+    background: var(--glass-bg-strong) !important;
+    backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-md) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+[data-baseweb="menu"] {
+    background: transparent !important;
+}
+
+[data-baseweb="menu"] li {
+    color: var(--text-primary) !important;
+    transition: all var(--animation-fast) ease;
+}
+
+[data-baseweb="menu"] li:hover {
+    background: rgba(var(--glow-primary-rgb), 0.2) !important;
+    color: var(--text-primary) !important;
+}
+
+/* ============================================
+    CHECKBOX & RADIO STYLES
+    ============================================ */
+
+.stCheckbox,
+.stRadio {
+    color: var(--text-primary) !important;
+}
+
+.stCheckbox > label,
+.stRadio > label {
+    color: var(--text-primary) !important;
+}
+
+[data-baseweb="checkbox"],
+[data-baseweb="radio"] {
+    border-color: var(--border-color) !important;
+    transition: all var(--animation-fast) ease;
+}
+
+[data-baseweb="checkbox"]:hover,
+[data-baseweb="radio"]:hover {
+    border-color: var(--glow-primary) !important;
+    box-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.3);
+}
+
+[data-baseweb="checkbox"][data-checked="true"],
+[data-baseweb="radio"][data-checked="true"] {
+    background-color: var(--glow-primary) !important;
+    border-color: var(--glow-primary) !important;
+    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.5);
+}
+
+/* ============================================
+    FILE UPLOADER
+    ============================================ */
+
+[data-testid="stFileUploader"] {
+    background: var(--widget-bg) !important;
+    border: 2px dashed var(--border-color) !important;
+    border-radius: var(--border-radius-md) !important;
+    transition: all var(--animation-fast) ease;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: var(--glow-primary) !important;
+    background: var(--widget-bg-hover) !important;
+    box-shadow: 0 0 20px rgba(var(--glow-primary-rgb), 0.2);
+}
+
+[data-testid="stFileUploader"] label {
+    color: var(--text-primary) !important;
+}
+
+/* ============================================
+    ALERTS & NOTIFICATIONS
+    ============================================ */
+
+.stAlert {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(15px);
+    border-radius: var(--border-radius-md) !important;
+    border-left: 4px solid !important;
+    animation: slideInRight 0.4s ease;
+}
+
+.stAlert[data-baseweb="notification"] {
+    color: var(--text-primary) !important;
+}
+
+/* Success Alert */
+.stSuccess {
+    border-left-color: var(--glow-success) !important;
+    background: rgba(16, 185, 129, 0.1) !important;
+}
+
+/* Info Alert */
+.stInfo {
+    border-left-color: var(--glow-secondary) !important;
+    background: rgba(30, 57, 126, 0.1) !important;
+}
+
+/* Warning Alert */
+.stWarning {
+    border-left-color: #F59E0B !important;
+    background: rgba(245, 158, 11, 0.1) !important;
+}
+
+/* Error Alert */
+.stError {
+    border-left-color: #EF4444 !important;
+    background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* ============================================
+    SPINNER / LOADING
+    ============================================ */
+
+.stSpinner > div {
+    border-color: var(--glow-primary) var(--glow-secondary) var(--glow-primary) var(--glow-secondary) !important;
+    animation: spin 1s linear infinite;
+}
+
+/* ============================================
+    PROGRESS BAR
+    ============================================ */
+
+.stProgress > div > div {
+    background: linear-gradient(
+        90deg,
+        var(--glow-primary),
+        var(--glow-secondary)
+    ) !important;
+    border-radius: var(--border-radius-sm);
+    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.5);
+}
+
+.stProgress > div {
+    background: var(--widget-bg) !important;
+    border-radius: var(--border-radius-sm);
+}
+
+/* ============================================
+    CODE BLOCKS
+    ============================================ */
+
+.stCodeBlock {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-md) !important;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+code {
+    color: var(--glow-primary) !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    padding: 0.2em 0.4em;
+    border-radius: var(--border-radius-xs);
+    font-family: 'Courier New', monospace;
+}
+
+pre {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-md);
+}
+
+/* ============================================
+    TOOLTIP
+    ============================================ */
+
+[data-baseweb="tooltip"] {
+    background: var(--glass-bg-strong) !important;
+    backdrop-filter: blur(15px);
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-sm) !important;
+    box-shadow: var(--shadow-md) !important;
+    font-size: 0.875rem;
+    padding: var(--spacing-sm) var(--spacing-md);
+}
