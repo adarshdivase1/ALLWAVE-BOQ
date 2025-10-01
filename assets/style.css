@@ -1,7 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-    /* CHANGE 1: Restored your original, working brand colors */
     /* Color System - Brand Guidelines */
     --bg-dark: #002250; /* Dark Blue */
     --bg-darker: #001a3f; /* Darker shade of Dark Blue */
@@ -162,10 +161,9 @@ html {
 }
 
 .stApp {
-    /* CHANGE 2: Restored your original background gradient */
     background-color: var(--bg-dark);
     background-image: 
-        url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWPj4+NjY19fX2JiYl/f39tbW1+fn5oaGhiYmLS0tLR0dGysrKqqqrZ2dnx8fHU1NTKysp8fHydnp6Fu3UIAAADcElEQVR42p2b65biQAxAW2s3s3N3d3N3/v/H9i7Itp4oMElsoI3z30IJ8DeyZkTRLMAqgTqgso3qSg+sDGCmostvjQYwY8z2N4pMQbjIwkQS5UQcmJXE28j2Uht4RYVGYo8wT6yok5eJMDEs0mGuxKMR4itN4gY2xqkM7gqCchlOINQk4gUCXg0gY2yQhIkfRhgojJgQpE5SDyE5zHyf6kwoIT5sSj/PEpX0vYnL2b3k52TfG0c4w7z/D/3zzLdOOkN8pIe3h/d7b+S+zYdHz2CiD3wzG/AZoP/39b/d3b0eAAAAAElFTkSuQmCC),
+        url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWPj4+NjY19fX2JiYl/f39tbW1+fn5oaGhiYmLS0tLR0dGysrKqqqrZ2dnx8fHU1NTKysp8fHydnp6Fu3UIAAADcElEQVR42p2b65biQAxAW2s3s3N3d3N3/v/H9i7Itp4oMElsoI3z30IJ8DeyZkTRLMAqgTqgso3qSg+sDGCmostvjQYwY8z2N4pMQbjIwkQS5UQcmJXE28j2Uht4RYVGYo8wT6yok5eJMDEs0mGuxKMR4itN4gY2xqkM7gqCchlOINQk4gUCXg0gY2yQhIkfRhgojJgQpE5SDyE5zHyf6kwoIT5sSj/PEpX0vYnL2b3k52TfG0c4w7z/D/3zzLdOOkN8pIe3h/d7b+S+zYdHz2CiD3wzG/AZoP/39b/d3b0eAAAAAElFTSuQmCC),
         radial-gradient(ellipse at top left, rgba(var(--glow-secondary-rgb), 0.2), transparent 50%),
         radial-gradient(ellipse at bottom right, rgba(var(--glow-primary-rgb), 0.15), transparent 50%),
         linear-gradient(125deg, var(--bg-dark), var(--glow-secondary), var(--bg-dark), var(--glow-primary), var(--bg-dark));
@@ -213,102 +211,27 @@ section[data-testid="stSidebar"] div {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* User info section - Enhanced */
-.user-info {
+/* ====================================================================== */
+/* FIX 1: Style sidebar markdown headers directly as glass cards.         */
+/* This ensures headers like "Financial Config" appear in a styled box    */
+/* without needing special python code.                                   */
+/* ====================================================================== */
+section[data-testid="stSidebar"] .stMarkdown h3 {
     background: var(--glass-bg-strong);
-    backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(15px) saturate(160%);
     border-radius: var(--border-radius-lg);
-    padding: var(--spacing-lg);
-    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-md) var(--spacing-lg);
+    margin: var(--spacing-xl) 0 var(--spacing-md) 0;
     border: 1px solid var(--border-color-strong);
-    box-shadow: var(--shadow-md),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    position: relative;
-    overflow: hidden;
-    animation: fadeInUp 0.6s ease both;
-}
-
-.user-info::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(var(--glow-primary-rgb), 0.1),
-        transparent
-    );
-    animation: shimmer 3s infinite;
-}
-
-.user-info h3 {
-    margin: 0 0 var(--spacing-sm) 0 !important;
-    color: var(--glow-primary) !important;
-    font-weight: 700 !important;
-    font-size: 1.15rem !important;
-    text-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.5);
-    letter-spacing: 0.5px;
-}
-
-.user-info p {
-    color: var(--text-secondary) !important;
-    word-wrap: break-word;
-    font-size: 0.95rem !important;
-    line-height: 1.6 !important;
-    margin: 0 !important;
-    font-weight: 400;
-}
-
-/* Sidebar sections - Enhanced cards */
-.sidebar-section {
-    background: var(--glass-bg-strong);
-    backdrop-filter: blur(20px) saturate(180%);
-    border-radius: var(--border-radius-lg);
-    padding: var(--spacing-lg);
-    margin-top: var(--spacing-xl);
-    border: 1px solid var(--border-color-strong);
-    box-shadow: var(--shadow-md),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transition: all var(--animation-speed) ease;
-    animation: slideInRight 0.6s ease both;
-    position: relative;
-}
-
-.sidebar-section:hover {
-    border-color: var(--border-color-strong);
-    box-shadow: var(--shadow-lg),
-                0 0 30px rgba(var(--glow-secondary-rgb), 0.15),
-                inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    transform: translateX(-2px);
-}
-
-.sidebar-section h3 {
-    margin: 0 0 var(--spacing-lg) 0 !important;
-    color: var(--glow-secondary) !important;
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    color: var(--text-primary) !important;
     font-weight: 700 !important;
     font-size: 1.1rem !important;
-    text-shadow: 0 0 15px rgba(var(--glow-secondary-rgb), 0.5);
-    padding-bottom: var(--spacing-sm);
-    border-bottom: 2px solid var(--border-color);
+    text-shadow: 0 0 10px rgba(var(--glow-secondary-rgb), 0.5);
     letter-spacing: 0.5px;
-    position: relative;
-    z-index: 1;
-    display: block;
+    animation: slideInRight 0.6s ease both;
 }
 
-.sidebar-section h3::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 50px;
-    height: 2px;
-    background: linear-gradient(90deg, var(--glow-secondary), transparent);
-    animation: shimmer 2s infinite;
-}
 
 /* Info boxes - Premium styling */
 .info-box {
@@ -660,10 +583,21 @@ section[data-testid="stSidebar"] hr::after {
     TEXT & TYPOGRAPHY
     ============================================ */
 
+/* ====================================================================== */
+/* FIX 2: Added "-webkit-text-fill-color: initial" to these rules.        */
+/* This prevents text (like widget labels and markdown) from becoming     */
+/* invisible if a parent element has a gradient text style applied.       */
+/* ====================================================================== */
 .stMarkdown,
 .stMarkdown p,
-.stMarkdown li {
+.stMarkdown li,
+label,
+.stMarkdown label,
+.stMarkdown h4,
+.stMarkdown h5,
+.stMarkdown h6 {
     color: var(--text-primary) !important;
+    -webkit-text-fill-color: initial !important; /* THIS IS THE FIX */
     line-height: 1.7;
 }
 
@@ -672,22 +606,21 @@ section[data-testid="stSidebar"] hr::after {
     color: var(--text-primary) !important;
     font-weight: 700 !important;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    -webkit-text-fill-color: initial !important; /* And also here for safety */
 }
 
+/* This rule is for general headers; gradient headers are handled by specific classes */
 .stMarkdown h1,
 .stMarkdown h2,
-.stMarkdown h3,
-.stMarkdown h4,
-.stMarkdown h5,
-.stMarkdown h6 {
+.stMarkdown h3 {
     color: var(--text-primary) !important;
     font-weight: 700;
     letter-spacing: -0.5px;
+    -webkit-text-fill-color: initial !important; /* And here too */
 }
 
 label,
 .stMarkdown label {
-    color: var(--text-primary) !important;
     font-weight: 600 !important;
     letter-spacing: 0.3px;
 }
@@ -1000,7 +933,6 @@ label,
     opacity: 0.8; 
     transition: opacity var(--animation-fast) ease,
                 transform var(--animation-fast) ease;
-    /* CHANGE 3: Removed grayscale filter to keep logos colorful */
 }
 
 .partner-logos img:hover {
