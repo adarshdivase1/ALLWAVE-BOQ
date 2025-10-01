@@ -326,39 +326,39 @@ def main():
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
     with tab5:
-        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
-        room_length = st.session_state.get('room_length_input', 24)
-        room_width = st.session_state.get('room_width_input', 16)
-        ceiling_height = st.session_state.get('ceiling_height_input', 10)
-        
-        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
-            with st.spinner("Rendering 3D environment..."):
-                viz_html = create_3d_visualization(
-                    room_type_key,
-                    room_length,
-                    room_width,
-                    ceiling_height,
-                    st.session_state.boq_items
-                )
-                if viz_html:
-                    st.components.v1.html(viz_html, height=600, scrolling=False)
-                    show_success_message("3D Visualization rendered successfully")
-                else:
-                    show_error_message("Failed to generate 3D visualization")
-        
-        st.markdown("""
-        <div class="info-box" style="margin-top: 1.5rem;">
-            <p>
-                <b>💡 Visualization Controls:</b><br>
-                • <b>Rotate:</b> Left-click and drag<br>
-                • <b>Zoom:</b> Scroll wheel<br>
-                • <b>Pan:</b> Right-click and drag<br>
-                • Equipment placement is based on AVIXA standards and room acoustics
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    
+    # The button text can be anything, but we keep the key for consistency
+    if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
+        with st.spinner("Rendering 3D environment..."):
+            
+            # --- THIS IS THE FIX ---
+            # Call the function with NO arguments, because visualizer.py
+            # gets all the data it needs from st.session_state by itself.
+            viz_html = create_3d_visualization()
+            
+            if viz_html:
+                # The components.html call in your visualizer.py handles the display,
+                # so we just need to call the function. We can adjust this if needed,
+                # but based on your visualizer.py, the function handles its own display.
+                # Let's adjust app.py to expect the HTML back from the function.
+                st.components.v1.html(viz_html, height=700, scrolling=False)
+                show_success_message("3D Visualization rendered successfully")
+            else:
+                show_error_message("Failed to generate 3D visualization")
+    
+    st.markdown("""
+    <div class="info-box" style="margin-top: 1.5rem;">
+        <p>
+            <b>💡 Visualization Controls:</b><br>
+            • <b>Rotate:</b> Left-click and drag<br>
+            • <b>Zoom:</b> Scroll wheel<br>
+            • <b>Pan:</b> Right-click and drag<br>
+            • Equipment placement is based on AVIXA standards and room acoustics
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # --- Footer ---
     st.markdown(f"""
