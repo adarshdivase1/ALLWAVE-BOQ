@@ -1928,4 +1928,4 @@ def create_3d_visualization():
     </html>
     """
 
-    components.html(html_content, height=700)
+    return html_content
