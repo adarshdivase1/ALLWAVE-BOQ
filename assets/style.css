@@ -295,6 +295,8 @@ section[data-testid="stSidebar"] div {
     border-bottom: 2px solid var(--border-color);
     letter-spacing: 0.5px;
     position: relative;
+    z-index: 1;
+    display: block;
 }
 
 .sidebar-section h3::after {
@@ -346,7 +348,7 @@ section[data-testid="stSidebar"] div {
 }
 
 .info-box p {
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
     margin: 0 !important;
     font-size: 0.9rem !important;
     line-height: 1.9 !important;
@@ -665,6 +667,13 @@ section[data-testid="stSidebar"] hr::after {
     line-height: 1.7;
 }
 
+.stMarkdown strong,
+.stMarkdown b {
+    color: var(--text-primary) !important;
+    font-weight: 700 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .stMarkdown h1,
 .stMarkdown h2,
 .stMarkdown h3,
@@ -940,7 +949,7 @@ label,
     max-height: 70px;
     margin-bottom: var(--spacing-2xl);
     animation: fadeInUp 0.8s ease-out 0.2s both,
-                pulse-glow 2.5s infinite ease-in-out;
+                 pulse-glow 2.5s infinite ease-in-out;
 }
 
 .login-title {
