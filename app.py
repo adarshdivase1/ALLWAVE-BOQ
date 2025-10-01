@@ -256,40 +256,48 @@ def main():
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
+        # MODIFIED: The main generation button logic
         if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
             if not model:
                 show_error_message("AI Model is not available. Please check API key.")
+            elif not guidelines: # Check if guidelines were loaded
+                show_error_message("AVIXA Design Guidelines could not be loaded. Cannot generate BOQ.")
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
-                        model, product_df, guidelines,
+                    # The generate_boq_from_ai function now returns the specific room_archetype used
+                    boq_items, room_archetype, equipment_reqs = generate_boq_from_ai(
+                        model, product_df, guidelines, # Pass the full parsed guidelines dict
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
                         st.session_state.get('features_text_area', ''),
-                        technical_reqs
+                        technical_reqs,
+                        st.session_state.get('room_area', 250) # Assuming room_area is stored in session_state
                     )
+                    
                     if boq_items:
-                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
-                        processed_boq = _remove_exact_duplicates(boq_items)
-                        processed_boq = _correct_quantities(processed_boq)
-                        processed_boq = _remove_duplicate_core_components(processed_boq)
-                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
-                        processed_boq = _flag_hallucinated_models(processed_boq)
-                        st.session_state.boq_items = processed_boq
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying correction rules...")
+                        # Post-processing steps can be simplified as some logic is now in the generator
+                        st.session_state.boq_items = boq_items
                         update_boq_content_with_current_items()
-                        if st.session_state.project_rooms:
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
-                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, product_df)
+                        # The validation function now uses the specific room_archetype's rules
+                        avixa_validation = validate_avixa_compliance(
+                            boq_items, 
+                            room_archetype, 
+                            technical_reqs,
+                            guidelines # Pass global config
+                        )
                         st.session_state.validation_results = avixa_validation
-                        progress_bar.progress(100, text="✅ BOQ generation complete!")
+                        
+                        progress_bar.progress(100, text="✅ BOQ generation and validation complete!")
                         time.sleep(0.5)
                         progress_bar.empty()
-                        show_success_message("BOQ Generated Successfully with AVIXA Compliance Check")
+                        show_success_message("BOQ Generated & Validated with AVIXA Compliance Rules")
                     else:
                         progress_bar.empty()
-                        show_error_message("Failed to generate BOQ. Please check your inputs and try again.")
+                        show_error_message("Failed to generate BOQ. The AI could not produce a valid equipment list.")
                 except Exception as e:
                     progress_bar.empty()
                     show_error_message(f"Error during BOQ generation: {str(e)}")
