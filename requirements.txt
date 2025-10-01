@@ -1,7 +1,6 @@
 streamlit
 pandas
 numpy
-plotly
-aiohttp
 google-generativeai>=0.5.0
 openpyxl
+PyYAML
