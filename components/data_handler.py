@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 import re
-import yaml # NEW: Import the YAML library
+import yaml
 from io import StringIO
 
 def clean_and_validate_product_data(product_df):
@@ -77,7 +77,7 @@ def load_and_validate_data():
         df = clean_and_validate_product_data(df)
         validation_issues = []
 
-        # Data validation checks (same as before)
+        # Data validation checks
         if 'name' not in df.columns or df['name'].isnull().sum() > 0:
             validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
         if 'price' in df.columns:
@@ -94,20 +94,19 @@ def load_and_validate_data():
         if 'image_url' not in df.columns: df['image_url'] = ''
         if 'gst_rate' not in df.columns: df['gst_rate'] = 18
 
-        # NEW: Parse YAML from the guidelines markdown file
+        # Parse YAML from the guidelines markdown file
         try:
             with open("avixa_guidelines.md", "r") as f:
                 content = f.read()
-            
+
             # Find all YAML blocks
             yaml_blocks = re.findall(r'```yaml(.*?)```', content, re.DOTALL)
             parsed_guidelines = {}
             for block in yaml_blocks:
-                # The yaml.safe_load_all can handle multiple documents in one stream
                 documents = yaml.safe_load(StringIO(block))
                 # Merge dictionaries
                 for doc in [documents] if isinstance(documents, dict) else documents:
-                    if doc: # Ensure the document is not empty
+                    if doc:  # Ensure the document is not empty
                         for key, value in doc.items():
                             if key in parsed_guidelines and isinstance(parsed_guidelines[key], list):
                                 parsed_guidelines[key].append(value)
@@ -132,8 +131,6 @@ def load_and_validate_data():
     except Exception as e:
         return None, None, [f"Data loading error: {str(e)}"]
 
-# --- Other functions (match_product_in_database, etc.) remain the same ---
-
 def get_sample_product_data():
     """Provide comprehensive sample products."""
     return [{
@@ -149,12 +146,12 @@ def match_product_in_database(product_name, brand, product_df):
         safe_product_name = str(product_name).strip() if product_name else ""
         safe_brand = str(brand).strip() if brand else ""
         if not safe_product_name and not safe_brand: return None
-        
+
         # Exact match
         if safe_product_name:
             exact_matches = product_df[product_df['name'].astype(str).str.lower() == safe_product_name.lower()]
             if len(exact_matches) > 0: return exact_matches.iloc[0].to_dict()
-        
+
         # Brand + partial name match
         if safe_brand and safe_product_name:
             brand_matches = product_df[product_df['brand'].astype(str).str.lower() == safe_brand.lower()]
@@ -172,8 +169,6 @@ def match_product_in_database(product_name, brand, product_df):
         return None
     except Exception:
         return None
-
-# --- NEWLY ADDED FUNCTIONS ---
 
 def normalize_category(category_text, product_name):
     """Normalize category names to standard categories."""
@@ -197,7 +192,7 @@ def normalize_category(category_text, product_name):
 
 def extract_enhanced_boq_items(boq_content, product_df):
     """Extract BOQ items from AI response based on markdown table format."""
-    from components.utils import estimate_power_draw # Local import to avoid circular dependency
+    from components.utils import estimate_power_draw  # Local import to avoid circular dependency
     items = []
     lines = boq_content.split('\n')
     in_table = False
@@ -214,10 +209,14 @@ def extract_enhanced_boq_items(boq_content, product_df):
             if len(parts) >= 6:
                 category, brand, product_name, specifications = parts[0], parts[1], parts[2], parts[3]
                 remarks = parts[6] if len(parts) > 6 else "Essential AV system component."
-                try: quantity = int(parts[4])
-                except (ValueError, IndexError): quantity = 1
-                try: price = float(parts[5].replace('$', '').replace(',', ''))
-                except (ValueError, IndexError): price = 0
+                try:
+                    quantity = int(parts[4])
+                except (ValueError, IndexError):
+                    quantity = 1
+                try:
+                    price = float(parts[5].replace('$', '').replace(',', ''))
+                except (ValueError, IndexError):
+                    price = 0
 
                 matched_product = match_product_in_database(product_name, brand, product_df)
                 if matched_product:
@@ -229,7 +228,7 @@ def extract_enhanced_boq_items(boq_content, product_df):
                     gst_rate = matched_product.get('gst_rate', 18)
                 else:
                     actual_brand, actual_category, actual_name, image_url, gst_rate = brand, normalize_category(category, product_name), product_name, '', 18
-                
+
                 items.append({
                     'category': actual_category, 'name': actual_name, 'brand': actual_brand,
                     'quantity': quantity, 'price': price, 'justification': remarks,
