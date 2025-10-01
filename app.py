@@ -1,3 +1,4 @@
+
 import streamlit as st
 import time
 from datetime import datetime
@@ -26,13 +27,16 @@ except ImportError as e:
 
 def load_css():
     """Reads the style.css file and injects it into the Streamlit app."""
+    # Correct the path to look inside the 'assets' folder.
+    css_file_path = "assets/style.css"
     try:
-        css_file = Path("assets/style.css")
-        with open(css_file, "r") as f:
+        with open(css_file_path, "r") as f:
             css = f.read()
         st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.error("Could not find style.css file. Please ensure it is in the 'assets' directory.")
+        # Update the warning to show the correct path.
+        st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
+
 
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
@@ -262,13 +266,21 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
+                    # Calculate room_area from the values in the session state
+                    room_length = st.session_state.get('room_length_input', 24.0)
+                    room_width = st.session_state.get('room_width_input', 16.0)
+                    room_area = room_length * room_width
+
+                    # Pass room_area as the final argument to the function
                     boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
                         st.session_state.get('features_text_area', ''),
-                        technical_reqs
+                        technical_reqs,
+                        room_area 
                     )
+                    
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
                         processed_boq = _remove_exact_duplicates(boq_items)
@@ -278,10 +290,10 @@ def main():
                         processed_boq = _flag_hallucinated_models(processed_boq)
                         st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
-                        if st.session_state.project_rooms:
+                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
-                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, product_df)
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type_key)
                         st.session_state.validation_results = avixa_validation
                         progress_bar.progress(100, text="✅ BOQ generation complete!")
                         time.sleep(0.5)
@@ -297,19 +309,20 @@ def main():
         
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
-        if st.session_state.boq_items:
-            display_boq_results(
-                st.session_state.boq_items,
-                st.session_state.validation_results,
-                st.session_state.gst_rates,
-                st.session_state.get('project_name_input', 'Untitled Project'),
-                st.session_state.get('client_name_input', 'N/A'),
-                st.session_state.get('location_input', 'N/A'),
-                st.session_state.get('design_engineer_input', 'N/A'),
-                st.session_state.get('account_manager_input', 'N/A'),
-                st.session_state.get('client_personnel_input', 'N/A'),
-                st.session_state.get('comments_input', '')
-            )
+        if st.session_state.get('boq_items'):
+            # Assemble project_details dictionary to pass to the display function
+            project_details = {
+                'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
+                'Client Name': st.session_state.get('client_name_input', 'N/A'),
+                'Location': st.session_state.get('location_input', 'N/A'),
+                'Design Engineer': st.session_state.get('design_engineer_input', 'N/A'),
+                'Account Manager': st.session_state.get('account_manager_input', 'N/A'),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
+                'Key Comments': st.session_state.get('comments_input', ''),
+                'gst_rates': st.session_state.get('gst_rates', {})
+            }
+            display_boq_results(product_df, project_details)
+
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
@@ -317,21 +330,21 @@ def main():
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
-        room_length = st.session_state.get('room_length_input', 24)
-        room_width = st.session_state.get('room_width_input', 16)
-        ceiling_height = st.session_state.get('ceiling_height_input', 10)
-        
+        # The button text can be anything, but we keep the key for consistency
         if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
             with st.spinner("Rendering 3D environment..."):
-                viz_html = create_3d_visualization(
-                    room_type_key,
-                    room_length,
-                    room_width,
-                    ceiling_height,
-                    st.session_state.boq_items
-                )
+                
+                # --- THIS IS THE FIX ---
+                # Call the function with NO arguments, because visualizer.py
+                # gets all the data it needs from st.session_state by itself.
+                viz_html = create_3d_visualization()
+                
                 if viz_html:
-                    st.components.v1.html(viz_html, height=600, scrolling=False)
+                    # The components.html call in your visualizer.py handles the display,
+                    # so we just need to call the function. We can adjust this if needed,
+                    # but based on your visualizer.py, the function handles its own display.
+                    # Let's adjust app.py to expect the HTML back from the function.
+                    st.components.v1.html(viz_html, height=700, scrolling=False)
                     show_success_message("3D Visualization rendered successfully")
                 else:
                     show_error_message("Failed to generate 3D visualization")
