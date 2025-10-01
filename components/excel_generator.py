@@ -645,7 +645,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     }
 
 
-def generate_professional_boq_excel(rooms_data, project_details, output_path, usd_to_inr_rate=83.0, gst_rates=None):
+def generate_company_excel(rooms_data, project_details, usd_to_inr_rate=83.0, gst_rates=None):
     """
     Main function to generate the complete professional BOQ Excel workbook.
     
