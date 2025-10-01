@@ -305,19 +305,22 @@ def main():
         
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
+        # CORRECTED CODE
         if st.session_state.boq_items:
-            display_boq_results(
-                st.session_state.boq_items,
-                st.session_state.validation_results,
-                st.session_state.gst_rates,
-                st.session_state.get('project_name_input', 'Untitled Project'),
-                st.session_state.get('client_name_input', 'N/A'),
-                st.session_state.get('location_input', 'N/A'),
-                st.session_state.get('design_engineer_input', 'N/A'),
-                st.session_state.get('account_manager_input', 'N/A'),
-                st.session_state.get('client_personnel_input', 'N/A'),
-                st.session_state.get('comments_input', '')
-            )
+            # First, gather all project details into a single dictionary
+            project_details = {
+                'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
+                'Client Name': st.session_state.get('client_name_input', 'N/A'),
+                'Location': st.session_state.get('location_input', 'N/A'),
+                'Design Engineer': st.session_state.get('design_engineer_input', 'N/A'),
+                'Account Manager': st.session_state.get('account_manager_input', 'N/A'),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
+                'Key Comments': st.session_state.get('comments_input', ''),
+                'gst_rates': st.session_state.get('gst_rates', {}),
+                'validation_results': st.session_state.get('validation_results', {})
+            }
+            # Now, call the function with the correct arguments
+            display_boq_results(product_df, project_details)
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
