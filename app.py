@@ -26,15 +26,15 @@ except ImportError as e:
 
 def load_css():
     """Reads the style.css file and injects it into the Streamlit app."""
-    # Note: The original file specified 'assets/style.css', but the uploaded file is 'style.css'.
-    # Adjusting path to match the uploaded file name.
-    css_file_path = "style.css"
+    # Correct the path to look inside the 'assets' folder.
+    css_file_path = "assets/style.css"
     try:
         with open(css_file_path, "r") as f:
             css = f.read()
         st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"Could not find {css_file_path}. Please ensure it is in the root directory.")
+        # Update the warning to show the correct path.
+        st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
 
 
 def show_animated_loader(text="Processing...", duration=2):
@@ -118,7 +118,6 @@ def show_login_page(logo_b64, page_icon_path):
             show_error_message("Access Denied. Use official AllWave credentials.")
 
 def main():
-    # Adjusted asset paths to be relative to the root directory
     main_logo_path = Path("assets/company_logo.png")
     
     if not st.session_state.get('authenticated'):
@@ -266,20 +265,19 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    # =================================================================
-                    # FIX #1: Calculate room_area and pass it to the generation function
-                    # =================================================================
+                    # Calculate room_area from the values in the session state
                     room_length = st.session_state.get('room_length_input', 24.0)
                     room_width = st.session_state.get('room_width_input', 16.0)
                     room_area = room_length * room_width
 
+                    # Pass room_area as the final argument to the function
                     boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
                         st.session_state.get('features_text_area', ''),
                         technical_reqs,
-                        room_area  # <-- The missing argument is now included
+                        room_area 
                     )
                     
                     if boq_items:
@@ -291,7 +289,7 @@ def main():
                         processed_boq = _flag_hallucinated_models(processed_boq)
                         st.session_state.boq_items = processed_boq
                         update_boq_content_with_current_items()
-                        if st.session_state.project_rooms:
+                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
                         avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type_key)
@@ -311,9 +309,7 @@ def main():
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
         if st.session_state.get('boq_items'):
-            # =================================================================
-            # FIX #2: Assemble project_details dict and call display_boq_results correctly
-            # =================================================================
+            # Assemble project_details dictionary to pass to the display function
             project_details = {
                 'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
                 'Client Name': st.session_state.get('client_name_input', 'N/A'),
