@@ -26,13 +26,16 @@ except ImportError as e:
 
 def load_css():
     """Reads the style.css file and injects it into the Streamlit app."""
+    # Note: The original file specified 'assets/style.css', but the uploaded file is 'style.css'.
+    # Adjusting path to match the uploaded file name.
+    css_file_path = "style.css"
     try:
-        css_file = Path("assets/style.css")
-        with open(css_file, "r") as f:
+        with open(css_file_path, "r") as f:
             css = f.read()
         st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.error("Could not find style.css file. Please ensure it is in the 'assets' directory.")
+        st.warning(f"Could not find {css_file_path}. Please ensure it is in the root directory.")
+
 
 def show_animated_loader(text="Processing...", duration=2):
     placeholder = st.empty()
@@ -115,6 +118,7 @@ def show_login_page(logo_b64, page_icon_path):
             show_error_message("Access Denied. Use official AllWave credentials.")
 
 def main():
+    # Adjusted asset paths to be relative to the root directory
     main_logo_path = Path("assets/company_logo.png")
     
     if not st.session_state.get('authenticated'):
@@ -262,13 +266,22 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
+                    # =================================================================
+                    # FIX #1: Calculate room_area and pass it to the generation function
+                    # =================================================================
+                    room_length = st.session_state.get('room_length_input', 24.0)
+                    room_width = st.session_state.get('room_width_input', 16.0)
+                    room_area = room_length * room_width
+
                     boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
                         st.session_state.get('features_text_area', ''),
-                        technical_reqs
+                        technical_reqs,
+                        room_area  # <-- The missing argument is now included
                     )
+                    
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
                         processed_boq = _remove_exact_duplicates(boq_items)
@@ -281,7 +294,7 @@ def main():
                         if st.session_state.project_rooms:
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
-                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, product_df)
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type_key)
                         st.session_state.validation_results = avixa_validation
                         progress_bar.progress(100, text="✅ BOQ generation complete!")
                         time.sleep(0.5)
@@ -297,19 +310,22 @@ def main():
         
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
-        if st.session_state.boq_items:
-            display_boq_results(
-                st.session_state.boq_items,
-                st.session_state.validation_results,
-                st.session_state.gst_rates,
-                st.session_state.get('project_name_input', 'Untitled Project'),
-                st.session_state.get('client_name_input', 'N/A'),
-                st.session_state.get('location_input', 'N/A'),
-                st.session_state.get('design_engineer_input', 'N/A'),
-                st.session_state.get('account_manager_input', 'N/A'),
-                st.session_state.get('client_personnel_input', 'N/A'),
-                st.session_state.get('comments_input', '')
-            )
+        if st.session_state.get('boq_items'):
+            # =================================================================
+            # FIX #2: Assemble project_details dict and call display_boq_results correctly
+            # =================================================================
+            project_details = {
+                'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
+                'Client Name': st.session_state.get('client_name_input', 'N/A'),
+                'Location': st.session_state.get('location_input', 'N/A'),
+                'Design Engineer': st.session_state.get('design_engineer_input', 'N/A'),
+                'Account Manager': st.session_state.get('account_manager_input', 'N/A'),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
+                'Key Comments': st.session_state.get('comments_input', ''),
+                'gst_rates': st.session_state.get('gst_rates', {})
+            }
+            display_boq_results(product_df, project_details)
+
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
