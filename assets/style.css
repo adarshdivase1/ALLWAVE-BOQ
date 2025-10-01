@@ -211,11 +211,7 @@ section[data-testid="stSidebar"] div {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* ====================================================================== */
-/* FIX 1: Style sidebar markdown headers directly as glass cards.         */
-/* This ensures headers like "Financial Config" appear in a styled box    */
-/* without needing special python code.                                   */
-/* ====================================================================== */
+/* FIX 1: Style sidebar markdown headers directly as glass cards */
 section[data-testid="stSidebar"] .stMarkdown h3 {
     background: var(--glass-bg-strong);
     backdrop-filter: blur(15px) saturate(160%);
@@ -583,11 +579,7 @@ section[data-testid="stSidebar"] hr::after {
     TEXT & TYPOGRAPHY
     ============================================ */
 
-/* ====================================================================== */
-/* FIX 2: Added "-webkit-text-fill-color: initial" to these rules.        */
-/* This prevents text (like widget labels and markdown) from becoming     */
-/* invisible if a parent element has a gradient text style applied.       */
-/* ====================================================================== */
+/* FIX 2: General fix for invisible text */
 .stMarkdown,
 .stMarkdown p,
 .stMarkdown li,
@@ -597,7 +589,7 @@ label,
 .stMarkdown h5,
 .stMarkdown h6 {
     color: var(--text-primary) !important;
-    -webkit-text-fill-color: initial !important; /* THIS IS THE FIX */
+    -webkit-text-fill-color: initial !important; 
     line-height: 1.7;
 }
 
@@ -606,17 +598,16 @@ label,
     color: var(--text-primary) !important;
     font-weight: 700 !important;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    -webkit-text-fill-color: initial !important; /* And also here for safety */
+    -webkit-text-fill-color: initial !important;
 }
 
-/* This rule is for general headers; gradient headers are handled by specific classes */
 .stMarkdown h1,
 .stMarkdown h2,
 .stMarkdown h3 {
     color: var(--text-primary) !important;
     font-weight: 700;
     letter-spacing: -0.5px;
-    -webkit-text-fill-color: initial !important; /* And here too */
+    -webkit-text-fill-color: initial !important;
 }
 
 label,
@@ -1110,4 +1101,23 @@ footer { visibility: hidden; }
     .glass-container {
         padding: var(--spacing-lg);
     }
+}
+
+/* ========================================================================= */
+/* FINAL ADDITIONS & FIXES (Append at the end for highest priority)          */
+/* ========================================================================= */
+
+/* FIX 3: Make widget labels in main content white and clearly visible */
+div[data-testid="stWidgetLabel"] p {
+    color: #FFFFFF !important; /* Force color to pure white */
+    -webkit-text-fill-color: white !important; /* Ensure gradient text style doesn't make it transparent */
+}
+
+/* NEW STYLE: A class for bold sub-headers like "Infrastructure" */
+.sub-header {
+    font-weight: 700 !important; /* 700 is the numeric value for bold */
+    color: var(--text-secondary) !important; /* Use a slightly muted white for contrast */
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    margin-bottom: var(--spacing-sm) !important;
 }
