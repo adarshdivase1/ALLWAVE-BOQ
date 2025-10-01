@@ -1,316 +1,191 @@
 # Enhanced AV Design Guidelines for BOQ Generation
-## Based on AVIXA Standards & Industry Best Practices
+## Based on AVIXA Standards & Industry Best Practices (Machine-Readable v2.0)
 
-This document provides a comprehensive framework for automated Bill of Quantities (BOQ) generation for audio-visual systems. All calculations and recommendations are based on AVIXA DISCAS, InfoComm AV Best Practices, and real-world implementation experience.
-
----
-
-## Core Design Philosophy
-
-The BOQ generator operates on a **room-first approach**: analyze the space dimensions, occupancy, and function to determine the appropriate technology tier. Each tier has specific equipment requirements, installation complexity, and cost structures.
-
-### AVIXA DISCAS Display Sizing (Critical for Automation)
-
-**For Detailed Viewing (text/fine detail):**
-- Screen Height = Viewing Distance ÷ 6
-- Example: 12ft viewing distance = 24" screen height = 55" diagonal (16:9)
-
-**For Basic Viewing (presentations/video):**
-- Screen Height = Viewing Distance ÷ 4  
-- Example: 12ft viewing distance = 36" screen height = 80" diagonal (16:9)
-
-**BOQ Logic Implementation:**
-```
-IF room_length > room_width:
-    max_viewing_distance = room_length × 0.85
-ELSE:
-    max_viewing_distance = room_width × 0.85
-
-recommended_screen_height = max_viewing_distance ÷ 6
-recommended_diagonal = screen_height ÷ 0.49 (for 16:9 aspect ratio)
-```
+This document provides a structured, machine-readable framework for the automated generation and validation of an audio-visual (AV) Bill of Quantities (BOQ). It is based on AVIXA standards including DISCAS, ISCR, and principles from the CTS 2 Student Guide, designed to be parsed by an application.
 
 ---
+## Core Design Philosophy & Global Rules
 
-## Room Categories & Technical Specifications
+The system operates on a room-first approach. The YAML blocks below define specifications, system requirements, and validation rules for different room types. The application should parse these rules to both generate the initial BOQ and validate the final output for standards compliance.
 
-### Small Huddle Room (2-4 People, 40-120 sq ft)
+```yaml
+# Global settings and rules applicable to all room types.
+# This section can be parsed by the application to enforce universal standards.
+global_rules:
+  [cite_start]power_capacity_margin: 0.80  # Best practice is to only plan for 80% of a circuit's total power[cite: 2983].
+  compliance_standards:
+    - [cite_start]"ANSI/AVIXA A102.01:2017 (Audio Coverage Uniformity)" [cite: 2781]
+    - [cite_start]"ANSI/AVIXA 2M-2010 (Audiovisual Systems Design and Coordination Processes)" [cite: 2781]
+    - [cite_start]"ANSI/AVIXA 3M-2011 (Projected Image System Contrast Ratio - ISCR)" [cite: 2781]
+    - [cite_start]"ANSI/AVIXA 4:2012 (Audiovisual Systems Energy Management)" [cite: 2781]
+    - [cite_start]"J-STD-710 (Audio, Video and Control Architectural Drawing Symbols)" [cite: 2781]
 
-**Space Requirements:**
-- Room Length: 8-12 ft
-- Room Width: 6-10 ft  
-- Ceiling Height: 8-10 ft minimum
-- Max Viewing Distance: 6-8 ft
-
-**Visual System Requirements:**
-- **Display Size:** 32-55" (based on DISCAS calculations)
-- **Display Type:** Commercial-grade flat panel with 10-point touch (optional)
-- **Resolution:** 4K minimum for future-proofing
-- **Mounting:** Articulating wall mount for table visibility
-- **Height:** Display center 42-48" from floor (ADA compliant)
-
-**Audio System Requirements:**
-- **Solution:** All-in-one video bar with integrated speakers/microphones
-- **Microphone Pickup:** 360° coverage, minimum 8ft radius
-- **Audio Processing:** Built-in AEC (Acoustic Echo Cancellation)
-- **Sound Pressure Level:** 70-75 dB SPL at seating positions
-
-**Connectivity & Control:**
-- **Primary:** USB-C single-cable solution (video + USB + power up to 100W)
-- **Secondary:** HDMI + USB-A for legacy devices
-- **Wireless:** Built-in wireless presentation capability
-- **Network:** 1 Gbps minimum, PoE+ for powered devices
-- **Control:** Native room system control (Zoom Rooms, Teams Rooms)
-
-**Power & Infrastructure:**
-- **Power Required:** 300-500W total system load
-- **Circuit:** Standard 15A circuit adequate
-- **UPS:** Optional 15-minute backup for graceful shutdown
-- **Cables:** 2 x Cat6A, 1 x HDMI 2.1, 1 x Power
-
-**Installation Complexity:** Low (4-6 hours)
-**Typical Budget Range:** $8,000 - $15,000
-
----
-
-### Medium Conference Room (5-12 People, 120-300 sq ft)
-
-**Space Requirements:**
-- Room Length: 12-20 ft
-- Room Width: 10-16 ft
-- Ceiling Height: 9-12 ft minimum
-- Max Viewing Distance: 10-16 ft
-
-**Visual System Requirements:**
-- **Display Configuration:** Dual 65-75" displays (content + people)
-- **Alternative:** Single 86-98" display for budget constraints
-- **Camera:** PTZ camera with auto-framing and speaker tracking
-- **Camera Position:** Center-mounted above displays, 8-10ft from table
-- **Field of View:** 120° horizontal minimum
-
-**Audio System Requirements (Critical Separation from Visual):**
-- **DSP Required:** Digital Signal Processor with AEC, AGC, noise reduction
-- **Microphones:** 4-8 ceiling microphones OR 2-4 tabletop microphones
-  - **Ceiling Choice:** Clean aesthetic, requires proper acoustic design
-  - **Tabletop Choice:** Better performance, more flexible positioning
-- **Speakers:** 4-6 ceiling speakers in zones (not display speakers)
-- **Coverage:** ±3dB variation across seating area (500Hz-4kHz)
-- **Amplification:** Minimum 4-channel amplifier, 50W per channel
-
-**Microphone Placement Logic:**
-```
-IF ceiling_height < 9ft OR hard_ceiling_surfaces:
-    recommend_tabletop_microphones()
-ELIF aesthetic_priority AND budget_allows:
-    recommend_ceiling_array()
-ELSE:
-    recommend_tabletop_microphones()
+# AVIXA ISCR (Image System Contrast Ratio) Viewing Categories
+# Defines minimum contrast ratios for different viewing tasks.
+iscr_viewing_categories:
+  passive_viewing:
+    [cite_start]description: "For viewing non-critical content where the general intent can be understood." [cite: 3445]
+    min_contrast_ratio: 7:1
+  basic_decision_making:
+    [cite_start]description: "For comprehending content and making simple decisions (e.g., presentations, classrooms)." [cite: 3447, 3448]
+    min_contrast_ratio: 15:1
+  analytical_decision_making:
+    [cite_start]description: "For analyzing critical details (e.g., engineering drawings, forensic evidence)." [cite: 3451]
+    min_contrast_ratio: 50:1
+  full_motion_video:
+    [cite_start]description: "For discerning key elements in video content as intended by the creator." [cite: 3452]
+    min_contrast_ratio: 80:1
 ```
 
-**Connectivity & Control:**
-- **Room System:** Dedicated codec (Teams Rooms/Zoom Rooms certified)
-- **BYOD Integration:** Table connectivity box with HDMI/USB-C
-- **Wireless Sharing:** Enterprise wireless presentation system
-- **Control Interface:** 10" touch panel with custom programming
-- **Network:** Dedicated VLAN, QoS configured, 100 Mbps minimum per endpoint
+---
+## AVIXA DISCAS Video Sizing Principles
 
-**Power & Infrastructure:**
-- **Power Required:** 800-1,500W total system load
-- **Circuit Requirement:** Dedicated 20A circuit recommended
-- **UPS:** 30-minute backup for all critical components
-- **Equipment Housing:** Wall-mounted or furniture-integrated rack
-- **Cable Requirements:** 
-  - 6-12 x Cat6A (network, control, audio)
-  - 4-8 x Audio cables (balanced XLR)
-  - 2-4 x Video cables (HDMI 2.1 or HDBaseT)
+The DISCAS standard provides formulas to determine the appropriate image size based on viewing distance and task.
 
-**Installation Complexity:** Medium (12-20 hours)
-**Typical Budget Range:** $25,000 - $50,000
+### Analytical Decision Making (ADM)
+[cite_start]Used when viewers must analyze critical details at the pixel level[cite: 3451]. [cite_start]An acuity factor of **3438** is used[cite: 3533].
+
+- [cite_start]**ADM Image Height Formula:** `IH = (IR * FV) / 3438` [cite: 3533]
+- [cite_start]**ADM Farthest Viewer Formula:** `FV = (IH * 3438) / IR` [cite: 3534]
+
+### Basic Decision Making (BDM)
+[cite_start]The most common category, used for presentations and general meetings[cite: 3535]. [cite_start]An acuity factor of **200** is used (the "200 Rule") applied to the height of lowercase characters[cite: 3516, 3523].
+
+- [cite_start]**BDM Image Height Formula:** `IH = (FV * %EH) / 200` [cite: 3546]
+- [cite_start]**BDM Farthest Viewer Formula:** `FV = (IH * 200) / %EH` [cite: 3547]
 
 ---
 
-### Large Boardroom/Training Room (12+ People, 300+ sq ft)
+## Room Archetypes & Rule Sets (YAML Format)
 
-**Space Requirements:**
-- Room Length: 20+ ft
-- Room Width: 16+ ft
-- Ceiling Height: 10+ ft minimum
-- Max Viewing Distance: 20+ ft
+### Small Huddle Room
 
-**Visual System Requirements:**
-- **Executive Boardroom:** 2 x 86-98" displays + confidence monitor
-- **Training Room:** Laser projector (5,000+ lumens) + ALR screen OR fine-pitch LED wall
-- **Camera System:** Multi-camera with auto-switching
-  - Primary: Room overview camera
-  - Secondary: Speaker tracking PTZ camera
-  - Optional: Document camera integration
+```yaml
+room_archetype:
+  name: "Small Huddle Room"
+  specifications:
+    area_sqft: [40, 120]
+    capacity: [2, 4]
+    ceiling_height_range_ft: [8, 10]
+  system_requirements:
+    display:
+      quantity: 1
+      recommended_sizing_rule: "DISCAS_BDM"
+      type: "Commercial 4K Display"
+      min_resolution: "4K"
+    audio:
+      [cite_start]system_type: "Integrated Video Bar" # Audio is handled by the video bar [cite: 2686]
+      dsp_required: false
+    video:
+      system_type: "All-in-one Video Bar"
+      camera_type: "ePTZ 4K"
+    control:
+      interface_type: "Native Room System Control (e.g., Teams/Zoom Panel)"
+    infrastructure:
+      rack_required: false
+      power_management_type: "Surge Protector"
+  validation_rules:
+    - CHECK: "BOQ must contain one item from 'Video Conferencing' category with 'bar' in its name."
+    - CHECK: "BOQ must contain one item from 'Displays' category between 42 and 60 inches."
+    - WARN: "If 'ada_compliance' is True, display mounting height should be noted as 42-48 inches from floor to center."
+```
 
-**Audio System Requirements (Mission-Critical Performance):**
-- **DSP:** Networked audio processor (Dante/AVB capable)
-- **Microphone System:** Ceiling-mounted steerable array (e.g., Shure MXA920)
-  - Multiple virtual pickup lobes
-  - Automatic speaker tracking
-  - Zone-based coverage
-- **Speaker System:** 8-16 ceiling speakers in 4 zones minimum
-- **Voice Lift System:** For rooms >500 sq ft - microphone audio reinforcement
-- **Amplification:** Networked amplifiers with individual channel monitoring
+### Medium Conference Room
 
-**Advanced Features:**
-- **Acoustic Echo Cancellation:** Multi-channel AEC with reference signals
-- **Automatic Mixing:** Priority-based microphone mixing
-- **Audio Recording:** Integrated recording capability for training rooms
-- **Assistive Listening:** IR or FM system for ADA compliance
+```yaml
+room_archetype:
+  name: "Medium Conference Room"
+  specifications:
+    area_sqft: [121, 300]
+    capacity: [5, 12]
+    ceiling_height_range_ft: [9, 12]
+  system_requirements:
+    display:
+      quantity: 1 # Default, can be overridden to 2 for dual-display needs
+      recommended_sizing_rule: "DISCAS_BDM"
+      type: "Commercial 4K Display"
+    audio:
+      system_type: "Modular DSP"
+      dsp_required: true
+      microphone_type: "Tabletop or Ceiling Array"
+      [cite_start]speaker_type: "Ceiling Speakers" [cite: 3090]
+      speaker_count_formula: "max(4, floor(area_sqft / 150))"
+    video:
+      system_type: "Modular Codec + PTZ Camera"
+      camera_type: "PTZ camera with auto-framing"
+    control:
+      interface_type: "10-inch Tabletop Touch Panel"
+    infrastructure:
+      rack_required: true
+      rack_type: "Wall-mounted or Furniture-integrated"
+      power_management_type: "Rackmount PDU"
+      [cite_start]dedicated_circuit_recommended: "20A" [cite: 2754]
+  validation_rules:
+    - RULE: "BOQ must contain one item from 'Audio' category with 'DSP' or 'Processor' in its name."
+    - RULE: "BOQ must contain one 'Audio' item with 'Amplifier' in its name."
+    - RULE: "IF audio.microphone_type is 'Ceiling Array' AND (ceiling_height_range_ft[0] < 9 OR has_hard_surfaces == True), THEN FLAG 'Acoustic treatment recommended due to ceiling height and/or hard surfaces.'"
+    - [cite_start]CHECK: "Total power draw of all equipment should be less than 1920 Watts (80% of a 20A/120V circuit)." [cite: 2983]
+    - [cite_start]CHECK: "Loudness capability: System must be able to achieve 25 dB above measured ambient noise." [cite: 3123]
+```
 
-**Connectivity & Control:**
-- **Control System:** Advanced programmable control processor
-- **User Interface:** Multiple touch panels + mobile app control
-- **Integration:** Lighting, HVAC, window shades, security systems
-- **Recording/Streaming:** Built-in capability for training/corporate communications
-- **Redundancy:** Backup systems for mission-critical installations
+### Large Boardroom / Training Room
 
-**Power & Infrastructure:**
-- **Power Required:** 2,000-5,000W total system load
-- **Circuit Requirements:** Multiple dedicated 20A circuits
-- **UPS:** 60-minute backup minimum, automatic failover
-- **Equipment Housing:** Full-size rack (24-42U) with environmental monitoring
-- **Cooling:** Dedicated HVAC or rack cooling system
-- **Cable Infrastructure:**
-  - 20+ x Cat6A (network, control, audio over IP)
-  - Fiber optic for high-bandwidth video
-  - Dedicated emergency power connections
+```yaml
+room_archetype:
+  name: "Large Boardroom/Training Room"
+  specifications:
+    area_sqft: [301, 1000]
+    capacity: [12, 50]
+    ceiling_height_range_ft: [10, 16]
+  system_requirements:
+    display:
+      quantity: 2 # Default for boardrooms
+      recommended_sizing_rule: "DISCAS_ADM" # Higher detail requirement
+      type: "Large Format 4K Display (86\"+), Laser Projector, or LED Wall"
+    audio:
+      system_type: "Networked Audio (Dante/AVB)"
+      dsp_required: true
+      microphone_type: "Ceiling-mounted steerable array (e.g., Shure MXA920)"
+      speaker_type: "Zoned Ceiling Speakers"
+      speaker_count_formula: "max(8, floor(area_sqft / 100))"
+    video:
+      system_type: "Multi-camera system with auto-switching"
+      camera_type: "Speaker tracking PTZ"
+    control:
+      interface_type: "Advanced Programmable Control Processor with multiple touch panels"
+    infrastructure:
+      rack_required: true
+      rack_type: "Full-size floor-standing rack (24-42U)"
+      power_management_type: "Monitored Rackmount PDU"
+      [cite_start]dedicated_circuit_recommended: "Multiple 20A circuits" [cite: 2754]
+  validation_rules:
+    - REQUIREMENT: "IF area_sqft > 500, BOQ MUST include components for a 'Voice Lift System'."
+    - [cite_start]REQUIREMENT: "IF ada_compliance == True, BOQ MUST contain an item from 'Assistive Listening' category." [cite: 2781]
+    - CHECK: "BOQ must contain a networked DSP (Dante/AVB capable)."
+    - CHECK: "BOQ must contain at least two items from 'Video Conferencing' category with 'camera' in the name."
+    - [cite_start]CHECK: "Total equipment heat load (BTU/hr) must be calculated and flagged for HVAC coordination. (1 Watt = 3.41 BTU/hr)" [cite: 4218, 4219]
+    - WARN: "Audio system cost should be between 20-30% of total hardware cost. Flag if outside this range."
+```
 
-**Installation Complexity:** High (40-80 hours)
-**Typical Budget Range:** $75,000 - $200,000+
-
----
-
-## Specialized Room Types
-
-### Executive Telepresence Suite
-
-**Unique Requirements:**
-- **Lighting:** Professionally designed LED lighting with scene control
-- **Acoustics:** Enhanced acoustic treatment, RT60 <0.6 seconds
-- **Camera:** 4K cameras with professional color accuracy
-- **Audio:** Separate zones for local and remote audio optimization
-- **Furniture:** Purpose-built telepresence table with integrated technology
-
-### Training/Classroom
-
-**Instructor-Centric Design:**
-- **Lectern:** Integrated control and connectivity
-- **Student Response System:** Interactive polling/feedback
-- **Content Sharing:** Multiple wireless sharing zones
-- **Recording:** Lecture capture with automatic camera switching
-- **Breakout Capability:** Audio zones for small group work
-
-### Multipurpose/Divisible Spaces
-
-**Flexible Configuration Requirements:**
-- **Airwall Integration:** Automated partition control
-- **Audio Combining:** Automatic system combining when walls open
-- **Video Distribution:** Content sharing across divided spaces
-- **Independent Control:** Separate system operation when divided
-
----
-
-## Technical Selection Criteria
-
-### Codec Selection Matrix
-
-**Microsoft Teams Environments:**
-- **Small:** Teams Rooms on Windows (computer-based)
-- **Medium:** Teams Rooms on Android (appliance-based)  
-- **Large:** Teams Rooms with custom AV integration
-
-**Zoom Environments:**
-- **Small/Medium:** Zoom Rooms appliance
-- **Large:** Zoom Rooms with AV integration
-
-**Platform Agnostic:**
-- Use BYOD-friendly systems with USB/HDMI connectivity
-
-### Network Requirements by Room Size
-
-**Small Huddle:** 10 Mbps up/down minimum
-**Medium Conference:** 25 Mbps up/down minimum  
-**Large Boardroom:** 50+ Mbps up/down minimum
-**Training Room:** 100+ Mbps (for recording/streaming)
-
-**QoS Requirements:**
-- Video: DSCP 34 (AF41)
-- Audio: DSCP 46 (EF)
-- Control: DSCP 26 (AF31)
-
----
-
-## Cost Estimation Framework
-
-### Equipment Cost Percentages (of total project)
-- **Displays & Cameras:** 30-40%
-- **Audio Systems:** 20-30%
-- **Control & Connectivity:** 15-25%
-- **Installation & Programming:** 20-30%
-- **Project Management:** 5-10%
-
-### Installation Time Multipliers
-- **Basic Installation:** 1.0x
-- **Complex Programming Required:** 1.5x
-- **Integration with Building Systems:** 2.0x
-- **Custom Furniture Integration:** 1.8x
-- **Retrofit/Renovation:** 2.5x
-
-### Service & Support Structure
-- **Standard Warranty:** 3 years parts/labor
-- **Extended Warranty:** Available 5-7 years
-- **Maintenance Contract:** 15-25% of equipment cost annually
-- **Emergency Response:** 4-hour/next day options
-
----
-
-## Compliance & Accessibility
-
-### ADA Requirements (US Installations)
-- **Hearing Loop Systems:** Required for assembly areas >50 people
-- **Visual Notification:** Strobe lights for emergency announcements
-- **Control Accessibility:** Touch panels 15-48" height, operable with closed fist
-- **Assistive Listening:** FM/IR systems for 4% of seating (minimum 2 units)
-
-### Safety & Building Codes
-- **Electrical:** NEC compliance, dedicated circuits for high-power systems
-- **Fire Safety:** Plenum-rated cables, fire stopping of penetrations
-- **Seismic:** Equipment mounting rated for local seismic zones
-- **Emergency Systems:** Integration with fire alarm for automatic shutdown
-
----
-
-## BOQ Generation Logic
-
-### Automated Equipment Selection Process
-
-1. **Room Analysis**
-   - Calculate display size using DISCAS formulas
-   - Determine audio coverage requirements
-   - Assess power and infrastructure needs
-
-2. **Equipment Database Matching**
-   - Filter by room size category
-   - Match performance specifications
-   - Consider brand preferences and budget constraints
-
-3. **Integration Requirements**
-   - Calculate cable runs and quantities
-   - Determine control system complexity
-   - Assess installation time requirements
-
-4. **Cost Calculation**
-   - Apply regional pricing factors
-   - Include installation complexity multipliers
-   - Add service and support options
-
-5. **Validation & Optimization**
-   - Verify AVIXA compliance
-   - Check power and infrastructure capacity
-   - Optimize for performance/cost ratio
-
-This framework ensures consistent, professional AV system designs that meet performance requirements while staying within budget parameters.
+### Cost & Labor Estimation Framework
+```yaml
+estimation_framework:
+  cost_percentages:
+    displays_cameras: [0.30, 0.40]
+    audio_systems: [0.20, 0.30]
+    control_connectivity: [0.15, 0.25]
+    infrastructure: [0.05, 0.10]
+  labor_estimates:
+    # Base hours per room type
+    small_huddle_room: 6
+    medium_conference_room: 16
+    large_boardroom: 40
+    # Multipliers for complexity
+    multipliers:
+      complex_programming: 1.5
+      building_system_integration: 2.0 # (e.g., HVAC, lighting control)
+      retrofit_renovation: 1.8 # Working around existing construction
+  service_contracts:
+    standard_warranty_years: 3
+    maintenance_annual_cost_percent: 0.15 # 15% of equipment cost annually
+```
