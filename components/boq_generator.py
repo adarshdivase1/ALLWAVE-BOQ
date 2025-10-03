@@ -38,13 +38,11 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     -- RE-ENGINEERED PROMPT FACTORY --
     Builds a highly contextual prompt with filtered product lists based on sub-category.
     """
-    # --- CHANGE START: Smarter product list formatting ---
     def format_product_list():
         product_text = ""
         for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
             product_text += f"\n## {comp_key.replace('_', ' ').upper()} (Requirement: {comp_spec['justification']})\n"
             
-            # Filter products based on the precise category AND sub-category
             cat = comp_spec['category']
             sub_cat = comp_spec.get('sub_category')
             
@@ -54,18 +52,16 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
                     (product_df['sub_category'] == sub_cat)
                 ].head(15)
             else:
-                 matching_products = product_df[product_df['category'] == cat].head(15)
+                matching_products = product_df[product_df['category'] == cat].head(15)
 
             if not matching_products.empty:
-                product_text += "   - Options: | Brand | Name | Model No. | Price (USD) |\n"
+                product_text += "    - Options: | Brand | Name | Model No. | Price (USD) |\n"
                 for _, prod in matching_products.iterrows():
-                    product_text += f"   - | {prod['brand']} | {prod['name']} | {prod['model_number']} | ${prod['price']:.0f} |\n"
+                    product_text += f"    - | {prod['brand']} | {prod['name']} | {prod['model_number']} | ${prod['price']:.0f} |\n"
             else:
-                product_text += f"   - (No specific products found in catalog for {cat} > {sub_cat})\n"
+                product_text += f"    - (No specific products found in catalog for {cat} > {sub_cat})\n"
         return product_text
-    # --- CHANGE END ---
 
-    # Base prompt structure
     base_prompt = f"""
     You are a world-class CTS-D Certified AV Systems Designer. Your task is to select the most appropriate products from a provided catalog to create a Bill of Quantities (BOQ) for a '{room_type}'.
     Adhere strictly to the requirements. Your selections must be logical and create a fully functional system.
@@ -89,7 +85,6 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     5.  For each component, provide the EXACT 'name' and 'model_number' from the catalog list.
     """
 
-    # Dynamically build the required JSON output format
     json_format_instruction = "\n# REQUIRED JSON OUTPUT FORMAT\n{\n"
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
         comma = "," if i < len(required_components) - 1 else ""
@@ -104,7 +99,6 @@ def _build_component_blueprint(equipment_reqs):
     Dynamically builds the list of required components, now with sub-categories
     for precise filtering.
     """
-    # --- CHANGE START: Added sub_category to blueprint ---
     blueprint = {
         'display': {'category': 'Displays', 'sub_category': 'Professional Display', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 1, 'justification': f"Primary {equipment_reqs['displays'].get('size_inches', 65)}\" display."},
         'display_mount': {'category': 'Mounts', 'sub_category': 'Display Mount / Cart', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 8, 'justification': 'Wall mount for the display.'},
@@ -130,7 +124,6 @@ def _build_component_blueprint(equipment_reqs):
         blueprint['av_rack'] = {'category': 'Infrastructure', 'sub_category': 'AV Rack', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack.'}
     if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
         blueprint['pdu'] = {'category': 'Infrastructure', 'sub_category': 'Power (PDU/UPS)', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit.'}
-    # --- CHANGE END ---
     return blueprint
 
 def _get_fallback_product(category, sub_category, product_df):
@@ -161,7 +154,6 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df):
         
         comp_spec = required_components[comp_key]
         
-        # --- CHANGE START: Use new matcher and populate all fields ---
         matched_product = match_product_in_database(
             product_name=selection.get('name'),
             brand=None, # Brand can be inferred from the matched product
@@ -195,10 +187,8 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df):
                 fallback['justification'] = f"{comp_spec['justification']} (Fallback Selection)"
                 fallback['matched'] = False
                 boq_items.append(fallback)
-    # --- CHANGE END ---
     return boq_items
 
-# (Helper functions for cleaning and validation remain largely the same, but now operate on richer item data)
 def _remove_exact_duplicates(boq_items):
     seen = set()
     unique_items = []
