@@ -276,7 +276,7 @@ def main():
     print(f"\n{'='*60}\nProcessing Summary:\n{'='*60}")
     print(f"Files processed: {stats['files_processed']}")
     print(f"Total Products Found: {stats['products_found']}")
-    print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {final_rows}")
+    print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
     print(f"  - Valid (Score 100): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
     print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['rejected']}")
