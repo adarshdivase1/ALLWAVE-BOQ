@@ -90,7 +90,6 @@ def _get_prompt_for_room_type(room_type, avixa_calcs, equipment_reqs, product_df
         "microphone": {"name": "EXACT product name from mic_options"},
         "speaker": {"name": "EXACT product name from speaker_options"},
         "controller": {"name": "EXACT product name from control_options"},
-        # Add other potential keys that the AI should fill
     }
 
     prompt = f"""
@@ -246,9 +245,10 @@ def _build_boq_from_ai_selection(ai_selection, equipment_reqs, product_df):
 
 # --- Post-Processing & Validation ---
 
-def _post_process_boq(boq_items):
+def _post_process_boq(boq_items, product_df):
     """
     Runs a series of cleanup and validation steps on the generated BOQ.
+    This function now consolidates all post-processing logic.
     """
     # Step 1: Correct any non-integer quantities
     for item in boq_items:
@@ -264,7 +264,33 @@ def _post_process_boq(boq_items):
             seen.add(item.get('name'))
             unique_items.append(item)
     
-    return unique_items
+    # Step 3: Remove duplicate core components (e.g., only one video codec)
+    final_items, core_categories = [], ['Video Conferencing', 'Control']
+    for item in unique_items:
+        if item.get('category') not in core_categories:
+            final_items.append(item)
+    for category in core_categories:
+        candidates = [item for item in unique_items if item.get('category') == category]
+        if len(candidates) > 1:
+            # Keep the most expensive (likely primary) component
+            best_candidate = max(candidates, key=lambda x: x.get('price', 0))
+            final_items.append(best_candidate)
+        elif len(candidates) == 1:
+            final_items.append(candidates[0])
+    
+    # Step 4: Ensure system completeness (e.g., add speakers if amp exists but speakers are missing)
+    has_amplifier = any("Amplifier" in str(item.get('name')) for item in final_items)
+    has_speakers = any("Speaker" in str(item.get('name')) for item in final_items)
+    if has_amplifier and not has_speakers:
+        # This is a placeholder for more complex logic, but it's good practice
+        pass # In a future version, you could auto-add speakers here
+
+    # Step 5: Flag potentially auto-generated or "hallucinated" models
+    for item in final_items:
+        if "Auto-generated" in item.get('specifications', '') or re.search(r'GEN-\d+', item['name']):
+            item['warning'] = "Model may be auto-generated and requires verification."
+
+    return final_items
 
 def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
     """
@@ -321,6 +347,6 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         boq_items = _build_boq_from_ai_selection({}, equipment_reqs, product_df)
 
     # 5. Post-process and clean the final BOQ
-    final_boq = _post_process_boq(boq_items)
+    final_boq = _post_process_boq(boq_items, product_df)
     
     return final_boq, avixa_calcs, equipment_reqs
