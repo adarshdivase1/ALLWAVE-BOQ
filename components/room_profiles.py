@@ -1,7 +1,7 @@
 # components/room_profiles.py
 
 # This file is the single source of truth for all room specifications.
-# It contains the complete "recipe" for every room type.
+# MODIFICATION: Added an explicit 'control_system' key to each relevant profile.
 ROOM_SPECS = {
     'Small Huddle Room (2-3 People)': {
         'area_sqft': (100, 150), 'capacity': (2, 3), 'primary_use': 'Ad-hoc collaboration, quick calls',
@@ -10,6 +10,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Commercial 4K Display'},
         'audio_system': {'type': 'Integrated in Video Bar', 'dsp_required': False},
         'video_system': {'type': 'All-in-one Video Bar', 'camera_type': 'ePTZ 4K'},
+        'control_system': {'type': 'Touch Controller'},
         'housing': {'type': 'Wall Mount Solution'}
     },
     'Medium Huddle Room (4-6 People)': {
@@ -19,6 +20,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Commercial 4K Display'},
         'audio_system': {'type': 'Integrated with optional Mic Pod', 'dsp_required': True, 'microphone_type': 'Table Microphone'},
         'video_system': {'type': 'All-in-one Video Bar', 'camera_type': 'ePTZ 4K with Autoframing'},
+        'control_system': {'type': 'Touch Controller'},
         'housing': {'type': 'Wall Mount Solution'}
     },
     'Standard Conference Room (6-8 People)': {
@@ -28,6 +30,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Commercial 4K Display'},
         'audio_system': {'type': 'Dedicated Mics & DSP', 'dsp_required': True, 'microphone_type': 'Table Microphone', 'speaker_type': 'Integrated in Video Bar'},
         'video_system': {'type': 'All-in-one Video Bar', 'camera_type': 'Optical Zoom PTZ'},
+        'control_system': {'type': 'Touch Controller'},
         'housing': {'type': 'Wall Mount or Credenza'}
     },
     'Large Conference Room (8-12 People)': {
@@ -37,6 +40,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Commercial 4K Display'},
         'audio_system': {'type': 'Integrated Ceiling Audio', 'dsp_required': True, 'microphone_type': 'Ceiling Microphone', 'speaker_type': 'Ceiling Loudspeaker'},
         'video_system': {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'High-Performance Optical Zoom PTZ', 'camera_count': 1},
+        'control_system': {'type': 'Touch Controller'},
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
     },
@@ -47,6 +51,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 2, 'type': 'Premium Commercial 4K Display'},
         'audio_system': {'type': 'Fully Integrated Pro Audio', 'dsp_required': True, 'microphone_type': 'Ceiling Microphone', 'speaker_type': 'Ceiling Loudspeaker'},
         'video_system': {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'High-Performance Optical Zoom PTZ', 'camera_count': 1},
+        'control_system': {'type': 'Touch Controller'},
         'content_sharing': {'type': 'Wireless & Wired HDMI'},
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
@@ -58,6 +63,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 2, 'type': 'Commercial 4K Display'},
         'audio_system': {'type': 'Voice Reinforcement System', 'dsp_required': True, 'microphone_type': 'Ceiling Microphone', 'speaker_type': 'Ceiling Loudspeaker'},
         'video_system': {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'Dual PTZ Cameras (Presenter/Audience)', 'camera_count': 2},
+        'control_system': {'type': 'Touch Controller'},
         'content_sharing': {'type': 'Wireless Presentation System'},
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
@@ -69,6 +75,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Projector and Screen'},
         'audio_system': {'type': 'Voice Reinforcement System', 'dsp_required': True, 'microphone_type': 'Ceiling Microphone', 'speaker_type': 'Ceiling Loudspeaker'},
         'video_system': {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'Dual PTZ Cameras (Presenter/Audience)', 'camera_count': 2},
+        'control_system': {'type': 'Touch Controller'},
         'content_sharing': {'type': 'Wireless Presentation System'},
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
@@ -80,6 +87,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 1, 'type': 'Large Projector or Direct-View LED'},
         'audio_system': {'type': 'Full PA System with Mixer', 'dsp_required': True, 'microphone_type': 'Wireless Handheld/Lapel', 'speaker_type': 'Wall-mounted Loudspeaker'},
         'video_system': {'type': 'Presentation Switcher with VC Add-on', 'camera_type': 'Multiple PTZ Cameras for Event Coverage', 'camera_count': 2},
+        'control_system': {'type': 'Touch Controller'},
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
     },
@@ -90,6 +98,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 3, 'type': 'Reference Monitors & Multiviewer'},
         'audio_system': {'type': 'Studio Mixing Console', 'dsp_required': True, 'microphone_type': 'Studio Condenser Mics'},
         'video_system': {'type': 'Production Switcher', 'camera_type': 'Studio Cameras', 'camera_count': 3},
+        'control_system': {'type': 'Production Control Surface'},
         'specialized': ['Studio Lighting Grid', 'Recording Decks', 'Acoustic Treatment'],
         'housing': {'type': 'AV Rack'},
         'power_management': {'type': 'Rackmount PDU'}
@@ -101,6 +110,7 @@ ROOM_SPECS = {
         'displays': {'quantity': 3, 'type': 'Vendor-Specific Immersive Displays'},
         'audio_system': {'type': 'Tuned Immersive Audio', 'dsp_required': True, 'microphone_type': 'Integrated Array'},
         'video_system': {'type': 'Dedicated Immersive Telepresence Codec', 'camera_type': 'Multi-camera Array'},
+        'control_system': {'type': 'Integrated Touch Controller'},
         'specialized': ['Custom Furniture', 'Controlled Lighting'],
         'housing': {'type': 'Integrated into Room Architecture'}
     }
