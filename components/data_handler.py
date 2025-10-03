@@ -3,14 +3,13 @@ import streamlit as st
 import re
 
 # NOTE: A fallback rate for converting INR to USD if the price_usd column is missing or zero.
-# In a real app, this should come from a more reliable source.
 FALLBACK_INR_TO_USD_RATE = 83.5
 
 @st.cache_data
 def load_and_validate_data():
     """
     Loads and validates the new, richer master product catalog.
-    This function is simplified to trust the clean data from the new compiler script.
+    This version includes more robust checks for common data issues.
     """
     try:
         df = pd.read_csv("master_product_catalog.csv")
@@ -19,7 +18,6 @@ def load_and_validate_data():
         # --- NEW LOGIC TO HANDLE THE NEW DATA STRUCTURE ---
 
         # 1. Create a single, primary 'price' column in USD for the app to use.
-        # The rest of the app assumes the base price is in USD.
         if 'price_usd' in df.columns and pd.to_numeric(df['price_usd'], errors='coerce').fillna(0).gt(0).any():
             df['price'] = pd.to_numeric(df['price_usd'], errors='coerce').fillna(0)
         elif 'price_inr' in df.columns:
@@ -27,30 +25,32 @@ def load_and_validate_data():
             df['price'] = pd.to_numeric(df['price_inr'], errors='coerce').fillna(0) / FALLBACK_INR_TO_USD_RATE
         else:
             df['price'] = 0.0
-            validation_issues.append("Neither 'price_usd' nor 'price_inr' columns found.")
+            validation_issues.append("CRITICAL: Neither 'price_usd' nor 'price_inr' columns found in the catalog.")
+
+        # --- ADDED: Check if all prices are zero after processing ---
+        if 'price' in df.columns and df['price'].sum() == 0:
+            validation_issues.append("CRITICAL: All product prices are zero. Check the price columns in your master_product_catalog.csv for valid numbers.")
 
         # 2. Create the single 'category' column from the new 'primary_category'.
         if 'primary_category' in df.columns:
             df['category'] = df['primary_category']
         else:
             df['category'] = 'General'
-            validation_issues.append("'primary_category' column not found.")
+            validation_issues.append("CRITICAL: 'primary_category' column not found.")
 
         # 3. Ensure other essential columns exist and are filled.
-        if 'name' not in df.columns or df['name'].isnull().sum() > 0:
-            validation_issues.append(f"{df['name'].isnull().sum()} products missing names")
-        if 'brand' not in df.columns:
-            df['brand'] = 'Unknown'
+        required_cols = ['name', 'brand', 'features', 'image_url', 'gst_rate', 'sub_category']
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = '' if col != 'gst_rate' else 18
+        
+        # Fill any missing (NaN) values to prevent errors downstream
         df['brand'] = df['brand'].fillna('Unknown')
-        if 'features' not in df.columns:
-            df['features'] = df['name']
         df['features'] = df['features'].fillna('')
-        if 'image_url' not in df.columns:
-            df['image_url'] = ''
-        if 'gst_rate' not in df.columns:
-            df['gst_rate'] = 18
+        df['name'] = df['name'].fillna('Unnamed Product')
 
-        # Load AVIXA guidelines (this part remains the same)
+
+        # Load AVIXA guidelines
         try:
             with open("avixa_guidelines.md", "r") as f:
                 guidelines = f.read()
@@ -83,26 +83,16 @@ def match_product_in_database(product_name, brand, product_df):
         safe_brand = str(brand).strip() if brand else ""
         if not safe_product_name and not safe_brand: return None
         
-        # Exact match on name
         if safe_product_name:
             exact_matches = product_df[product_df['name'].astype(str).str.lower() == safe_product_name.lower()]
             if not exact_matches.empty: return exact_matches.iloc[0].to_dict()
         
-        # Brand + partial name match
         if safe_brand and safe_product_name:
             brand_matches = product_df[product_df['brand'].astype(str).str.lower() == safe_brand.lower()]
             if not brand_matches.empty:
-                # Use regex to find model numbers at the start of the name
                 name_matches = brand_matches[brand_matches['name'].astype(str).str.contains(r'\b' + re.escape(safe_product_name.split()[0]) + r'\b', case=False, na=False)]
                 if not name_matches.empty: return name_matches.iloc[0].to_dict()
 
         return None
     except Exception:
         return None
-
-# --- OBSOLETE FUNCTIONS ---
-# The functions below are no longer needed because your new data compiler script
-# already handles cleaning and categorization. Keeping them would cause errors.
-# - clean_and_validate_product_data
-# - normalize_category
-# - extract_enhanced_boq_items
