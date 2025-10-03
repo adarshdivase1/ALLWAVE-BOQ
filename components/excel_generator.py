@@ -219,7 +219,7 @@ def _add_scope_of_work_sheet(workbook, styles):
     
     sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
     sheet[f'A{row_cursor}'].value = "Scope of Work"
-    sheet[f'A{A{row_cursor}'].fill = styles['table_header_blue_fill']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
     sheet[f'A{row_cursor}'].font = styles['bold_font']
     row_cursor += 1
     
@@ -286,7 +286,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             cell.fill = styles['boq_category_fill']
             cell.font = styles['bold_font']
             cell.border = styles['thin_border']
-        
+            
         for item in cat_items:
             unit_price_inr = item.get('price', 0) * usd_to_inr_rate
             subtotal = unit_price_inr * item.get('quantity', 1)
