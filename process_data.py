@@ -106,76 +106,59 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure']: return 7
     return 14
 
-# --- CATEGORIZATION ENGINE (MAJOR ENHANCEMENT) ---
+# --- CATEGORIZATION ENGINE (ENHANCED) ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
-    """
-    -- MAJOR ENHANCEMENT --
-    Vastly improved categorization engine. It now distinguishes between core components and accessories,
-    and uses more granular sub-categories to prevent logical errors during BOQ generation.
-    """
     text_to_search = (str(description) + ' ' + str(model)).lower()
-
-    # Define accessory keywords. If these are present, the item is likely an accessory unless it's a core product.
     accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 'chassis', 'faceplate', 'pendant']
     is_likely_accessory = any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords)
 
     category_rules = [
-        # --- ACCESSORIES (High Priority Rules) ---
         ('Mounts', 'Rack Accessory', ['rack shelf', 'blanking panel', 'rack rail']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
         ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'chief']),
         ('Cables & Connectivity', 'Wall & Table Plate Frame', ['mounting frame', 'aap frame']),
-        ('Cables & Connectivity', 'Wall & Table Plate Module', ['aap module', 'hdmi plate', 'usb plate', 'keystone']), # Differentiate modules from frames
+        ('Cables & Connectivity', 'Wall & Table Plate Module', ['aap module', 'hdmi plate', 'usb plate', 'keystone']),
         ('Audio', 'Microphone Accessory', ['mic stand', 'mic bracket', 'ceiling mic mount kit']),
-
-        # --- CORE COMPONENTS (Order is important) ---
-        # Video Conferencing
         ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard']),
         ('Video Conferencing', 'Video Bar', ['video bar', 'rally bar', 'poly studio', 'meetup', 'cisco room bar']),
-        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'plus kit', 'mvc']), # This is a full system
+        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'plus kit', 'mvc']),
         ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
         ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c930']),
         ('Video Conferencing', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'crestron mercury']),
         ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770']),
         ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wpp30']),
-        # Audio
-        ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']), # Mixer is a DSP
+        ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']),
         ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', 'tcm-x']),
         ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'conference phone']),
         ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', r'\d+\s*x\s*\d+w']),
         ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker']),
         ('Audio', 'Audio Interface / Expander', ['dante interface', 'ex-ubt', 'usb expander']),
-        # Displays & Video
         ('Displays', 'Interactive Display', ['interactive', 'touch display', 'smart board']),
         ('Displays', 'Professional Display', ['display', 'monitor', 'signage', 'bravia', 'commercial monitor']),
         ('Displays', 'Video Wall Display', ['video wall']),
         ('Displays', 'Direct-View LED', ['led wall', 'dvled']),
         ('Displays', 'Projector', ['projector', 'dlp']),
-        # Signal Management & Cables
         ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher']),
         ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset']),
-        ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cable', 'ethernet']), # Specific for networking
-        ('Cables & Connectivity', 'Control Cable', ['rs-232', 'serial cable']), # Specific for control
-        ('Cables & Connectivity', 'AV Cable', ['hdmi', 'usb-c', 'aoc', 'vga', 'audio cable', 'displayport']), # General AV
+        ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cable', 'ethernet']),
+        ('Cables & Connectivity', 'Control Cable', ['rs-232', 'serial cable']),
+        ('Cables & Connectivity', 'AV Cable', ['hdmi', 'usb-c', 'aoc', 'vga', 'audio cable', 'displayport']),
         ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk', 'spool', 'reel']),
-        # Infrastructure
-        ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure']), # Specific for full racks
+        ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure']),
         ('Infrastructure', 'Network Switch', ['switch', 'poe switch']),
         ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power distribution']),
     ]
 
     for primary, sub, patterns in category_rules:
-        # If the item is an accessory, it must NOT match a core component rule to be classified as an accessory.
         is_core_product_match = not is_likely_accessory or 'Accessory' not in sub
-        
         if any(re.search(r'\b' + pattern + r'\b', text_to_search, re.IGNORECASE) for pattern in patterns) and is_core_product_match:
             return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
 
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
 
 
-# --- DATA QUALITY SCORING (No changes needed) ---
+# --- DATA QUALITY SCORING ---
 
 def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
     score = 100
@@ -196,7 +179,7 @@ def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
     return max(0, score), issues
 
 
-# --- MAIN SCRIPT EXECUTION (No changes needed) ---
+# --- MAIN SCRIPT EXECUTION ---
 
 def main():
     all_products: List[Dict] = []
@@ -276,10 +259,11 @@ def main():
     print(f"\n{'='*60}\nProcessing Summary:\n{'='*60}")
     print(f"Files processed: {stats['files_processed']}")
     print(f"Total Products Found: {stats['products_found']}")
-    print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
+    print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {final_rows}")
     print(f"  - Valid (Score 100): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
-    print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['rejected']}")
+    # --- THIS IS THE FIX ---
+    print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
     print(f"Duplicates Removed: {initial_rows - final_rows}")
     print(f"\nTop 10 Category Distribution:")
     category_counts = final_df['primary_category'].value_counts()
