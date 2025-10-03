@@ -8,7 +8,6 @@ DATA_FOLDER = 'data'
 OUTPUT_FILENAME = 'master_product_catalog.csv'
 HEADER_KEYWORDS = ['description', 'model', 'part', 'price', 'sku', 'item', 'mrp']
 DEFAULT_GST_RATE = 18
-# Define a fallback USD conversion rate if only INR is available
 FALLBACK_INR_TO_USD = 83.5
 
 # --- HELPER FUNCTIONS (CLEANING & EXTRACTION) ---
@@ -56,7 +55,6 @@ def clean_model_number(model_str: Any) -> str:
 
 def clean_filename_brand(filename: str) -> str:
     base_name = re.sub(r'Master List 2\.0.*-|\.csv|\.xlsx', '', filename, flags=re.IGNORECASE).strip()
-    # Handle specific combined filenames
     if '&' in base_name: return base_name.split('&')[0].strip()
     if ' and ' in base_name: return base_name.split(' and ')[0].strip()
     return base_name
@@ -65,7 +63,7 @@ def clean_filename_brand(filename: str) -> str:
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, str]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    # This category rule set is extensive and crucial for accuracy. It remains the same.
+    # This extensive rule set is the core of your categorization and is kept as is.
     category_rules = [
         ('Peripherals', 'Keyboard / Mouse', ['keyboard', 'mouse', 'km3322w']),
         ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex', 'desktop']),
@@ -75,7 +73,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
         ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c930', 'personal video']),
         ('Video Conferencing', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'crestron mercury', 'ctp18']),
-        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770']),
+        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770', '6511330']),
         ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wireless presentation', 'wpp30']),
         ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'intellimix']),
         ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', 'tcm-x']),
@@ -103,10 +101,10 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Cables & Connectivity', 'Wall & Table Plate', ['wall plate', 'tbus', 'hydraport', 'cable cubby', 'faceplate']),
         ('Infrastructure', 'AV Rack', ['rack', 'enclosure', 'credenza', 'ptrk', r'\d+u rack', 'heckler av cart', 'av frames']),
         ('Infrastructure', 'Network Switch', ['switch', 'network switch', 'poe switch', 'sg350-10']),
-        ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power strip', 'power distribution', 'power conditioner']),
+        ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power strip', 'power distribution', 'power conditioner', '465569']),
         ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'mobile stand']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'brkt-qcam-wmk']),
-        ('Services', 'Commissioning & Integration', ['commissioning', 'integration']),
+        ('Services', 'Commissioning & Integration', ['commissioning', 'integration', '03-024-01']),
     ]
     for primary, sub, patterns in category_rules:
         if any(re.search(pattern, text_to_search, re.IGNORECASE) for pattern in patterns):
@@ -155,22 +153,23 @@ def main():
                 price_inr = clean_price(row.get(inr_price_col, 0))
                 price_usd = clean_price(row.get(usd_price_col, 0))
 
-                # **IMPROVEMENT**: Create a single, reliable USD price column
                 final_price_usd = 0.0
                 if price_usd > 0:
                     final_price_usd = price_usd
                 elif price_inr > 0:
                     final_price_usd = price_inr / FALLBACK_INR_TO_USD
                 
-                if final_price_usd == 0: continue # Skip products with no price
+                if final_price_usd <= 1: continue
+
+                # **FIXED**: Create a clean, descriptive name from the start
+                descriptive_name = f"{model_clean} - {description.splitlines()[0]}" if description else model_clean
 
                 all_products.append({
                     'brand': file_brand,
-                    'model_no': model_clean,
-                    'name': f"{model_clean} - {description.splitlines()[0]}" if description else model_clean,
+                    'name': f"{file_brand} {descriptive_name}", # This is the final name
                     'primary_category': categories['primary_category'],
                     'sub_category': categories['sub_category'],
-                    'price': final_price_usd, # Use the new unified price column
+                    'price': final_price_usd,
                     'warranty': extract_warranty(description),
                     'features': description,
                     'gst_rate': DEFAULT_GST_RATE,
@@ -180,17 +179,15 @@ def main():
             print(f"  ❌ CRITICAL ERROR processing {filename}: {e}")
 
     if not all_products:
-        print("\nNo new products were found. Exiting.")
+        print("\nNo products with valid prices were found. Exiting.")
         return
 
     final_df = pd.DataFrame(all_products)
     print(f"\n✅ Successfully processed {len(final_df)} total product entries.")
 
     initial_rows = len(final_df)
-    final_df.drop_duplicates(subset=['brand', 'model_no'], keep='last', inplace=True)
-    final_df.rename(columns={'model_no': 'name', 'price': 'price'}, inplace=True) # Simplify for app
-    final_df['name'] = final_df.apply(lambda row: f"{row['brand']} {row['name']}", axis=1)
-
+    # **FIXED**: Deduplication is done on the unique combination of brand and the generated name
+    final_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
     final_rows = len(final_df)
     print(f"🧹 De-duplication complete. Removed {initial_rows - final_rows} duplicate entries.")
 
