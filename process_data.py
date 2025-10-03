@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
 DATA_FOLDER = 'data'
-OUTPUT_FILENAME = 'master_product_catalog_final.csv'
+OUTPUT_FILENAME = 'master_product_catalog.csv'
 VALIDATION_REPORT = 'data_quality_report_final.txt'
 HEADER_KEYWORDS = ['description', 'model', 'part', 'price', 'sku', 'item', 'mrp']
 DEFAULT_GST_RATE = 18
