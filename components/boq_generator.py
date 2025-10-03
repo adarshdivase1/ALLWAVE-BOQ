@@ -70,25 +70,20 @@ def _find_best_product_match(specs, category, sub_category, product_df, budget_t
     if candidates.empty: return None # No products in the required category
 
     # 2. Score remaining candidates based on spec keywords
-    # Combine name and features for a comprehensive text search
+    candidates = candidates.copy() # Avoid SettingWithCopyWarning
     candidates['search_text'] = candidates['name'].fillna('') + ' ' + candidates['features'].fillna('')
     
-    # Use TF-IDF to find the most relevant product
     vectorizer = TfidfVectorizer(stop_words='english')
     product_matrix = vectorizer.fit_transform(candidates['search_text'])
     spec_vector = vectorizer.transform([specs])
     
-    # Calculate cosine similarity
     cosine_similarities = cosine_similarity(spec_vector, product_matrix).flatten()
     
-    # Add similarity scores to candidates
     candidates['score'] = cosine_similarities
     
-    # Filter for reasonably good matches
     top_candidates = candidates[candidates['score'] > 0.1].sort_values(by='score', ascending=False)
     
     if top_candidates.empty:
-        # If no good keyword matches, fall back to the whole category
         top_candidates = candidates
 
     # 3. Select from top matches based on budget
@@ -101,7 +96,6 @@ def _find_best_product_match(specs, category, sub_category, product_df, budget_t
     elif budget_tier == "Premium" or budget_tier == "Enterprise":
         return sorted_by_price.iloc[-1].to_dict()
     else: # Standard
-        # Return the median-priced item from the top candidates
         median_index = len(sorted_by_price) // 2
         return sorted_by_price.iloc[median_index].to_dict()
 
@@ -121,7 +115,6 @@ def _build_boq_from_ai_recommendations(ai_recs, equipment_reqs, product_df, budg
         
         quantity = rec.get('quantity', req_details.get('quantity', 1))
         
-        # Find the best product programmatically
         matched_product = _find_best_product_match(
             specs,
             req_details['primary_category'],
@@ -146,7 +139,6 @@ def _build_boq_from_ai_recommendations(ai_recs, equipment_reqs, product_df, budg
         else:
             st.error(f"Could not find any product in the catalog for: {key} (Category: {req_details.get('primary_category')} -> {req_details.get('sub_category')})")
 
-    # Add essential accessories
     if equipment_reqs.get('displays'):
         mount_specs = "Wall mount compatible with large format display"
         mount = _find_best_product_match(mount_specs, "Mounts", "Display Mount / Cart", product_df, "Standard")
@@ -158,6 +150,24 @@ def _build_boq_from_ai_recommendations(ai_recs, equipment_reqs, product_df, budg
             })
             
     return boq_items
+
+# --- ADDED BACK: The missing function ---
+def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
+    """
+    Placeholder for validating the final BOQ against AVIXA standards.
+    """
+    issues, warnings = [], []
+    # Example check:
+    if display_req := equipment_reqs.get('displays'):
+        target_size = display_req.get('size_inches', 65)
+        selected_display = next((item for item in boq_items if item.get('category') == 'Displays'), None)
+        if selected_display:
+            match = re.search(r'(\d+)', str(selected_display.get('name', '')))
+            if match and abs(int(match.group(1)) - target_size) > 10:
+                warnings.append(f"Selected display ({match.group(1)}\") is different from the recommended size ({target_size}\").")
+    
+    return {'avixa_issues': issues, 'avixa_warnings': warnings}
+
 
 def generate_boq_from_ai(model, product_df, room_type, budget_tier, features, technical_reqs, room_area):
     """The re-architected core function to generate a BOQ."""
