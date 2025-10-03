@@ -1,4 +1,3 @@
-
 import streamlit as st
 import time
 from datetime import datetime
@@ -11,9 +10,7 @@ try:
     from components.gemini_handler import setup_gemini
     from components.boq_generator import (
         generate_boq_from_ai, validate_avixa_compliance,
-        _remove_exact_duplicates, _remove_duplicate_core_components,
-        _ensure_system_completeness,
-        _flag_hallucinated_models, _correct_quantities
+        _post_process_boq # CORRECTED: Import the single, consolidated function
     )
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
@@ -27,14 +24,12 @@ except ImportError as e:
 
 def load_css():
     """Reads the style.css file and injects it into the Streamlit app."""
-    # Correct the path to look inside the 'assets' folder.
     css_file_path = "assets/style.css"
     try:
         with open(css_file_path, "r") as f:
             css = f.read()
         st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        # Update the warning to show the correct path.
         st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
 
 
@@ -266,12 +261,10 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    # Calculate room_area from the values in the session state
                     room_length = st.session_state.get('room_length_input', 24.0)
                     room_width = st.session_state.get('room_width_input', 16.0)
                     room_area = room_length * room_width
 
-                    # Pass room_area as the final argument to the function
                     boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
@@ -283,18 +276,18 @@ def main():
                     
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
-                        processed_boq = _remove_exact_duplicates(boq_items)
-                        processed_boq = _correct_quantities(processed_boq)
-                        processed_boq = _remove_duplicate_core_components(processed_boq)
-                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
-                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        # CORRECTED: A single call now handles all the processing steps
+                        processed_boq = _post_process_boq(boq_items, product_df)
                         st.session_state.boq_items = processed_boq
+                        
                         update_boq_content_with_current_items()
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
                         progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
                         avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type_key)
                         st.session_state.validation_results = avixa_validation
+                        
                         progress_bar.progress(100, text="✅ BOQ generation complete!")
                         time.sleep(0.5)
                         progress_bar.empty()
@@ -310,7 +303,6 @@ def main():
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
         if st.session_state.get('boq_items'):
-            # Assemble project_details dictionary to pass to the display function
             project_details = {
                 'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
                 'Client Name': st.session_state.get('client_name_input', 'N/A'),
@@ -322,7 +314,6 @@ def main():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
             display_boq_results(product_df, project_details)
-
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
@@ -330,20 +321,10 @@ def main():
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
-        # The button text can be anything, but we keep the key for consistency
         if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
             with st.spinner("Rendering 3D environment..."):
-                
-                # --- THIS IS THE FIX ---
-                # Call the function with NO arguments, because visualizer.py
-                # gets all the data it needs from st.session_state by itself.
                 viz_html = create_3d_visualization()
-                
                 if viz_html:
-                    # The components.html call in your visualizer.py handles the display,
-                    # so we just need to call the function. We can adjust this if needed,
-                    # but based on your visualizer.py, the function handles its own display.
-                    # Let's adjust app.py to expect the HTML back from the function.
                     st.components.v1.html(viz_html, height=700, scrolling=False)
                     show_success_message("3D Visualization rendered successfully")
                 else:
