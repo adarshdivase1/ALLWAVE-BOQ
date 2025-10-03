@@ -1,6 +1,7 @@
 # components/av_designer.py
 
 import streamlit as st
+from components.utils import estimate_power_draw
 
 def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
     """Calculates AVIXA-based room recommendations."""
@@ -8,16 +9,17 @@ def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
         return {}
     area = length * width
     
+    # DISCAS Calculations
     farthest_viewer = length * 0.9
     basic_display_height = farthest_viewer / 6
-    # Heuristic conversion to inches, ensuring a minimum practical size
-    detailed_viewing_display_size = max(55, basic_display_height * 1.15 * 1.25 * 10)
+    detailed_viewing_display_size = basic_display_height * 1.15 * 1.25 * 10 # Heuristic conversion to inches
     
+    # Audio Calculations
     speakers_needed = max(2, int(area / 200) + 1)
     
     return {
         "farthest_viewer_distance": farthest_viewer,
-        "basic_viewing_display_size": int(max(43, basic_display_height * 1.25 * 10)),
+        "basic_viewing_display_size": int(basic_display_height * 1.25 * 10),
         "detailed_viewing_display_size": int(detailed_viewing_display_size),
         "estimated_occupancy": int(area / 20),
         "speakers_needed_for_coverage": speakers_needed
@@ -25,61 +27,95 @@ def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
 
 def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     """
-    Determines the specific types of equipment needed AND the core brand ecosystem.
+    Determines the specific types of equipment needed based on AVIXA calcs and room type.
+    -- FINAL REVISION WITH ROBUST FALLBACK LOGIC --
     """
     # Start with a baseline for a very simple room
     equipment = {
-        'ecosystem': 'Poly', # Default ecosystem
         'displays': {'quantity': 1, 'size_inches': 65, 'type': 'Commercial 4K Display'},
-        'audio_system': {'type': 'Integrated', 'dsp_required': False},
-        'video_system': {'type': 'All-in-one Video Bar', 'camera_count': 1},
+        'audio_system': {'type': 'Integrated', 'microphone_type': 'Integrated', 'speaker_type': 'Integrated', 'dsp_required': False},
+        'video_system': {'type': 'All-in-one Video Bar', 'camera_type': 'ePTZ 4K', 'camera_count': 1},
         'control_system': {'type': 'Touch Panel'},
+        'user_interface': {'type': 'Touch Panel Controller'},
         'housing': {'type': 'Wall Mount Solution'},
         'power_management': {'type': 'Basic Surge Protection'},
+        'content_sharing': {'type': 'Wireless & Wired HDMI'}
     }
 
-    occupancy = avixa_calcs.get('estimated_occupancy', 5)
-    display_size = avixa_calcs.get('detailed_viewing_display_size', 65)
+    # -- GRANULAR LOGIC PER ROOM TYPE --
 
-    # --- CHANGE START: Logic now defines an ecosystem and is more streamlined ---
-    if "Huddle" in room_type or occupancy <= 6:
-        equipment['displays']['size_inches'] = display_size
-        equipment['ecosystem'] = 'Yealink' # Yealink is often a good fit for smaller rooms
+    # 1. Huddle Room (Simple, All-in-One)
+    if "Huddle" in room_type:
+        equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 65)
 
-    elif "Standard Conference" in room_type or 6 < occupancy <= 12:
-        equipment['displays']['size_inches'] = display_size
-        equipment['ecosystem'] = 'Poly' # Poly is a strong choice for mid-size rooms
-        equipment['audio_system'] = {'type': 'Integrated Audio with External Mics', 'microphone_count': 2, 'dsp_required': True}
+    # 2. Standard Conference Room (More robust than Huddle)
+    elif "Standard Conference" in room_type:
+        equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 75)
+        equipment['audio_system'] = {
+            'type': 'Integrated Audio with External Mics', 'microphone_type': 'Tabletop Mic Pods',
+            'microphone_count': 2, 'speaker_type': 'Integrated in Video Bar', 'dsp_required': True
+        }
+        equipment['video_system']['type'] = 'All-in-one Video Bar'
         equipment['power_management'] = {'type': 'Power Conditioner Strip'}
 
-    elif "Large Conference" in room_type or 12 < occupancy <= 20:
-        equipment['ecosystem'] = 'Poly'
+    # 3. Large Conference Room (Modular, high performance)
+    elif "Large Conference" in room_type:
         equipment['displays']['quantity'] = 2 if "Dual Display" in technical_reqs.get('features', '') else 1
-        equipment['displays']['size_inches'] = display_size
-        equipment['audio_system'] = {'type': 'Integrated Ceiling Audio', 'microphone_count': 2, 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 4), 'dsp_required': True}
-        equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_count': 1}
+        equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 85)
+        equipment['audio_system'] = {
+            'type': 'Integrated Ceiling Audio', 'microphone_type': 'Ceiling Mic Array', 'microphone_count': 2,
+            'speaker_type': 'Ceiling Speakers', 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 4),
+            'dsp_required': True
+        }
+        equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'Optical Zoom PTZ', 'camera_count': 1}
         equipment['housing'] = {'type': 'AV Rack'}
         equipment['power_management'] = {'type': 'Rackmount PDU'}
 
-    elif "Boardroom" in room_type or "Training" in room_type or occupancy > 20:
-        equipment['ecosystem'] = 'Crestron' # Crestron/QSC for high-end, custom control
+    # 4. Boardroom (Premium modular system)
+    elif "Boardroom" in room_type:
         equipment['displays']['quantity'] = 2
-        equipment['displays']['size_inches'] = display_size
-        equipment['audio_system'] = {'type': 'Fully Integrated Pro Audio', 'microphone_count': 2, 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 6), 'dsp_required': True}
-        equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_count': 2 if "Training" in room_type else 1}
+        equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 98)
+        equipment['audio_system'] = {
+            'type': 'Fully Integrated Pro Audio', 'microphone_type': 'Ceiling Mic Array', 'microphone_count': 2,
+            'speaker_type': 'Ceiling Speakers', 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 6),
+            'dsp_required': True
+        }
+        equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'High-Performance Optical Zoom PTZ', 'camera_count': 1}
         equipment['housing'] = {'type': 'AV Rack'}
         equipment['power_management'] = {'type': 'Rackmount PDU'}
-    # --- CHANGE END ---
+
+    # 5. Training Room (Focus on presentation and voice lift)
+    elif "Training" in room_type:
+        equipment['displays']['quantity'] = 2
+        equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 85)
+        equipment['audio_system'] = {
+            'type': 'Voice Reinforcement System', 'microphone_type': 'Presenter Wireless + Ceiling Mics',
+            'microphone_count': 3, 'speaker_type': 'Ceiling Speakers', 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 6),
+            'dsp_required': True
+        }
+        equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'Dual PTZ Cameras (Presenter/Audience)', 'camera_count': 2}
+        equipment['housing'] = {'type': 'AV Rack'}
+        equipment['power_management'] = {'type': 'Rackmount PDU'}
         
-    # Override for specific UC platform requests
-    features_lower = technical_reqs.get('features', '').lower()
-    if 'teams certified' in features_lower or 'microsoft teams' in features_lower:
-        # Poly and Yealink have strong Teams offerings
-        if equipment['ecosystem'] not in ['Poly', 'Yealink']:
-            equipment['ecosystem'] = 'Poly'
-            
-    if 'zoom certified' in features_lower:
-         if equipment['ecosystem'] not in ['Poly', 'Yealink']:
-            equipment['ecosystem'] = 'Poly'
+    # --- NEW: Fallback logic for unmatched room types based on size ---
+    else:
+        # If the room type name is not recognized, use occupancy to decide complexity.
+        if avixa_calcs.get('estimated_occupancy', 0) > 15:
+            # It's a large room, so apply the "Large Conference" template
+            equipment['displays']['quantity'] = 2 if "Dual Display" in technical_reqs.get('features', '') else 1
+            equipment['displays']['size_inches'] = avixa_calcs.get('detailed_viewing_display_size', 85)
+            equipment['audio_system'] = {
+                'type': 'Integrated Ceiling Audio', 'microphone_type': 'Ceiling Mic Array', 'microphone_count': 2,
+                'speaker_type': 'Ceiling Speakers', 'speaker_count': avixa_calcs.get('speakers_needed_for_coverage', 4), 'dsp_required': True
+            }
+            equipment['video_system'] = {'type': 'Modular Codec + PTZ Camera', 'camera_type': 'Optical Zoom PTZ', 'camera_count': 1}
+            equipment['housing'] = {'type': 'AV Rack'}
+            equipment['power_management'] = {'type': 'Rackmount PDU'}
+        # For smaller, unrecognized rooms, the default Huddle/All-in-one bar setup is a safe bet.
+        
+    # Final override based on specific requests
+    if technical_reqs.get('audio_requirements') == 'Voice Lift':
+        equipment['audio_system']['type'] = 'Voice Reinforcement System'
+        equipment['audio_system']['dsp_required'] = True
 
     return equipment
