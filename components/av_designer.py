@@ -50,5 +50,5 @@ def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     user_features = technical_reqs.get('features', '').lower()
     if 'dual display' in user_features and 'displays' in equipment:
         equipment['displays']['quantity'] = 2
-            
+        
     return equipment
