@@ -33,11 +33,9 @@ def _parse_ai_product_selection(ai_response_text):
 def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, product_df, budget_tier, features):
     """ -- FINAL REVISION WITH INTELLIGENT, CONTEXT-AWARE FILTERING -- """
 
-    # Helper function to parse brand preferences from the features text
+    # Helper function to parse brand preferences
     def parse_brand_preferences(features_text):
         preferences = {}
-        # Simple parsing for "brand for category" patterns
-        # Example: "Use a Samsung display", "The VC system must be Poly"
         patterns = {
             'Displays': r'(samsung|lg|nec|sony|benq|viewsonic)\s*(display|monitor)',
             'Video Conferencing': r'(poly|cisco|yealink|logitech|neat)\s*(vc|video|conferencing)',
@@ -51,22 +49,19 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
 
     brand_preferences = parse_brand_preferences(features)
 
-    # Helper function to format the product list shown to the AI
     def format_product_list():
         product_text = ""
         for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
             product_text += f"\n## {comp_key.replace('_', ' ').upper()} (Requirement: {comp_spec['justification']})\n"
-            
             cat = comp_spec['category']
             sub_cat = comp_spec.get('sub_category')
-            
-            # Start with the base filtered dataframe
+
             if sub_cat:
                 filtered_df = product_df[(product_df['category'] == cat) & (product_df['sub_category'] == sub_cat)].copy()
             else:
                 filtered_df = product_df[product_df['category'] == cat].copy()
 
-            # --- 1. APPLY BRAND PREFERENCE FILTER ---
+            # Brand preference
             preferred_brand = brand_preferences.get(cat)
             if preferred_brand:
                 brand_filtered_df = filtered_df[filtered_df['brand'].str.lower() == preferred_brand]
@@ -74,11 +69,10 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
                     filtered_df = brand_filtered_df
                     product_text += f"     - INFO: User requested brand '{preferred_brand.capitalize()}', filtering options.\n"
 
-            # --- 2. APPLY DISPLAY SIZE FILTER ---
+            # Display size filtering
             if cat == 'Displays':
                 req_size = equipment_reqs.get('displays', {}).get('size_inches')
                 if req_size:
-                    # Filter by looking for the size number in the product name/model, allowing for a small tolerance
                     size_tolerance = 2
                     size_filtered_df = filtered_df[
                         filtered_df['name'].str.contains(fr'\b({req_size}|{req_size-1}|{req_size+1}|{req_size-2}|{req_size+2})\b', na=False)
@@ -87,16 +81,14 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
                         filtered_df = size_filtered_df
                         product_text += f"     - INFO: Room requires a ~{req_size}\" display, filtering options.\n"
 
-            # Format the final filtered list for the prompt
             if not filtered_df.empty:
                 product_text += "     - Options: | Brand | Name | Model No. | Price (USD) |\n"
                 for _, prod in filtered_df.head(15).iterrows():
                     product_text += f"     - | {prod['brand']} | {prod['name']} | {prod['model_number']} | ${prod['price']:.0f} |\n"
             else:
-                product_text += f"     - (No products found in catalog matching the specific filters for {cat} > {sub_cat})\n"
+                product_text += f"     - (No products found in catalog matching filters for {cat} > {sub_cat})\n"
         return product_text
 
-    # The rest of the prompt structure remains the same but now uses the intelligently filtered list
     base_prompt = f"""
     You are a world-class CTS-D Certified AV Systems Designer. Your task is to select the most appropriate products from a provided catalog to create a Bill of Quantities (BOQ) for a '{room_type}'.
     Adhere strictly to the requirements and the filtered options provided for each role.
@@ -106,15 +98,14 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     - **Budget Tier:** {budget_tier}
     - **Key Features Requested:** {features if features else 'Standard collaboration features.'}
 
-    # Product Catalog Subset (Intelligently Filtered)
+    # Product Catalog Subset (Filtered)
     You MUST select one product for each of the following roles from the filtered options.
 
     {format_product_list()}
 
     # INSTRUCTIONS
     Your entire output MUST be a single, valid JSON object and nothing else.
-    The JSON keys must match the component keys provided (e.g., "display", "display_mount").
-    For each component, provide the EXACT 'name' and 'model_number' from the catalog list.
+    The JSON keys must match the component keys provided.
     """
     json_format_instruction = "\n# REQUIRED JSON OUTPUT FORMAT\n{\n"
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
@@ -124,81 +115,67 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     return base_prompt + json_format_instruction
 
 
-# --- MODIFICATION START: Updated _build_component_blueprint to read the 'control_system' key ---
+# --- MODIFICATION: Control System + Voice Reinforcement ---
 def _build_component_blueprint(equipment_reqs, technical_reqs):
     """
-    Builds the component list based on the explicit requirements from the room profile.
+    Builds the component list, now with explicit logic for Control System and Voice Reinforcement.
     """
     blueprint = {} 
 
-    # --- Display Logic (Conditional) ---
+    # Displays
     if 'displays' in equipment_reqs:
         display_reqs = equipment_reqs.get('displays', {})
-        blueprint['display'] = {
-            'category': 'Displays', 'sub_category': 'Professional Display', 'quantity': display_reqs.get('quantity', 1), 'priority': 1,
-            'justification': f"Primary {display_reqs.get('size_inches', 65)}\" display."
-        }
-        blueprint['display_mount'] = {
-            'category': 'Mounts', 'sub_category': 'Display Mount / Cart', 'quantity': display_reqs.get('quantity', 1), 'priority': 8,
-            'justification': 'Wall mount for the display.'
-        }
+        blueprint['display'] = {'category': 'Displays','sub_category': 'Professional Display','quantity': display_reqs.get('quantity', 1),'priority': 1,'justification': f"Primary {display_reqs.get('size_inches', 65)}\" display."}
+        blueprint['display_mount'] = {'category': 'Mounts','sub_category': 'Display Mount / Cart','quantity': display_reqs.get('quantity', 1),'priority': 8,'justification': 'Wall mount for the display.'}
 
-    # --- Video System Logic ---
+    # Video System
     if 'video_system' in equipment_reqs:
-        video_system_reqs = equipment_reqs.get('video_system', {})
-        video_system_type = video_system_reqs.get('type')
-        if video_system_type == 'All-in-one Video Bar':
-            blueprint['video_bar_system'] = {'category': 'Video Conferencing', 'sub_category': 'Video Bar', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar system.'}
-        elif video_system_type == 'Modular Codec + PTZ Camera':
-            blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'quantity': 1, 'priority': 2, 'justification': 'Core video conferencing room kit.'}
+        video_reqs = equipment_reqs.get('video_system', {})
+        if video_reqs.get('type') == 'All-in-one Video Bar':
+            blueprint['video_bar_system'] = {'category': 'Video Conferencing','sub_category': 'Video Bar','quantity': 1,'priority': 2,'justification': 'All-in-one Video Bar system.'}
+        elif video_reqs.get('type') == 'Modular Codec + PTZ Camera':
+            blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing','sub_category': 'Room Kit / Codec','quantity': 1,'priority': 2,'justification': 'Core video conferencing room kit.'}
 
-    # --- Control System Logic (New and Explicit) ---
+    # Control System
     if 'control_system' in equipment_reqs:
         control_reqs = equipment_reqs.get('control_system', {})
         if control_reqs.get('type') == 'Touch Controller':
-            blueprint['in_room_controller'] = {
-                'category': 'Video Conferencing', 'sub_category': 'Touch Controller', 'quantity': 1, 'priority': 3,
-                'justification': 'In-room touch panel for meeting control.'
-            }
+            blueprint['in_room_controller'] = {'category': 'Video Conferencing','sub_category': 'Touch Controller','quantity': 1,'priority': 3,'justification': 'In-room touch panel for meeting control.'}
 
-    # --- Audio System Logic ---
+    # Audio System
     if 'audio_system' in equipment_reqs:
         audio_reqs = equipment_reqs.get('audio_system', {})
-        # DSP Logic
-        needs_separate_dsp = audio_reqs.get('dsp_required', False)
-        if 'voice lift' in technical_reqs.get('audio_requirements', '').lower():
-            needs_separate_dsp = True
-        # Don't add a separate DSP if a high-end kit can handle it for simpler rooms
-        elif 'video_system' in equipment_reqs and equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
-            if 'Boardroom' not in equipment_reqs.get('room_type', '') and 'Training' not in equipment_reqs.get('room_type', ''):
-                needs_separate_dsp = False
+
+        # Voice Reinforcement
+        if audio_reqs.get('type') == 'Voice Reinforcement System' or 'voice lift' in technical_reqs.get('audio_requirements', '').lower():
+            blueprint['dsp'] = {'category': 'Audio','sub_category': 'DSP / Processor','quantity': 1,'priority': 4,'justification': 'Digital Signal Processor for voice reinforcement.'}
+            blueprint['presenter_microphone'] = {'category': 'Audio','sub_category': 'Wireless Microphone System','quantity': 1,'priority': 4.5,'justification': 'Wireless mic for presenter.'}
+            needs_separate_dsp = False
+        else:
+            needs_separate_dsp = audio_reqs.get('dsp_required', False)
 
         if needs_separate_dsp:
-            blueprint['dsp'] = {'category': 'Audio', 'sub_category': 'DSP / Processor', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for advanced audio control.'}
-        
-        # Microphone and Speaker Logic
+            blueprint['dsp'] = {'category': 'Audio','sub_category': 'DSP / Processor','quantity': 1,'priority': 4,'justification': 'Digital Signal Processor for audio control.'}
+
         if audio_reqs.get('microphone_type'):
-            blueprint['microphones'] = {'category': 'Audio', 'sub_category': 'Ceiling Microphone', 'quantity': audio_reqs.get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones for room coverage.'}
+            blueprint['audience_microphones'] = {'category': 'Audio','sub_category': 'Ceiling Microphone','quantity': audio_reqs.get('microphone_count', 2),'priority': 5,'justification': 'Ceiling mics for audience participation.'}
         if audio_reqs.get('speaker_type'):
-            blueprint['speakers'] = {'category': 'Audio', 'sub_category': 'Loudspeaker', 'quantity': audio_reqs.get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for audio playback.'}
-            blueprint['amplifier'] = {'category': 'Audio', 'sub_category': 'Amplifier', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier for speakers.'}
+            blueprint['speakers'] = {'category': 'Audio','sub_category': 'Loudspeaker','quantity': audio_reqs.get('speaker_count', 2),'priority': 6,'justification': 'Speakers for program audio.'}
+            blueprint['amplifier'] = {'category': 'Audio','sub_category': 'Amplifier','quantity': 1,'priority': 7,'justification': 'Amplifier for speakers.'}
 
-    # --- Universal Connectivity & Infrastructure ---
+    # Connectivity & Infrastructure
     if 'content_sharing' in equipment_reqs:
-        blueprint['table_connectivity_module'] = {'category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate Module', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input module (e.g., HDMI/USB-C).'}
-    
-    blueprint['network_cables'] = {'category': 'Cables & Connectivity', 'sub_category': 'Network Cable', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for devices.'}
-
+        blueprint['table_connectivity_module'] = {'category': 'Cables & Connectivity','sub_category': 'Wall & Table Plate Module','quantity': 1,'priority': 9,'justification': 'Table-mounted input module (HDMI/USB-C).'}
+    blueprint['network_cables'] = {'category': 'Cables & Connectivity','sub_category': 'Network Cable','quantity': 5,'priority': 10,'justification': 'Network patch cables.'}
     if 'housing' in equipment_reqs and equipment_reqs['housing'].get('type') == 'AV Rack':
-        blueprint['av_rack'] = {'category': 'Infrastructure', 'sub_category': 'AV Rack', 'quantity': 1, 'priority': 12, 'justification': 'Full-size equipment rack.'}
-    
+        blueprint['av_rack'] = {'category': 'Infrastructure','sub_category': 'AV Rack','quantity': 1,'priority': 12,'justification': 'Full-size equipment rack.'}
     if 'power_management' in equipment_reqs and equipment_reqs['power_management'].get('type') == 'Rackmount PDU':
-        blueprint['pdu'] = {'category': 'Infrastructure', 'sub_category': 'Power (PDU/UPS)', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit.'}
+        blueprint['pdu'] = {'category': 'Infrastructure','sub_category': 'Power (PDU/UPS)','quantity': 1,'priority': 11,'justification': 'Power distribution unit.'}
         
     return blueprint
-# --- MODIFICATION END ---
 
 
+# --- BOQ Construction Helpers ---
 def _get_fallback_product(category, sub_category, product_df):
     if sub_category:
         matches = product_df[(product_df['category'] == category) & (product_df['sub_category'] == sub_category)]
@@ -214,16 +191,13 @@ def _build_boq_from_ai_selection(ai_selection, required_components, product_df):
         comp_spec = required_components[comp_key]
         matched_product = match_product_in_database(product_name=selection.get('name'), brand=None, model_number=selection.get('model_number'), product_df=product_df)
         if matched_product:
-            item = {k: matched_product.get(k, v) for k, v in {'category':'', 'sub_category':'', 'name':'', 'brand':'', 'model_number':'', 'quantity':comp_spec['quantity'], 'price':0, 'justification':comp_spec['justification'], 'specifications':'', 'image_url':'', 'gst_rate':18, 'warranty':'Not Specified', 'lead_time_days':14, 'matched':True}.items()}
-            item.update({
-                'quantity': selection.get('qty', comp_spec['quantity']),
-                'price': float(matched_product.get('price', 0))
-            })
+            item = {k: matched_product.get(k, v) for k, v in {'category':'','sub_category':'','name':'','brand':'','model_number':'','quantity':comp_spec['quantity'],'price':0,'justification':comp_spec['justification'],'specifications':'','image_url':'','gst_rate':18,'warranty':'Not Specified','lead_time_days':14,'matched':True}.items()}
+            item.update({'quantity': selection.get('qty', comp_spec['quantity']),'price': float(matched_product.get('price', 0))})
             boq_items.append(item)
         else:
             fallback = _get_fallback_product(comp_spec['category'], comp_spec.get('sub_category'), product_df)
             if fallback:
-                fallback.update({'quantity': comp_spec['quantity'], 'justification': f"{comp_spec['justification']} (Fallback Selection)", 'matched': False})
+                fallback.update({'quantity': comp_spec['quantity'],'justification': f"{comp_spec['justification']} (Fallback Selection)",'matched': False})
                 boq_items.append(fallback)
     return boq_items
 
