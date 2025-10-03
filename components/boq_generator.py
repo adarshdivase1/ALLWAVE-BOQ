@@ -11,18 +11,26 @@ try:
     from components.gemini_handler import generate_with_retry
     from components.av_designer import calculate_avixa_recommendations, determine_equipment_requirements
     from components.data_handler import match_product_in_database
+    # New import from the second version of the file
+    from components.room_profiles import ROOM_SPECS
 except ImportError as e:
     st.error(f"BOQ Generator failed to import a component: {e}")
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
     def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}}
     def match_product_in_database(*args): return None
+    # Define a placeholder for ROOM_SPECS to prevent errors
+    ROOM_SPECS = {}
 
 
 # --- AI Interaction and Parsing ---
 def _parse_ai_product_selection(ai_response_text):
     try:
-        cleaned = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+        # Use a more robust regex to find the JSON object (from the second file)
+        cleaned = re.search(r'```json\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+        if not cleaned:
+            cleaned = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+        
         if cleaned: return json.loads(cleaned.group(0))
         st.warning("Could not find a valid JSON object in the AI response.")
         return {}
@@ -118,7 +126,8 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
 # --- MODIFICATION: Control System + Voice Reinforcement ---
 def _build_component_blueprint(equipment_reqs, technical_reqs):
     """
-    Builds the component list, now with explicit logic for Control System and Voice Reinforcement.
+    Builds the component list, now with explicit logic for Control System and Voice Reinforcement,
+    and also incorporates the new logic to check room profiles.
     """
     blueprint = {} 
 
@@ -137,9 +146,16 @@ def _build_component_blueprint(equipment_reqs, technical_reqs):
             blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing','sub_category': 'Room Kit / Codec','quantity': 1,'priority': 2,'justification': 'Core video conferencing room kit.'}
 
     # Control System
+    # This section is modified to be more robust
+    room_profile = ROOM_SPECS.get(technical_reqs.get('room_type'))
+    if room_profile and 'control_system' in room_profile:
+        # Check if a touch controller is already planned, otherwise add a control processor
+        if not any('controller' in key for key in blueprint):
+            blueprint['in_room_controller'] = {'category': 'Video Conferencing','sub_category': 'Touch Controller','quantity': 1,'priority': 3,'justification': 'In-room touch panel for meeting control.'}
+        
     if 'control_system' in equipment_reqs:
         control_reqs = equipment_reqs.get('control_system', {})
-        if control_reqs.get('type') == 'Touch Controller':
+        if control_reqs.get('type') == 'Touch Controller' and 'in_room_controller' not in blueprint:
             blueprint['in_room_controller'] = {'category': 'Video Conferencing','sub_category': 'Touch Controller','quantity': 1,'priority': 3,'justification': 'In-room touch panel for meeting control.'}
 
     # Audio System
