@@ -19,7 +19,7 @@ except ImportError as e:
     def estimate_power_draw(*args): return 100
     ROOM_SPECS = {}
 
-# --- AI Interaction and Parsing (Unchanged) ---
+# --- AI Interaction and Parsing ---
 def _parse_ai_product_selection(ai_response_text):
     try:
         cleaned = ai_response_text.strip().replace("`", "").lstrip("json").strip()
@@ -28,40 +28,101 @@ def _parse_ai_product_selection(ai_response_text):
         st.warning(f"Failed to parse AI JSON: {e}. Response was: {ai_response_text[:200]}")
         return {}
 
-def _build_comprehensive_boq_prompt(room_type, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier, features):
-    # This function is largely the same, but the component keys are now more descriptive
-    prompt = f"""You are an AVIXA CTS-D certified AV system designer. Your task is to create a complete, logical, and standards-compliant Bill of Quantities (BOQ).
+def _get_prompt_for_room_type(room_type, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier, features):
+    """
+    -- NEW PROMPT FACTORY --
+    Selects and tailors a specific, high-context AI prompt based on the room type.
+    """
+    
+    # Helper function to format the mandatory product list, which is used in all prompts
+    def format_product_list():
+        product_text = ""
+        for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
+            product_text += f"\n## {comp_key.replace('_', ' ').upper()} (Category: {comp_spec['category']})\n"
+            product_text += f"   - **Requirement:** {comp_spec['justification']}\n"
+            product_text += f"   - **Rule:** {comp_spec.get('rule', 'Select the best fit.')}\n"
+            
+            matching_products = product_df[product_df['category'] == comp_spec['category']].head(15)
+            if not matching_products.empty:
+                for _, prod in matching_products.iterrows():
+                    product_text += f"   - {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
+            else:
+                product_text += f"   - (No products found in catalog for {comp_spec['category']})\n"
+        return product_text
 
-# PROJECT BRIEF
-- **Room Type:** {room_type}
-- **Budget Tier:** {budget_tier}
-- **Client Needs:** {features if features else 'Standard functionality for this room type.'}
-- **System Requirements:** {equipment_reqs}
+    # --- PROMPT TEMPLATES ---
+    
+    prompt = ""
+    display_size_inches = equipment_reqs.get('displays', {}).get('size_inches', 65)
 
-# MANDATORY SYSTEM COMPONENTS ({len(required_components)} items)
-You MUST select one product for each of the following roles from the provided lists.
-"""
-    for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
-        prompt += f"\n## {comp_key.replace('_', ' ').upper()} (Category: {comp_spec['category']})\n"
-        prompt += f"   - **Requirement:** {comp_spec['justification']}\n"
-        prompt += f"   - **Rule:** {comp_spec.get('rule', 'Select the best fit.')}\n"
-        
-        matching_products = product_df[product_df['category'] == comp_spec['category']].head(15)
-        if not matching_products.empty:
-            for _, prod in matching_products.iterrows():
-                prompt += f"   - {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
-        else:
-            prompt += f"   - (No products found in catalog for {comp_spec['category']})\n"
+    # Template for Boardrooms & Telepresence (High-End, Premium)
+    if any(keyword in room_type for keyword in ["Boardroom", "Telepresence"]):
+        prompt = f"""
+        You are a top-tier CTS-D AV consultant designing a premium, executive-level **{room_type}**.
+        The client demands flawless performance, a seamless user experience, and a professional aesthetic. Budget is secondary to quality.
 
-    prompt += "\n# OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)\n"
-    prompt += "{\n"
+        # CRITICAL REQUIREMENTS
+        - **Display:** The design calls for {'dual displays' if equipment_reqs.get('displays', {}).get('quantity', 1) > 1 else 'a primary display'}. It is MANDATORY to select a model as close to **{display_size_inches} inches** as possible to ensure life-like video.
+        - **Audio:** Audio quality is paramount for executive communication. Select premium ceiling microphones and speakers for crystal-clear voice reproduction.
+        - **System Type:** This is a fully integrated, modular system. Choose a high-performance codec and PTZ camera. Do NOT select an all-in-one video bar.
+        - **Client Needs:** {features if features else 'Standard executive conferencing functionality.'}
+
+        # MANDATORY SYSTEM COMPONENTS
+        You MUST select one product for each of the following roles from the provided lists.
+        {format_product_list()}
+
+        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
+        """
+
+    # Template for Training & Event Rooms (Presenter-Focused, Robust)
+    elif any(keyword in room_type for keyword in ["Training", "Event", "Multipurpose"]):
+        prompt = f"""
+        You are an AV engineer designing a flexible and robust system for a **{room_type}**.
+        The primary focus is on the presenter's ability to engage with both local and remote audiences.
+
+        # CRITICAL REQUIREMENTS
+        - **Presenter Audio:** A wireless microphone system for the presenter is a NON-NEGOTIABLE requirement.
+        - **Camera System:** The design requires {'dual PTZ cameras' if equipment_reqs.get('video_system', {}).get('camera_count', 1) > 1 else 'a PTZ camera'}. One should be able to track the presenter.
+        - **Display:** The main presentation display must be as close to **{display_size_inches} inches** as possible for audience visibility.
+        - **Client Needs:** {features if features else 'Standard presentation and hybrid training functionality.'}
+
+        # MANDATORY SYSTEM COMPONENTS
+        You MUST select one product for each of the following roles from the provided lists.
+        {format_product_list()}
+
+        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
+        """
+
+    # Default Template for Huddle & Standard Rooms (Simplicity & Value)
+    else:
+        prompt = f"""
+        You are an AV system designer creating a reliable and user-friendly BOQ for a **{room_type}**.
+        The goal is simplicity, ease of use, and excellent value for everyday collaboration.
+
+        # CRITICAL REQUIREMENTS
+        - **Simplicity:** Prioritize an all-in-one video bar that integrates the camera, microphones, and speakers. This simplifies installation and use.
+        - **User Interface:** The in-room controller must be intuitive for non-technical users to start meetings with a single touch.
+        - **Display Size:** The display is for detailed content viewing. Select a model as close to **{display_size_inches} inches** as possible.
+        - **Client Needs:** {features if features else 'Standard video conferencing and content sharing.'}
+
+        # MANDATORY SYSTEM COMPONENTS
+        You MUST select one product for each of the following roles from the provided lists.
+        {format_product_list()}
+
+        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
+        """
+
+    # Add the final JSON structure to the chosen prompt
+    json_format_instruction = "{\n"
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
         comma = "," if i < len(required_components) - 1 else ""
-        prompt += f'  "{comp_key}": {{"name": "EXACT product name from list", "qty": {comp_spec["quantity"]}}}{comma}\n'
-    prompt += "}\n"
-    return prompt
+        json_format_instruction += f'  "{comp_key}": {{"name": "EXACT product name from list", "qty": {comp_spec["quantity"]}}}{comma}\n'
+    json_format_instruction += "}\n"
+    
+    return prompt + json_format_instruction
 
-# --- NEW: Dynamic Component Blueprint Builder ---
+
+# --- Dynamic Component Blueprint Builder ---
 def _build_component_blueprint(equipment_reqs, room_type):
     """Dynamically builds the list of required components based on the actual system design."""
     
@@ -79,7 +140,7 @@ def _build_component_blueprint(equipment_reqs, room_type):
         blueprint['video_bar'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar with integrated camera, mics, and speakers.', 'rule': "Select a complete video bar like a Poly Studio or Logitech Rally Bar."}
     elif equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
         blueprint['video_codec'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Core video codec for processing and connectivity.', 'rule': "Select a professional codec like a Poly G7500 or Cisco Codec."}
-        blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2.1, 'justification': 'PTZ (Pan-Tilt-Zoom) camera for the main video feed.', 'rule': "Select a PTZ camera like a Poly EagleEye or Logitech Rally Camera."}
+        blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system'].get('camera_count', 1), 'priority': 2.1, 'justification': 'PTZ (Pan-Tilt-Zoom) camera for the main video feed.', 'rule': "Select a PTZ camera like a Poly EagleEye or Logitech Rally Camera."}
 
     # Add Audio System components IF NOT handled by a video bar
     if equipment_reqs['audio_system']['dsp_required']:
@@ -89,14 +150,14 @@ def _build_component_blueprint(equipment_reqs, room_type):
         blueprint['amplifier'] = {'category': 'Audio', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier to power the passive speakers.', 'rule': "Select an appropriate power amplifier."}
 
     # Add Infrastructure components
-    if equipment_reqs['housing']['type'] == 'AV Rack':
+    if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
         blueprint['av_rack'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack to house components.', 'rule': "Select a standard AV rack."}
-    if equipment_reqs['power_management']['type'] == 'Rackmount PDU':
+    if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
         blueprint['pdu'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit for the rack.', 'rule': "Select a rack-mounted PDU."}
 
     return blueprint
 
-# --- REVISED: Smarter Fallback Logic ---
+# --- Fallback & Post-Processing Logic ---
 def _get_fallback_product(category, product_df, comp_spec):
     """Get best fallback product, now with keyword filtering for accuracy."""
     matching = product_df[product_df['category'] == category]
@@ -106,7 +167,6 @@ def _get_fallback_product(category, product_df, comp_spec):
         st.error(f"CRITICAL: No products in catalog for category '{category}'!")
         return None
 
-    # Apply keyword filtering to prevent mismatches
     rule = comp_spec.get('rule', '').lower()
     if 'wall mount' in rule:
         filtered = matching[matching['name'].str.contains("Wall Mount", case=False)]
@@ -115,17 +175,13 @@ def _get_fallback_product(category, product_df, comp_spec):
         filtered = matching[~matching['name'].str.contains("Scheduler", case=False)]
         if not filtered.empty: matching = filtered
     
-    # Existing display size matching logic
     if 'display' in category.lower() and 'size_requirement' in comp_spec:
         target_size = comp_spec['size_requirement']
-        # Find closest size
         matching['size_diff'] = matching['name'].str.extract(r'(\d+)').astype(float).subtract(target_size).abs()
         return matching.sort_values('size_diff').iloc[0].to_dict()
 
     return matching.sort_values('price').iloc[len(matching)//2].to_dict()
 
-# --- All other functions remain the same as your original, complete file ---
-# I am including them all here so this file is a complete drop-in replacement.
 def _strict_product_match(product_name, product_df, category):
     if product_df is None or len(product_df) == 0: return None
     filtered_by_cat = product_df[product_df['category'] == category]
@@ -166,7 +222,6 @@ def _remove_exact_duplicates(boq_items):
     return unique_items
 
 def _remove_duplicate_core_components(boq_items):
-    # This logic is now less critical due to the new blueprint builder, but serves as a good safety net.
     final_items, core_categories = [], ['Video Conferencing', 'Control']
     for item in boq_items:
         if item.get('category') not in core_categories: final_items.append(item)
@@ -183,7 +238,6 @@ def _ensure_system_completeness(boq_items, product_df):
     has_amplifier = any("Amplifier" in item['name'] for item in boq_items)
     has_speakers = any("Speaker" in item['name'] for item in boq_items)
     if has_amplifier and not has_speakers:
-        # This logic remains a good fallback
         pass
     return boq_items
 
@@ -200,12 +254,11 @@ def _correct_quantities(boq_items):
     return boq_items
 
 def _add_essential_missing_components(boq_items, product_df, required_components):
-    # This remains a crucial function for robustness
     boq_item_names = {item['name'] for item in boq_items}
     required_keys_in_boq = set()
     for item in boq_items:
         for key, spec in required_components.items():
-            if item['category'] == spec['category']: # Simple category match
+            if item['category'] == spec['category']:
                 required_keys_in_boq.add(key)
 
     missing_keys = set(required_components.keys()) - required_keys_in_boq
@@ -227,9 +280,7 @@ def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs
     return fallback_items
 
 def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
-    # This function remains important for validation
     issues, warnings = [], []
-    # ... (rest of validation logic) ...
     return {'avixa_issues': issues, 'avixa_warnings': warnings}
 
 # --- Core AI Generation Function ---
@@ -241,10 +292,13 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     
-    # NEW: Using the dynamic blueprint builder
     required_components = _build_component_blueprint(equipment_reqs, room_type)
     
-    prompt = _build_comprehensive_boq_prompt(room_type, room_area, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier, features)
+    # Call the new "Prompt Factory" instead of a generic builder
+    prompt = _get_prompt_for_room_type(
+        room_type, avixa_calcs, equipment_reqs, required_components, 
+        product_df, budget_tier, features
+    )
     
     try:
         response = generate_with_retry(model, prompt)
