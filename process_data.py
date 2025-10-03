@@ -106,41 +106,45 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure']: return 7
     return 14
 
-# --- CATEGORIZATION ENGINE (ENHANCED) ---
+# --- CATEGORIZATION ENGINE (ENHANCED AND REORDERED) ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 'chassis', 'faceplate', 'pendant']
+    accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 'chassis', 'faceplate', 'pendant', 'interface']
     is_likely_accessory = any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords)
 
+    # REORDERED FOR SPECIFICITY
     category_rules = [
-        ('Mounts', 'Rack Accessory', ['rack shelf', 'blanking panel', 'rack rail']),
-        ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
-        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'chief']),
-        ('Cables & Connectivity', 'Wall & Table Plate Frame', ['mounting frame', 'aap frame']),
-        ('Cables & Connectivity', 'Wall & Table Plate Module', ['aap module', 'hdmi plate', 'usb plate', 'keystone']),
-        ('Audio', 'Microphone Accessory', ['mic stand', 'mic bracket', 'ceiling mic mount kit']),
+        # Most Specific & Complex Devices First
+        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'plus kit', 'mvc']),
         ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard']),
         ('Video Conferencing', 'Video Bar', ['video bar', 'rally bar', 'poly studio', 'meetup', 'cisco room bar']),
-        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'plus kit', 'mvc']),
-        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
-        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c930']),
-        ('Video Conferencing', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'crestron mercury']),
-        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770']),
-        ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wpp30']),
-        ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']),
-        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))']),
-        ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'conference phone']),
-        ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', r'\d+\s*x\s*\d+w']),
-        ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker']),
-        ('Audio', 'Audio Interface / Expander', ['dante interface', 'ex-ubt', 'usb expander']),
+        ('Control Systems', 'Control Processor', ['control processor', 'control system', 'xp-series', 'vc-200']),
+        ('Control Systems', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'tsw-']),
+        ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'dtp crosspoint']),
+        ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset']),
         ('Displays', 'Interactive Display', ['interactive', 'touch display', 'smart board']),
-        ('Displays', 'Professional Display', ['display', 'monitor', 'signage', 'bravia', 'commercial monitor']),
         ('Displays', 'Video Wall Display', ['video wall']),
         ('Displays', 'Direct-View LED', ['led wall', 'dvled']),
+        ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']),
+        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))']),
+        ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', r'\d+\s*x\s*\d+w']),
+        ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker']),
         ('Displays', 'Projector', ['projector', 'dlp']),
-        ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher']),
-        ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset']),
+        ('Displays', 'Professional Display', ['display', 'monitor', 'signage', 'bravia', 'commercial monitor']),
+
+        # General Accessories & Infrastructure
+        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'chief']),
+        ('Mounts', 'Rack Accessory', ['rack shelf', 'blanking panel', 'rack rail']),
+        ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
+        ('Audio', 'Microphone Accessory', ['mic stand', 'mic bracket', 'ceiling mic mount kit']),
+        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c930']),
+        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
+        ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wpp30']),
+        ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'conference phone']),
+        ('Audio', 'Audio Interface / Expander', ['dante interface', 'ex-ubt', 'usb expander']),
+        ('Cables & Connectivity', 'Wall & Table Plate Frame', ['mounting frame', 'aap frame']),
+        ('Cables & Connectivity', 'Wall & Table Plate Module', ['aap module', 'hdmi plate', 'usb plate', 'keystone']),
         ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cable', 'ethernet']),
         ('Cables & Connectivity', 'Control Cable', ['rs-232', 'serial cable']),
         ('Cables & Connectivity', 'AV Cable', ['hdmi', 'usb-c', 'aoc', 'vga', 'audio cable', 'displayport']),
@@ -262,7 +266,6 @@ def main():
     print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {final_rows}")
     print(f"  - Valid (Score 100): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
-    # --- THIS IS THE FIX ---
     print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
     print(f"Duplicates Removed: {initial_rows - final_rows}")
     print(f"\nTop 10 Category Distribution:")
