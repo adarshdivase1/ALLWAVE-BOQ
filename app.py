@@ -10,11 +10,11 @@ from pathlib import Path
 try:
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    # --- CHANGE START: Removed the non-existent function from import ---
+    # --- CHANGE START: Removed the second non-existent function from import ---
     from components.boq_generator import (
         generate_boq_from_ai, validate_avixa_compliance,
         _remove_exact_duplicates, _remove_duplicate_core_components,
-        _flag_hallucinated_models, _correct_quantities
+        _correct_quantities
     )
     # --- CHANGE END ---
     from components.ui_components import (
@@ -175,7 +175,7 @@ def main():
         
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
-        st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
+        st.text_input("Location", key="location_input", placeholder="e.g., Navi Mumbai, India")
         st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
         st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
@@ -282,13 +282,12 @@ def main():
                     
                     if boq_items:
                         progress_bar.progress(50, text="⚙️ Step 2: Applying post-processing and correction rules...")
-                        # --- CHANGE START: Removed the call to the non-existent function ---
+                        # --- CHANGE START: Removed the second non-existent function call ---
                         processed_boq = _remove_exact_duplicates(boq_items)
                         processed_boq = _correct_quantities(processed_boq)
                         processed_boq = _remove_duplicate_core_components(processed_boq)
-                        # The line below was removed as the function is obsolete
-                        # processed_boq = _ensure_system_completeness(processed_boq, product_df) 
-                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        # The line below was removed as the function is now obsolete
+                        # processed_boq = _flag_hallucinated_models(processed_boq)
                         # --- CHANGE END ---
                         
                         st.session_state.boq_items = processed_boq
