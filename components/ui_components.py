@@ -1,3 +1,5 @@
+# components/ui_components.py
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -69,8 +71,6 @@ def create_advanced_requirements():
 
 def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
-    
-
     col1, col2, col3 = st.columns([2, 1, 1])
 
     with col1:
@@ -90,7 +90,6 @@ def create_multi_room_interface():
     with col3:
         st.write(""); st.write("")
         if st.session_state.project_rooms:
-            # Gathers all project details from the sidebar for the Excel export
             project_details = {
                 'Project Name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
                 'Client Name': st.session_state.get('client_name_input', 'Valued Client'),
@@ -168,8 +167,8 @@ def update_boq_content_with_current_items():
         )
     st.session_state.boq_content = boq_content
 
-def display_boq_results(product_df, project_details): # Pass project_details here
-    """Display BOQ results with interactive editing capabilities."""
+def display_boq_results(product_df, project_details):
+    """Display BOQ results with interactive editing and download capabilities."""
     boq_content = st.session_state.get('boq_content')
     validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
@@ -190,10 +189,44 @@ def display_boq_results(product_df, project_details): # Pass project_details her
         st.info("No BOQ content generated yet. Use the interactive editor below.")
 
     if st.session_state.get('boq_items'):
-        currency = st.session_state.get('currency', 'USD')
-        total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-        display_total = convert_currency(total_cost * 1.30, currency)
-        st.metric("Estimated Project Total", format_currency(display_total, currency), help="Includes installation, warranty, and contingency")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            currency = st.session_state.get('currency', 'USD')
+            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            display_total = convert_currency(total_cost * 1.30, currency)
+            st.metric("Estimated Project Total", format_currency(display_total, currency), help="Includes installation, warranty, and contingency")
+        
+        with col2:
+            # Determine the current room's name for the filename
+            if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
+                current_room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+            else:
+                current_room_name = "Current_Room"
+            
+            # Prepare data specifically for the current room's BOQ
+            single_room_data = [{
+                'name': current_room_name,
+                'boq_items': st.session_state.boq_items
+            }]
+
+            excel_data_current = generate_company_excel(
+                project_details=project_details,
+                rooms_data=single_room_data,
+                usd_to_inr_rate=get_usd_to_inr_rate()
+            )
+            
+            if excel_data_current:
+                filename = f"{project_details.get('Project Name', 'Project')}_{current_room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                # Add empty writes for better vertical alignment with the metric
+                st.write("") 
+                st.write("")
+                st.download_button(
+                    label="📄 Download Current Room BOQ",
+                    data=excel_data_current,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
     
     st.markdown("---")
     create_interactive_boq_editor(product_df)
@@ -330,7 +363,7 @@ def product_search_interface(product_df, currency):
                     display_price = convert_currency(price, currency)
                     st.metric("Price", format_currency(display_price, currency))
                 with col_c:
-                    add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{i}")
+                    add_qty = st.number_input("Qty", min_value=1, value=f"search_qty_{i}")
                     if st.button("Add", key=f"search_add_{i}"):
                         new_item = {
                             'category': product.get('category', 'General'), 'name': product.get('name', ''),
