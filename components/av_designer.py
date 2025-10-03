@@ -9,16 +9,29 @@ def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
     area = length * width
     farthest_viewer = length * 0.9
     
+    # Define size constraints for different room types to ensure practical results
+    SIZE_CONSTRAINTS = {
+        "Small Huddle": (43, 55), # Min 43", Max 55"
+        "Medium Huddle": (55, 65), # Min 55", Max 65"
+        "Standard Conference": (65, 75),
+        "Large Conference": (75, 85),
+        "Boardroom": (85, 98)
+    }
+    
     # Use different ratios for different viewing needs
     if any(s in room_type for s in ["Huddle", "Conference", "Boardroom", "Telepresence"]):
-        # Detailed viewing (4:1 ratio)
-        display_height_ft = farthest_viewer / 4
+        display_height_ft = farthest_viewer / 4 # Detailed viewing
     else: 
-        # Basic viewing (6:1 ratio) for training/presentation
-        display_height_ft = farthest_viewer / 6
+        display_height_ft = farthest_viewer / 6 # Basic viewing
 
     # Assuming 16:9, diagonal is approx 2.22x height
     recommended_size = display_height_ft * 12 * 2.22
+
+    # --- NEW LOGIC: Apply constraints based on room type ---
+    for key, (min_size, max_size) in SIZE_CONSTRAINTS.items():
+        if key in room_type:
+            recommended_size = max(min_size, min(recommended_size, max_size))
+            break
 
     def snap_to_standard_size(size_inches):
         sizes = [55, 65, 75, 85, 98]
@@ -33,20 +46,15 @@ def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
     }
 
 def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
-    # Use a fallback to a standard conference room if the type is unknown
     profile = ROOM_SPECS.get(room_type, ROOM_SPECS["Standard Conference Room (6-8 People)"])
-    
-    # Create a deep copy to avoid modifying the original dictionary
     equipment = {k: (v.copy() if isinstance(v, dict) else v) for k, v in profile.items()}
 
-    # Dynamically adjust parameters from the profile
     if 'displays' in equipment:
         equipment['displays']['size_inches'] = avixa_calcs.get('recommended_display_size_inches', 65)
     
     if 'audio_system' in equipment:
         equipment['audio_system']['speaker_count'] = avixa_calcs.get('speakers_needed_for_coverage', 2)
 
-    # Override based on user text requests
     user_features = technical_reqs.get('features', '').lower()
     if 'dual display' in user_features and 'displays' in equipment:
         equipment['displays']['quantity'] = 2
