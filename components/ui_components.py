@@ -206,7 +206,7 @@ def display_boq_results(product_df, project_details):
 
             excel_data_current = generate_company_excel(
                 project_details=project_details,
-                rooms_data=single_room_data,
+                boqs_and_summaries=single_room_data, # CORRECTED ARGUMENT NAME
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             
@@ -373,8 +373,8 @@ def product_search_interface(product_df, currency):
 
     if search_term:
         mask = product_df.apply(lambda row: search_term.lower() in str(row['name']).lower() or
-                                          search_term.lower() in str(row['brand']).lower() or
-                                          search_term.lower() in str(row['features']).lower(), axis=1)
+                                             search_term.lower() in str(row['brand']).lower() or
+                                             search_term.lower() in str(row['features']).lower(), axis=1)
         search_results = product_df[mask]
         st.write(f"Found {len(search_results)} products:")
 
