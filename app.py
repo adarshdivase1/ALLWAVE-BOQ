@@ -1,313 +1,374 @@
+
 import streamlit as st
-import pandas as pd
-import re
-import json
 import time
+from datetime import datetime
+import base64
+from pathlib import Path
 
 # --- Component Imports ---
 try:
-    from components.gemini_handler import generate_with_retry
-    from components.av_designer import calculate_avixa_recommendations, determine_equipment_requirements
-    from components.visualizer import ROOM_SPECS
-    from components.utils import estimate_power_draw
+    from components.data_handler import load_and_validate_data
+    from components.gemini_handler import setup_gemini
+    from components.boq_generator import (
+        generate_boq_from_ai, validate_avixa_compliance,
+        _remove_exact_duplicates, _remove_duplicate_core_components,
+        _ensure_system_completeness,
+        _flag_hallucinated_models, _correct_quantities
+    )
+    from components.ui_components import (
+        create_project_header, create_room_calculator, create_advanced_requirements,
+        create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
+    )
+    from components.visualizer import create_3d_visualization, ROOM_SPECS
 except ImportError as e:
-    st.error(f"BOQ Generator failed to import a component: {e}")
-    # Define dummy functions to prevent crashes
-    def generate_with_retry(model, prompt): return None
-    def calculate_avixa_recommendations(*args): return {}
-    def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}, 'control_system': {}}
-    def estimate_power_draw(*args): return 100
-    ROOM_SPECS = {}
+    st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
+    st.stop()
 
-# --- AI Interaction and Parsing ---
-def _parse_ai_product_selection(ai_response_text):
+
+def load_css():
+    """Reads the style.css file and injects it into the Streamlit app."""
+    # Correct the path to look inside the 'assets' folder.
+    css_file_path = "assets/style.css"
     try:
-        cleaned = ai_response_text.strip().replace("`", "").lstrip("json").strip()
-        return json.loads(cleaned)
-    except Exception as e:
-        st.warning(f"Failed to parse AI JSON: {e}. Response was: {ai_response_text[:200]}")
-        return {}
-
-def _get_prompt_for_room_type(room_type, avixa_calcs, equipment_reqs, required_components, product_df, budget_tier, features):
-    """
-    -- NEW PROMPT FACTORY --
-    Selects and tailors a specific, high-context AI prompt based on the room type.
-    """
-    
-    # Helper function to format the mandatory product list, which is used in all prompts
-    def format_product_list():
-        product_text = ""
-        for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
-            product_text += f"\n## {comp_key.replace('_', ' ').upper()} (Category: {comp_spec['category']})\n"
-            product_text += f"   - **Requirement:** {comp_spec['justification']}\n"
-            product_text += f"   - **Rule:** {comp_spec.get('rule', 'Select the best fit.')}\n"
-            
-            matching_products = product_df[product_df['category'] == comp_spec['category']].head(15)
-            if not matching_products.empty:
-                for _, prod in matching_products.iterrows():
-                    product_text += f"   - {prod['brand']} {prod['name']} - ${prod['price']:.0f}\n"
-            else:
-                product_text += f"   - (No products found in catalog for {comp_spec['category']})\n"
-        return product_text
-
-    # --- PROMPT TEMPLATES ---
-    
-    prompt = ""
-    display_size_inches = equipment_reqs.get('displays', {}).get('size_inches', 65)
-
-    # Template for Boardrooms & Telepresence (High-End, Premium)
-    if any(keyword in room_type for keyword in ["Boardroom", "Telepresence"]):
-        prompt = f"""
-        You are a top-tier CTS-D AV consultant designing a premium, executive-level **{room_type}**.
-        The client demands flawless performance, a seamless user experience, and a professional aesthetic. Budget is secondary to quality.
-
-        # CRITICAL REQUIREMENTS
-        - **Display:** The design calls for {'dual displays' if equipment_reqs.get('displays', {}).get('quantity', 1) > 1 else 'a primary display'}. It is MANDATORY to select a model as close to **{display_size_inches} inches** as possible to ensure life-like video.
-        - **Audio:** Audio quality is paramount for executive communication. Select premium ceiling microphones and speakers for crystal-clear voice reproduction.
-        - **System Type:** This is a fully integrated, modular system. Choose a high-performance codec and PTZ camera. Do NOT select an all-in-one video bar.
-        - **Client Needs:** {features if features else 'Standard executive conferencing functionality.'}
-
-        # MANDATORY SYSTEM COMPONENTS
-        You MUST select one product for each of the following roles from the provided lists.
-        {format_product_list()}
-
-        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
-        """
-
-    # Template for Training & Event Rooms (Presenter-Focused, Robust)
-    elif any(keyword in room_type for keyword in ["Training", "Event", "Multipurpose"]):
-        prompt = f"""
-        You are an AV engineer designing a flexible and robust system for a **{room_type}**.
-        The primary focus is on the presenter's ability to engage with both local and remote audiences.
-
-        # CRITICAL REQUIREMENTS
-        - **Presenter Audio:** A wireless microphone system for the presenter is a NON-NEGOTIABLE requirement.
-        - **Camera System:** The design requires {'dual PTZ cameras' if equipment_reqs.get('video_system', {}).get('camera_count', 1) > 1 else 'a PTZ camera'}. One should be able to track the presenter.
-        - **Display:** The main presentation display must be as close to **{display_size_inches} inches** as possible for audience visibility.
-        - **Client Needs:** {features if features else 'Standard presentation and hybrid training functionality.'}
-
-        # MANDATORY SYSTEM COMPONENTS
-        You MUST select one product for each of the following roles from the provided lists.
-        {format_product_list()}
-
-        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
-        """
-
-    # Default Template for Huddle & Standard Rooms (Simplicity & Value)
-    else:
-        prompt = f"""
-        You are an AV system designer creating a reliable and user-friendly BOQ for a **{room_type}**.
-        The goal is simplicity, ease of use, and excellent value for everyday collaboration.
-
-        # CRITICAL REQUIREMENTS
-        - **Simplicity:** Prioritize an all-in-one video bar that integrates the camera, microphones, and speakers. This simplifies installation and use.
-        - **User Interface:** The in-room controller must be intuitive for non-technical users to start meetings with a single touch.
-        - **Display Size:** The display is for detailed content viewing. Select a model as close to **{display_size_inches} inches** as possible.
-        - **Client Needs:** {features if features else 'Standard video conferencing and content sharing.'}
-
-        # MANDATORY SYSTEM COMPONENTS
-        You MUST select one product for each of the following roles from the provided lists.
-        {format_product_list()}
-
-        # OUTPUT FORMAT (STRICT JSON - NO EXTRA TEXT)
-        """
-
-    # Add the final JSON structure to the chosen prompt
-    json_format_instruction = "{\n"
-    for i, (comp_key, comp_spec) in enumerate(required_components.items()):
-        comma = "," if i < len(required_components) - 1 else ""
-        json_format_instruction += f'  "{comp_key}": {{"name": "EXACT product name from list", "qty": {comp_spec["quantity"]}}}{comma}\n'
-    json_format_instruction += "}\n"
-    
-    return prompt + json_format_instruction
+        with open(css_file_path, "r") as f:
+            css = f.read()
+        st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        # Update the warning to show the correct path.
+        st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
 
 
-# --- Dynamic Component Blueprint Builder ---
-def _build_component_blueprint(equipment_reqs, room_type):
-    """Dynamically builds the list of required components based on the actual system design."""
-    
-    # Base components for almost every room
-    blueprint = {
-        'display': {'category': 'Displays', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 1, 'justification': f"Primary {equipment_reqs['displays'].get('size_inches', 65)}\" display for {room_type}", 'rule': f"Select a display as close to {equipment_reqs['displays'].get('size_inches', 65)}\" as possible."},
-        'display_mount': {'category': 'Mounts', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 8, 'justification': 'Wall mount compatible with the selected display.', 'rule': "Select a WALL MOUNT for a display. DO NOT select a camera or ceiling mount."},
-        'in_room_controller': {'category': 'Control', 'quantity': 1, 'priority': 3, 'justification': 'In-room touch panel to start/join/control meetings.', 'rule': "Select a tabletop touch controller. DO NOT select a 'Scheduler'."},
-        'table_connectivity': {'category': 'Cables', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input for wired HDMI presentation.', 'rule': "Select a table cubby or wall plate with HDMI."},
-        'network_cables': {'category': 'Cables', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for IP-enabled devices.', 'rule': "Select a standard pack of CAT6 patch cables."},
-    }
+def show_animated_loader(text="Processing...", duration=2):
+    placeholder = st.empty()
+    with placeholder.container():
+        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
+    time.sleep(duration)
+    placeholder.empty()
 
-    # Add Video System components
-    if equipment_reqs['video_system']['type'] == 'All-in-one Video Bar':
-        blueprint['video_bar'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar with integrated camera, mics, and speakers.', 'rule': "Select a complete video bar like a Poly Studio or Logitech Rally Bar."}
-    elif equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
-        blueprint['video_codec'] = {'category': 'Video Conferencing', 'quantity': 1, 'priority': 2, 'justification': 'Core video codec for processing and connectivity.', 'rule': "Select a professional codec like a Poly G7500 or Cisco Codec."}
-        blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'quantity': equipment_reqs['video_system'].get('camera_count', 1), 'priority': 2.1, 'justification': 'PTZ (Pan-Tilt-Zoom) camera for the main video feed.', 'rule': "Select a PTZ camera like a Poly EagleEye or Logitech Rally Camera."}
+def show_success_message(message):
+    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
-    # Add Audio System components IF NOT handled by a video bar
-    if equipment_reqs['audio_system']['dsp_required']:
-        blueprint['dsp'] = {'category': 'Audio', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for echo cancellation and audio mixing.', 'rule': "Select a DSP like a Q-SYS Core or Biamp Tesira."}
-        blueprint['microphones'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones to cover the room seating.', 'rule': "Select ceiling or table microphones."}
-        blueprint['speakers'] = {'category': 'Audio', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for program audio and voice reinforcement.', 'rule': "Select ceiling or wall-mounted speakers."}
-        blueprint['amplifier'] = {'category': 'Audio', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier to power the passive speakers.', 'rule': "Select an appropriate power amplifier."}
+def show_error_message(message):
+    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
-    # Add Infrastructure components
-    if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
-        blueprint['av_rack'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack to house components.', 'rule': "Select a standard AV rack."}
-    if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
-        blueprint['pdu'] = {'category': 'Infrastructure', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit for the rack.', 'rule': "Select a rack-mounted PDU."}
-
-    return blueprint
-
-# --- Fallback & Post-Processing Logic ---
-def _get_fallback_product(category, product_df, comp_spec):
-    """Get best fallback product, now with keyword filtering for accuracy."""
-    matching = product_df[product_df['category'] == category]
-    if matching.empty:
-        matching = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-    if matching.empty:
-        st.error(f"CRITICAL: No products in catalog for category '{category}'!")
+@st.cache_data
+def image_to_base64(img_path):
+    try:
+        with open(img_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
         return None
 
-    rule = comp_spec.get('rule', '').lower()
-    if 'wall mount' in rule:
-        filtered = matching[matching['name'].str.contains("Wall Mount", case=False)]
-        if not filtered.empty: matching = filtered
-    if 'controller' in rule and "scheduler" not in rule:
-        filtered = matching[~matching['name'].str.contains("Scheduler", case=False)]
-        if not filtered.empty: matching = filtered
+def create_header(main_logo, partner_logos):
+    main_logo_b64 = image_to_base64(main_logo)
+    partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
     
-    if 'display' in category.lower() and 'size_requirement' in comp_spec:
-        target_size = comp_spec['size_requirement']
-        matching['size_diff'] = matching['name'].str.extract(r'(\d+)').astype(float).subtract(target_size).abs()
-        return matching.sort_values('size_diff').iloc[0].to_dict()
+    partner_html = ""
+    for name, b64 in partner_logos_b64.items():
+        if b64:
+            partner_html += f'<img src="data:image/png;base64,{b64}" alt="{name} Logo" title="{name}">'
 
-    return matching.sort_values('price').iloc[len(matching)//2].to_dict()
+    if main_logo_b64:
+        st.markdown(f"""
+        <div class="logo-container">
+            <div class="main-logo">
+                <img src="data:image/png;base64,{main_logo_b64}" alt="AllWave AV Logo">
+            </div>
+            <div class="partner-logos">
+                {partner_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
 
-def _strict_product_match(product_name, product_df, category):
-    if product_df is None or len(product_df) == 0: return None
-    filtered_by_cat = product_df[product_df['category'] == category]
-    if len(filtered_by_cat) == 0:
-        filtered_by_cat = product_df[product_df['category'].str.contains(category, case=False, na=False)]
-    search_df = filtered_by_cat if len(filtered_by_cat) > 0 else product_df
-    exact_match = search_df[search_df['name'].str.lower() == product_name.lower()]
-    if not exact_match.empty: return exact_match.iloc[0].to_dict()
-    search_terms = product_name.lower().split()[:3]
-    for term in search_terms:
-        if len(term) > 3:
-            matches = search_df[search_df['name'].str.lower().str.contains(term, na=False)]
-            if not matches.empty: return matches.iloc[0].to_dict()
-    return search_df.iloc[0].to_dict() if not search_df.empty else None
+def show_login_page(logo_b64, page_icon_path):
+    st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
+    load_css()
+    
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
 
-def _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs, room_type):
-    boq_items, matched_count = [], 0
-    for comp_key, selection in ai_selection.items():
-        if comp_key not in required_components: continue
-        comp_spec, category = required_components[comp_key], required_components[comp_key]['category']
-        matched_product = _strict_product_match(selection.get('name', 'N/A'), product_df, category)
-        if matched_product:
-            matched_count += 1
-            boq_items.append({'category': matched_product['category'], 'name': matched_product['name'], 'brand': matched_product['brand'], 'quantity': selection.get('qty', comp_spec['quantity']), 'price': float(matched_product['price']), 'justification': comp_spec['justification'], 'specifications': matched_product.get('features', ''), 'image_url': matched_product.get('image_url', ''), 'gst_rate': matched_product.get('gst_rate', 18), 'matched': True, 'power_draw': estimate_power_draw(matched_product['category'], matched_product['name'])})
+    st.markdown(f"""
+    <div class="login-container">
+        <div class="glass-container interactive-card has-corners">
+            {logo_html}
+            <div class="login-title">
+                <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
+                <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form(key="login_form", clear_on_submit=True):
+        st.markdown('<div class="login-form">', unsafe_allow_html=True)
+        email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
+        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
+        submitted = st.form_submit_button("Engage", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if submitted:
+        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
+            show_animated_loader("Authenticating...", 1.5)
+            st.session_state.authenticated = True
+            st.session_state.user_email = email
+            show_success_message("Authentication Successful. Welcome.")
+            time.sleep(1)
+            st.rerun()
         else:
-            fallback_product = _get_fallback_product(category, product_df, comp_spec)
-            if fallback_product:
-                boq_items.append({'category': fallback_product['category'], 'name': fallback_product['name'], 'brand': fallback_product['brand'], 'quantity': comp_spec['quantity'], 'price': float(fallback_product['price']), 'justification': comp_spec['justification'] + ' (auto-selected)', 'specifications': fallback_product.get('features', ''), 'image_url': fallback_product.get('image_url', ''), 'gst_rate': fallback_product.get('gst_rate', 18), 'matched': False, 'power_draw': estimate_power_draw(fallback_product['category'], fallback_product['name'])})
-    if len(boq_items) < len(required_components):
-        boq_items = _add_essential_missing_components(boq_items, product_df, required_components)
-    return boq_items
+            show_error_message("Access Denied. Use official AllWave credentials.")
 
-def _remove_exact_duplicates(boq_items):
-    seen, unique_items = set(), []
-    for item in boq_items:
-        if item.get('name') not in seen:
-            seen.add(item.get('name')); unique_items.append(item)
-    return unique_items
-
-def _remove_duplicate_core_components(boq_items):
-    final_items, core_categories = [], ['Video Conferencing', 'Control']
-    for item in boq_items:
-        if item.get('category') not in core_categories: final_items.append(item)
-    for category in core_categories:
-        candidates = [item for item in boq_items if item.get('category') == category]
-        if len(candidates) > 1:
-            best_candidate = max(candidates, key=lambda x: x.get('price', 0))
-            final_items.append(best_candidate)
-        elif len(candidates) == 1:
-            final_items.append(candidates[0])
-    return _remove_exact_duplicates(final_items)
-
-def _ensure_system_completeness(boq_items, product_df):
-    has_amplifier = any("Amplifier" in item['name'] for item in boq_items)
-    has_speakers = any("Speaker" in item['name'] for item in boq_items)
-    if has_amplifier and not has_speakers:
-        pass
-    return boq_items
-
-def _flag_hallucinated_models(boq_items):
-    for item in boq_items:
-        if "Auto-generated" in item.get('specifications', '') or re.search(r'GEN-\d+', item['name']):
-            item['warning'] = "Model is auto-generated and requires verification."
-    return boq_items
-
-def _correct_quantities(boq_items):
-    for item in boq_items:
-        try: item['quantity'] = int(float(item.get('quantity', 1)))
-        except (ValueError, TypeError): item['quantity'] = 1
-    return boq_items
-
-def _add_essential_missing_components(boq_items, product_df, required_components):
-    boq_item_names = {item['name'] for item in boq_items}
-    required_keys_in_boq = set()
-    for item in boq_items:
-        for key, spec in required_components.items():
-            if item['category'] == spec['category']:
-                required_keys_in_boq.add(key)
-
-    missing_keys = set(required_components.keys()) - required_keys_in_boq
-    for key in missing_keys:
-        comp_spec = required_components[key]
-        st.warning(f"Auto-adding missing essential component: {key}")
-        fallback = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
-        if fallback:
-            boq_items.append({'category': fallback['category'], 'name': fallback['name'], 'brand': fallback['brand'], 'quantity': comp_spec['quantity'], 'price': float(fallback['price']), 'justification': f"{comp_spec['justification']} (auto-added)", 'specifications': fallback.get('features', ''), 'image_url': fallback.get('image_url', ''), 'gst_rate': fallback.get('gst_rate', 18), 'matched': False})
-    return boq_items
+def main():
+    main_logo_path = Path("assets/company_logo.png")
     
-def create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs):
-    required_components = _build_component_blueprint(equipment_reqs, room_type)
-    fallback_items = []
-    for comp_key, comp_spec in required_components.items():
-        product = _get_fallback_product(comp_spec['category'], product_df, comp_spec)
-        if product:
-            fallback_items.append({'category': product['category'], 'name': product['name'], 'brand': product['brand'], 'quantity': comp_spec['quantity'], 'price': float(product['price']), 'justification': comp_spec['justification'], 'specifications': product.get('features', ''), 'image_url': product.get('image_url', ''), 'gst_rate': product.get('gst_rate', 18), 'matched': True})
-    return fallback_items
+    if not st.session_state.get('authenticated'):
+        main_logo_b64 = image_to_base64(main_logo_path)
+        show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
+        return
 
-def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type='Standard Conference Room'):
-    issues, warnings = [], []
-    return {'avixa_issues': issues, 'avixa_warnings': warnings}
+    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
+    load_css()
 
-# --- Core AI Generation Function ---
-def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
-    """The re-architected core function to get the BOQ from the AI."""
-    length = room_area**0.5 if room_area > 0 else 20
-    width = room_area / length if length > 0 else 16
+    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
+    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
+    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
+
+    with st.spinner("Initializing system modules..."):
+        product_df, guidelines, data_issues = load_and_validate_data()
+    if data_issues:
+        with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
+            for issue in data_issues: st.warning(issue)
+    if product_df is None:
+        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
+    model = setup_gemini()
+
+    partner_logos_paths = {
+        "Crestron": Path("assets/crestron_logo.png"),
+        "AVIXA": Path("assets/avixa_logo.png"),
+        "PSNI Global Alliance": Path("assets/iso_logo.png")
+    }
+    create_header(main_logo_path, partner_logos_paths)
+
+    st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.markdown(f'''
+        <div class="user-info">
+            <h3>👤 Welcome</h3>
+            <p>{st.session_state.get("user_email", "Unknown User")}</p>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        if st.button("🚪 Logout", use_container_width=True):
+            show_animated_loader("De-authorizing...", 1)
+            st.session_state.clear()
+            st.rerun()
+        
+        st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
+        
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
+        
+        st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
+        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+        st.text_input("Location", key="location_input", placeholder="e.g., Mumbai, India")
+        st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
+        st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
+        st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
+        st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
+        st.selectbox("Currency", ["INR", "USD"], key="currency_select")
+        st.session_state.gst_rates['Electronics'] = st.number_input(
+            "Hardware GST (%)", 
+            value=18, 
+            min_value=0, 
+            max_value=50
+        )
+        st.session_state.gst_rates['Services'] = st.number_input(
+            "Services GST (%)", 
+            value=18, 
+            min_value=0, 
+            max_value=50
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
+        room_type_key = st.selectbox(
+            "Primary Space Type", 
+            list(ROOM_SPECS.keys()), 
+            key="room_type_select"
+        )
+        st.select_slider(
+            "Budget Tier", 
+            options=["Economy", "Standard", "Premium", "Enterprise"], 
+            value="Standard", 
+            key="budget_tier_slider"
+        )
+        
+        if room_type_key in ROOM_SPECS:
+            spec = ROOM_SPECS[room_type_key]
+            area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
+            cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
+            primary_use = spec.get('primary_use', 'N/A')
+            
+            st.markdown(f"""
+            <div class="info-box">
+                <p>
+                    <b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
+                    <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
+                    <b>🎯 Primary Use:</b> {primary_use}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+
+    with tab1:
+        st.markdown('<h2 class="section-header section-header-project">Multi-Room Project Management</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        create_multi_room_interface()
+        
+    with tab2:
+        st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        create_room_calculator()
+        
+    with tab3:
+        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        technical_reqs = {}
+        st.text_area(
+            "🎯 Specific Client Needs & Features:",
+            key="features_text_area",
+            placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'",
+            height=100
+        )
+        technical_reqs.update(create_advanced_requirements())
+        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
+        
+    with tab4:
+        st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
+            if not model:
+                show_error_message("AI Model is not available. Please check API key.")
+            else:
+                progress_bar = st.progress(0, text="Initializing generation pipeline...")
+                try:
+                    # Calculate room_area from the values in the session state
+                    room_length = st.session_state.get('room_length_input', 24.0)
+                    room_width = st.session_state.get('room_width_input', 16.0)
+                    room_area = room_length * room_width
+
+                    # Pass room_area as the final argument to the function
+                    boq_items, avixa_calcs, equipment_reqs = generate_boq_from_ai(
+                        model, product_df, guidelines,
+                        st.session_state.room_type_select,
+                        st.session_state.budget_tier_slider,
+                        st.session_state.get('features_text_area', ''),
+                        technical_reqs,
+                        room_area 
+                    )
+                    
+                    if boq_items:
+                        progress_bar.progress(50, text="⚙️ Step 2: Applying AVIXA-based logic and correction rules...")
+                        processed_boq = _remove_exact_duplicates(boq_items)
+                        processed_boq = _correct_quantities(processed_boq)
+                        processed_boq = _remove_duplicate_core_components(processed_boq)
+                        processed_boq = _ensure_system_completeness(processed_boq, product_df)
+                        processed_boq = _flag_hallucinated_models(processed_boq)
+                        st.session_state.boq_items = processed_boq
+                        update_boq_content_with_current_items()
+                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        progress_bar.progress(80, text="✅ Step 3: Verifying final system against AVIXA standards...")
+                        avixa_validation = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type_key)
+                        st.session_state.validation_results = avixa_validation
+                        progress_bar.progress(100, text="✅ BOQ generation complete!")
+                        time.sleep(0.5)
+                        progress_bar.empty()
+                        show_success_message("BOQ Generated Successfully with AVIXA Compliance Check")
+                    else:
+                        progress_bar.empty()
+                        show_error_message("Failed to generate BOQ. Please check your inputs and try again.")
+                except Exception as e:
+                    progress_bar.empty()
+                    show_error_message(f"Error during BOQ generation: {str(e)}")
+                    st.exception(e)
+        
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        if st.session_state.get('boq_items'):
+            # Assemble project_details dictionary to pass to the display function
+            project_details = {
+                'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
+                'Client Name': st.session_state.get('client_name_input', 'N/A'),
+                'Location': st.session_state.get('location_input', 'N/A'),
+                'Design Engineer': st.session_state.get('design_engineer_input', 'N/A'),
+                'Account Manager': st.session_state.get('account_manager_input', 'N/A'),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
+                'Key Comments': st.session_state.get('comments_input', ''),
+                'gst_rates': st.session_state.get('gst_rates', {})
+            }
+            display_boq_results(product_df, project_details)
+
+        else:
+            st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
-    avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
-    equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
-    
-    required_components = _build_component_blueprint(equipment_reqs, room_type)
-    
-    # Call the new "Prompt Factory" instead of a generic builder
-    prompt = _get_prompt_for_room_type(
-        room_type, avixa_calcs, equipment_reqs, required_components, 
-        product_df, budget_tier, features
-    )
-    
-    try:
-        response = generate_with_retry(model, prompt)
-        if not response or not response.text: raise Exception("AI returned an empty response.")
-        ai_selection = _parse_ai_product_selection(response.text)
-        if not ai_selection: raise Exception("Failed to parse valid JSON from AI response.")
-        boq_items = _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs, room_type)
-        return boq_items, avixa_calcs, equipment_reqs
-    except Exception as e:
-        st.error(f"AI generation failed: {str(e)}")
-        fallback_items = create_smart_fallback_boq(product_df, room_type, equipment_reqs, avixa_calcs)
-        return fallback_items, avixa_calcs, equipment_reqs
+    with tab5:
+        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
+        # The button text can be anything, but we keep the key for consistency
+        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
+            with st.spinner("Rendering 3D environment..."):
+                
+                # --- THIS IS THE FIX ---
+                # Call the function with NO arguments, because visualizer.py
+                # gets all the data it needs from st.session_state by itself.
+                viz_html = create_3d_visualization()
+                
+                if viz_html:
+                    # The components.html call in your visualizer.py handles the display,
+                    # so we just need to call the function. We can adjust this if needed,
+                    # but based on your visualizer.py, the function handles its own display.
+                    # Let's adjust app.py to expect the HTML back from the function.
+                    st.components.v1.html(viz_html, height=700, scrolling=False)
+                    show_success_message("3D Visualization rendered successfully")
+                else:
+                    show_error_message("Failed to generate 3D visualization")
+        
+        st.markdown("""
+        <div class="info-box" style="margin-top: 1.5rem;">
+            <p>
+                <b>💡 Visualization Controls:</b><br>
+                • <b>Rotate:</b> Left-click and drag<br>
+                • <b>Zoom:</b> Scroll wheel<br>
+                • <b>Pan:</b> Right-click and drag<br>
+                • Equipment placement is based on AVIXA standards and room acoustics
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- Footer ---
+    st.markdown(f"""
+    <div class="custom-footer">
+        <p>© {datetime.now().year} AllWave Audio Visual & General Services | Powered by AI-driven Design Engine</p>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Built with Streamlit • Gemini AI • AVIXA Standards Compliance</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+if __name__ == "__main__":
+    main()
