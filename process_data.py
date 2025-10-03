@@ -12,7 +12,6 @@ DEFAULT_GST_RATE = 18
 # --- HELPER FUNCTIONS (CLEANING & EXTRACTION) ---
 
 def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> int:
-    """Intelligently finds the header row in a messy CSV file."""
     encodings_to_try = ['utf-8', 'latin1', 'cp1252']
     for encoding in encodings_to_try:
         try:
@@ -26,17 +25,14 @@ def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> 
     return 0
 
 def clean_price(price_str: Any) -> float:
-    """Removes all non-numeric characters (except decimal point) and returns a clean float."""
     if pd.isna(price_str): return 0.0
     price_str = str(price_str).strip()
-    # This regex removes anything that is not a digit or a period.
     price_str = re.sub(r'[^\d.]', '', price_str)
     if not price_str: return 0.0
     price_val = pd.to_numeric(price_str, errors='coerce')
     return price_val if pd.notna(price_val) else 0.0
 
 def extract_warranty(description: str) -> str:
-    """Extracts warranty duration from the product description."""
     if not isinstance(description, str): return "Not Specified"
     description = description.lower()
     match = re.search(r'(\d+)\s*[-]?\s*y(ea)?r[s]?', description)
@@ -47,32 +43,30 @@ def extract_warranty(description: str) -> str:
     return "Not Specified"
 
 def clean_model_number(model_str: Any) -> str:
-    """Strips away descriptive text to isolate the core model number."""
     if pd.isna(model_str): return ""
     model_str = str(model_str).strip().replace('\n', ' ')
-    # A more robust check for typical model number patterns (alphanumeric with hyphens/dots)
-    potential_models = re.findall(r'([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+)', model_str)
+    potential_models = re.findall(r'([a-zA-Z0-9]+(?:[-/.][a-zA-Z0-9]+)+)', model_str)
     if potential_models:
-        return potential_models[0]
-    return model_str.split(' ')[0] # Fallback to first word
+        # Prioritize longer, more complex model numbers
+        return max(potential_models, key=len)
+    return model_str.split(' ')[0]
 
 def clean_filename_brand(filename: str) -> str:
-    """Extracts a clean brand name from the CSV filename."""
     base_name = re.sub(r'Master List 2\.0.*-|\.csv', '', filename, flags=re.IGNORECASE).strip()
     return base_name.split('&')[0].split(' and ')[0].strip()
 
 # --- THE DEFINITIVE HIERARCHICAL CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, str]:
-    """
-    Analyzes product info using an exhaustive, ordered, hierarchical AV taxonomy
-    with intelligent pattern recognition.
-    """
     text_to_search = (str(description) + ' ' + str(model)).lower()
 
-    # (Primary Category, Sub-Category, [Keywords], [Regex Patterns])
-    # Rules are ordered from most specific to most general for maximum accuracy.
+    # (Primary Category, Sub-Category, [Keywords/Regex Patterns])
+    # The order is CRITICAL: Most specific rules are placed first.
     category_rules = [
+        # Peripherals (Specific First)
+        ('Peripherals', 'Keyboard / Mouse', ['keyboard', 'mouse', 'km3322w']),
+        ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex', 'desktop']),
+
         # Video Conferencing & Collaboration
         ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard', 'avocor', 'interactive touch moniter']),
         ('Video Conferencing', 'Video Bar', ['video bar', 'rally bar', 'poly studio', 'meetup', 'cisco room bar', 'panacast 50']),
@@ -100,6 +94,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Displays', 'Video Wall Display', ['video wall display', 'un552v']),
         ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'absen', 'direct view', 'curved led']),
         ('Displays', 'Projector', ['projector', 'dlp', 'lcd projector', 'eb-l530u']),
+        ('Video Processing', 'Annotation Processor', ['annotation processor']),
         ('Video Processing', 'Video Wall Controller', ['video wall controller', 'g44', 'seada']),
         ('Video Processing', 'Media Player / Signage', ['brightsign', 'media player', 'signage player']),
         ('Video Processing', 'Capture & Streaming', ['capture card', 'capture dongle', 'pearl nano', 'epiphan']),
@@ -107,7 +102,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         # Control & Automation
         ('Control Systems', 'Control Processor', ['control processor', 'dmps', 'cp4n', 'core 110f']),
         ('Control Systems', 'Touch Panel', ['touch panel', 'touch screen', 'tsw-', 'ts-1070']),
-        ('Control Systems', 'Keypad', ['keypad', 'seetouch']),
+        ('Control Systems', 'Keypad', ['keypad', 'seetouch', 'audio control panel']),
         ('Control Systems', 'Lighting & Shading', ['dali', 'lutron', 'dimmer', 'shading']),
         ('Control Systems', 'Sensor', ['occupancy sensor']),
         ('Control Systems', 'Relay Controller', ['relay controller']),
@@ -115,21 +110,22 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         # Signal Management & Connectivity
         ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'dm-md', 'vm0808']),
         ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'dtp', 'xtp', 'hdbaset']),
-        ('Signal Management', 'Converter / Scaler', ['scaler', 'converter', 'sdi2usb']),
+        ('Signal Management', 'Converter / Scaler', ['scaler', 'converter', 'sdi2usb', 'equalizer']),
         ('Signal Management', 'Distribution Amplifier', ['distribution amplifier', 'hdmi splitter']),
-        ('Cables & Connectivity', 'Bulk Cable', ['bulk cable', 'spool', 'reel', 'wire', r'\d+awg', r'cat\d', 'speaker cable']),
         ('Cables & Connectivity', 'Patch Cable', ['patch cable', 'patch cord']),
-        ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'active optical', 'aoc', 'usb 3.2', 'vga', 'audio cable']),
+        ('Cables & Connectivity', 'Bulk Cable', ['bulk cable', 'spool', 'reel', r'\d+awg', r'cat\d', 'speaker cable', 'shielded cable', 'coaxial']),
+        ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'active optical', 'aoc', 'usb 3.2', 'vga', 'audio cable', 'rs-232', 'fiber optic', 'liberty cable']),
         ('Cables & Connectivity', 'Adapter / Dongle', ['adapter', 'dongle', 'adapter ring', 'gender changer']),
-        ('Cables & Connectivity', 'Wall & Table Plate', ['wall plate', 'tbus', 'hydraport', 'cable cubby', 'faceplate', 'aap']),
+        ('Cables & Connectivity', 'Wall & Table Plate', ['wall plate', 'tbus', 'hydraport', 'cable cubby', 'faceplate', 'aap', 'flex55', 'mounting frame']),
         ('Cables & Connectivity', 'Connector', ['connector', 'bnc', 'xlr', 'captive screw']),
 
         # Infrastructure & Racks
-        ('Infrastructure', 'AV Rack', ['rack', 'enclosure', 'credenza', 'ptrk', r'\d+u rack']),
+        ('Infrastructure', 'AV Rack', ['rack', 'enclosure', 'credenza', 'ptrk', r'\d+u rack', 'heckler av cart', 'av frames']),
         ('Infrastructure', 'Rack Component', ['rack shelf', 'vent panel', 'blank panel', 'cage nuts', 'rackshelf']),
         ('Infrastructure', 'Network Switch', ['switch', 'network switch', 'poe switch', 'gsm4212p']),
+        ('Infrastructure', 'Power Module', ['ac module', 'ac power', 'power outlet']),
         ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power strip', 'power distribution', 'power conditioner']),
-        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'mobile stand']),
+        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'mobile stand', 'portrait stand', 'dell mount']),
         ('Mounts', 'Projector Mount', ['projector mount', 'ceiling mount']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount']),
 
@@ -137,26 +133,20 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Software & Licensing', 'Cloud Management / License', ['cloud', 'license', 'subscription', 'flex-c']),
         ('Services', 'Support & Maintenance', ['support plan', 'poly+', 'premier support']),
         ('Services', 'Commissioning & Integration', ['commissioning', 'integration']),
-        ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex', 'desktop']),
-        ('Peripherals', 'Keyboard / Mouse', ['keyboard', 'mouse', 'km3322w']),
         ('Accessories', 'Lectern / Podium', ['lectern', 'podium', 'epodium']),
     ]
 
-    for primary, sub, keywords in category_rules:
-        # Check for both keyword matches and regex pattern matches
-        if any(keyword in text_to_search for keyword in keywords) or any(re.search(pattern, text_to_search) for pattern in keywords if "\\" in pattern or "[" in pattern):
-             return {'primary_category': primary, 'sub_category': sub}
+    for primary, sub, patterns in category_rules:
+        if any(re.search(pattern, text_to_search) for pattern in patterns):
+            return {'primary_category': primary, 'sub_category': sub}
 
-    # Fallback category for items that don't match any specific rule
     return {'primary_category': 'General AV', 'sub_category': 'Uncategorized'}
 
 
 # --- MAIN SCRIPT EXECUTION ---
 
 def main():
-    """Main function to run the complete data processing and categorization pipeline."""
     all_products: List[Dict] = []
-
     if not os.path.exists(DATA_FOLDER):
         print(f"❌ Error: The '{DATA_FOLDER}' directory was not found.")
         return
@@ -173,9 +163,8 @@ def main():
             header_row = find_header_row(file_path, HEADER_KEYWORDS)
             df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip', dtype=str)
             df.dropna(how='all', inplace=True)
-            df.columns = [str(col).lower().strip() for col in df.columns] # Standardize column names
+            df.columns = [str(col).lower().strip() for col in df.columns]
 
-            # --- DYNAMIC COLUMN MAPPING ---
             model_col = next((c for c in df.columns if any(k in c for k in ['model no', 'part no', 'sku', 'model'])), None)
             desc_col = next((c for c in df.columns if 'desc' in c), None)
             inr_price_col = next((c for c in df.columns if 'inr' in c or 'buy price' in c), None)
