@@ -101,7 +101,7 @@ def create_multi_room_interface():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
             excel_data = generate_company_excel(
-                project_details=project_details, rooms_data=st.session_state.project_rooms,
+                project_details=project_details, boqs_and_summaries=st.session_state.project_rooms,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             if excel_data:
