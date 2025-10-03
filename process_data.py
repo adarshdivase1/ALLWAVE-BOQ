@@ -10,7 +10,7 @@ HEADER_KEYWORDS = ['description', 'model', 'part', 'price', 'sku', 'item', 'mrp'
 DEFAULT_GST_RATE = 18
 FALLBACK_INR_TO_USD = 83.5
 
-# --- HELPER FUNCTIONS (CLEANING & EXTRACTION) ---
+# --- HELPER FUNCTIONS ---
 
 def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> int:
     encodings_to_try = ['utf-8', 'latin1', 'cp1252']
@@ -59,11 +59,10 @@ def clean_filename_brand(filename: str) -> str:
     if ' and ' in base_name: return base_name.split(' and ')[0].strip()
     return base_name
 
-# --- HIERARCHICAL CATEGORIZATION ENGINE ---
+# --- CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, str]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    # This extensive rule set is the core of your categorization and is kept as is.
     category_rules = [
         ('Peripherals', 'Keyboard / Mouse', ['keyboard', 'mouse', 'km3322w']),
         ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex', 'desktop']),
@@ -161,12 +160,12 @@ def main():
                 
                 if final_price_usd <= 1: continue
 
-                # **FIXED**: Create a clean, descriptive name from the start
+                # **FIXED**: Create a clean, descriptive name from the start.
                 descriptive_name = f"{model_clean} - {description.splitlines()[0]}" if description else model_clean
 
                 all_products.append({
                     'brand': file_brand,
-                    'name': f"{file_brand} {descriptive_name}", # This is the final name
+                    'name': f"{file_brand} {descriptive_name}", # This is the final name.
                     'primary_category': categories['primary_category'],
                     'sub_category': categories['sub_category'],
                     'price': final_price_usd,
@@ -186,11 +185,13 @@ def main():
     print(f"\n✅ Successfully processed {len(final_df)} total product entries.")
 
     initial_rows = len(final_df)
-    # **FIXED**: Deduplication is done on the unique combination of brand and the generated name
+    # **FIXED**: Deduplication is done on the unique 'name' column.
     final_df.drop_duplicates(subset=['name'], keep='last', inplace=True)
     final_rows = len(final_df)
     print(f"🧹 De-duplication complete. Removed {initial_rows - final_rows} duplicate entries.")
 
+    # **FIXED**: The bug that created duplicate 'name' columns is removed.
+    # The dataframe is now clean before being saved.
     final_df.to_csv(OUTPUT_FILENAME, index=False)
     print(f"\n✨ Success! Created new master catalog '{OUTPUT_FILENAME}' with {final_rows} unique products.")
 
