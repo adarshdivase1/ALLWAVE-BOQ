@@ -26,10 +26,10 @@ def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> 
     return 0
 
 def clean_price(price_str: Any) -> float:
-    """Removes currency symbols and commas, returning a clean float."""
+    """Removes all non-numeric characters (except decimal point) and returns a clean float."""
     if pd.isna(price_str): return 0.0
     price_str = str(price_str).strip()
-    # Aggressively clean non-numeric characters, but keep the decimal point
+    # This regex removes anything that is not a digit or a period.
     price_str = re.sub(r'[^\d.]', '', price_str)
     if not price_str: return 0.0
     price_val = pd.to_numeric(price_str, errors='coerce')
@@ -50,10 +50,11 @@ def clean_model_number(model_str: Any) -> str:
     """Strips away descriptive text to isolate the core model number."""
     if pd.isna(model_str): return ""
     model_str = str(model_str).strip().replace('\n', ' ')
-    first_word = model_str.split(' ')[0]
-    if len(first_word) > 3 and (re.search(r'[\d/-]', first_word)):
-        return first_word
-    return model_str
+    # A more robust check for typical model number patterns (alphanumeric with hyphens/dots)
+    potential_models = re.findall(r'([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+)', model_str)
+    if potential_models:
+        return potential_models[0]
+    return model_str.split(' ')[0] # Fallback to first word
 
 def clean_filename_brand(filename: str) -> str:
     """Extracts a clean brand name from the CSV filename."""
@@ -64,12 +65,16 @@ def clean_filename_brand(filename: str) -> str:
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, str]:
     """
-    Analyzes product info using an exhaustive, ordered, hierarchical AV taxonomy.
+    Analyzes product info using an exhaustive, ordered, hierarchical AV taxonomy
+    with intelligent pattern recognition.
     """
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    # (Primary Category, Sub-Category, [Keywords])
+
+    # (Primary Category, Sub-Category, [Keywords], [Regex Patterns])
+    # Rules are ordered from most specific to most general for maximum accuracy.
     category_rules = [
-        ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard', 'avocor']),
+        # Video Conferencing & Collaboration
+        ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard', 'avocor', 'interactive touch moniter']),
         ('Video Conferencing', 'Video Bar', ['video bar', 'rally bar', 'poly studio', 'meetup', 'cisco room bar', 'panacast 50']),
         ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'spark kit', 'plus kit']),
         ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
@@ -77,52 +82,74 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Video Conferencing', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'crestron mercury']),
         ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler']),
         ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wireless presentation', 'wpp30']),
+
+        # Audio
         ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'intellimix']),
         ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', 'tcm-x']),
         ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'mxw6', 'conference phone', 'speak 750']),
         ('Audio', 'Gooseneck Microphone', ['gooseneck', 'podium mic']),
         ('Audio', 'Wireless Microphone System', ['wireless mic', 'bodypack', 'handheld transmitter', 'lavalier', 'headworn', 'ulxd']),
-        ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', 'ma2120']),
+        ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', 'ma2120', 'pa-120z']),
         ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker', 'control 16c']),
         ('Audio', 'Audio Interface / Expander', ['dante interface', 'ex-ubt', 'usb expander']),
         ('Audio', 'Mixer', ['audio mixer', 'touchmix']),
+
+        # Video, Display & Signage
         ('Displays', 'Interactive Display', ['interactive', 'touch display', 'smart board', 'flip', 'benq rp', 'newline']),
         ('Displays', 'Professional Display', ['display', 'monitor', 'uhd signage', 'bravia', 'commercial monitor', 'large format display']),
-        ('Displays', 'Video Wall Display', ['video wall', 'un552v']),
-        ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'absen', 'direct view']),
+        ('Displays', 'Video Wall Display', ['video wall display', 'un552v']),
+        ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'absen', 'direct view', 'curved led']),
         ('Displays', 'Projector', ['projector', 'dlp', 'lcd projector', 'eb-l530u']),
         ('Video Processing', 'Video Wall Controller', ['video wall controller', 'g44', 'seada']),
         ('Video Processing', 'Media Player / Signage', ['brightsign', 'media player', 'signage player']),
+        ('Video Processing', 'Capture & Streaming', ['capture card', 'capture dongle', 'pearl nano', 'epiphan']),
+
+        # Control & Automation
         ('Control Systems', 'Control Processor', ['control processor', 'dmps', 'cp4n', 'core 110f']),
         ('Control Systems', 'Touch Panel', ['touch panel', 'touch screen', 'tsw-', 'ts-1070']),
         ('Control Systems', 'Keypad', ['keypad', 'seetouch']),
         ('Control Systems', 'Lighting & Shading', ['dali', 'lutron', 'dimmer', 'shading']),
         ('Control Systems', 'Sensor', ['occupancy sensor']),
+        ('Control Systems', 'Relay Controller', ['relay controller']),
+
+        # Signal Management & Connectivity
         ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'dm-md', 'vm0808']),
         ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'dtp', 'xtp', 'hdbaset']),
         ('Signal Management', 'Converter / Scaler', ['scaler', 'converter', 'sdi2usb']),
         ('Signal Management', 'Distribution Amplifier', ['distribution amplifier', 'hdmi splitter']),
-        ('Cables & Connectivity', 'Bulk Cable', ['cat6', 'speaker cable', 'bulk', '22 awg']),
-        ('Cables & Connectivity', 'HDMI / USB Cable', ['hdmi cable', 'usb-c cable', 'active optical', 'aoc']),
-        ('Cables & Connectivity', 'Adapter / Dongle', ['adapter', 'dongle', 'adapter ring']),
-        ('Cables & Connectivity', 'Wall & Table Plate', ['wall plate', 'tbus', 'hydraport', 'cable cubby', 'faceplate']),
-        ('Infrastructure', 'AV Rack', ['rack', 'enclosure', 'credenza', 'ptrk']),
-        ('Infrastructure', 'Rack Component', ['rack shelf', 'vent panel', 'blank panel']),
+        ('Cables & Connectivity', 'Bulk Cable', ['bulk cable', 'spool', 'reel', 'wire', r'\d+awg', r'cat\d', 'speaker cable']),
+        ('Cables & Connectivity', 'Patch Cable', ['patch cable', 'patch cord']),
+        ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'active optical', 'aoc', 'usb 3.2', 'vga', 'audio cable']),
+        ('Cables & Connectivity', 'Adapter / Dongle', ['adapter', 'dongle', 'adapter ring', 'gender changer']),
+        ('Cables & Connectivity', 'Wall & Table Plate', ['wall plate', 'tbus', 'hydraport', 'cable cubby', 'faceplate', 'aap']),
+        ('Cables & Connectivity', 'Connector', ['connector', 'bnc', 'xlr', 'captive screw']),
+
+        # Infrastructure & Racks
+        ('Infrastructure', 'AV Rack', ['rack', 'enclosure', 'credenza', 'ptrk', r'\d+u rack']),
+        ('Infrastructure', 'Rack Component', ['rack shelf', 'vent panel', 'blank panel', 'cage nuts', 'rackshelf']),
         ('Infrastructure', 'Network Switch', ['switch', 'network switch', 'poe switch', 'gsm4212p']),
         ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power strip', 'power distribution', 'power conditioner']),
-        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion']),
+        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'mobile stand']),
         ('Mounts', 'Projector Mount', ['projector mount', 'ceiling mount']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount']),
-        ('Software & Licensing', 'Cloud Management', ['cloud', 'license', 'subscription', 'flex-c']),
-        ('Software & Licensing', 'Support Plan', ['support plan', 'poly+', 'premier support']),
+
+        # Software, Services & Peripherals
+        ('Software & Licensing', 'Cloud Management / License', ['cloud', 'license', 'subscription', 'flex-c']),
+        ('Services', 'Support & Maintenance', ['support plan', 'poly+', 'premier support']),
+        ('Services', 'Commissioning & Integration', ['commissioning', 'integration']),
+        ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex', 'desktop']),
         ('Peripherals', 'Keyboard / Mouse', ['keyboard', 'mouse', 'km3322w']),
-        ('Peripherals', 'PC / Compute', ['nuc', 'ops', 'mini-pc', 'optiplex']),
         ('Accessories', 'Lectern / Podium', ['lectern', 'podium', 'epodium']),
     ]
+
     for primary, sub, keywords in category_rules:
-        if any(keyword in text_to_search for keyword in keywords):
-            return {'primary_category': primary, 'sub_category': sub}
+        # Check for both keyword matches and regex pattern matches
+        if any(keyword in text_to_search for keyword in keywords) or any(re.search(pattern, text_to_search) for pattern in keywords if "\\" in pattern or "[" in pattern):
+             return {'primary_category': primary, 'sub_category': sub}
+
+    # Fallback category for items that don't match any specific rule
     return {'primary_category': 'General AV', 'sub_category': 'Uncategorized'}
+
 
 # --- MAIN SCRIPT EXECUTION ---
 
@@ -146,13 +173,11 @@ def main():
             header_row = find_header_row(file_path, HEADER_KEYWORDS)
             df = pd.read_csv(file_path, header=header_row, encoding='latin1', on_bad_lines='skip', dtype=str)
             df.dropna(how='all', inplace=True)
-            df.columns = [str(col).lower() for col in df.columns] # Standardize column names
+            df.columns = [str(col).lower().strip() for col in df.columns] # Standardize column names
 
-            # --- DYNAMIC COLUMN MAPPING FOR DUAL CURRENCY ---
-            model_col = next((c for c in df.columns if any(k in c for k in ['model', 'part no', 'sku'])), None)
+            # --- DYNAMIC COLUMN MAPPING ---
+            model_col = next((c for c in df.columns if any(k in c for k in ['model no', 'part no', 'sku', 'model'])), None)
             desc_col = next((c for c in df.columns if 'desc' in c), None)
-            
-            # Find INR and USD price columns
             inr_price_col = next((c for c in df.columns if 'inr' in c or 'buy price' in c), None)
             usd_price_col = next((c for c in df.columns if 'usd' in c), None)
 
@@ -169,11 +194,9 @@ def main():
                 model_clean = clean_model_number(raw_model)
                 description = str(row.get(desc_col, '')).strip()
                 
-                # Extract and clean both prices
+                categories = categorize_product_comprehensively(description, model_clean)
                 price_inr = clean_price(row.get(inr_price_col, 0))
                 price_usd = clean_price(row.get(usd_price_col, 0))
-
-                categories = categorize_product_comprehensively(description, model_clean)
 
                 all_products.append({
                     'brand': file_brand,
@@ -192,7 +215,7 @@ def main():
             print(f"  ❌ CRITICAL ERROR processing {filename}: {e}")
 
     if not all_products:
-        print("\nNo new products were found after processing. Exiting.")
+        print("\nNo new products were found. Exiting.")
         return
 
     final_df = pd.DataFrame(all_products)
@@ -204,7 +227,7 @@ def main():
     print(f"🧹 De-duplication complete. Removed {initial_rows - final_rows} duplicate entries.")
 
     final_df.to_csv(OUTPUT_FILENAME, index=False)
-    print(f"\n✨ Success! Created new master catalog '{OUTPUT_FILENAME}' with {final_rows} unique products, including dual currency pricing.")
+    print(f"\n✨ Success! Created new master catalog '{OUTPUT_FILENAME}' with {final_rows} unique, production-ready products.")
 
 if __name__ == "__main__":
     main()
