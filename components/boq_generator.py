@@ -17,7 +17,7 @@ except ImportError as e:
     st.error(f"BOQ Generator failed to import a component: {e}")
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
-    def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}}
+    def determine_equipment_requirements(*a): return {'displays': {}, 'audio_system': {}, 'video_system': {}}
     def match_product_in_database(*args): return None
     # Define a placeholder for ROOM_SPECS to prevent errors
     ROOM_SPECS = {}
