@@ -8,6 +8,8 @@ from pathlib import Path
 
 # --- Component Imports ---
 try:
+    # MODIFIED: Imported ROOM_SPECS from its own component file
+    from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
     from components.boq_generator import generate_boq_from_ai, post_process_boq
@@ -15,7 +17,8 @@ try:
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
-    from components.visualizer import create_3d_visualization, ROOM_SPECS
+    # MODIFIED: Removed ROOM_SPECS from this import
+    from components.visualizer import create_3d_visualization
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
     st.stop()
@@ -126,12 +129,20 @@ def main():
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
+    # --- Session State Initializations ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
     if 'boq_content' not in st.session_state: st.session_state.boq_content = None
     if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
     if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
     if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
+    
+    # ADDED: Initialize session state for dimensions if they don't exist
+    if 'room_length_input' not in st.session_state:
+        st.session_state.room_length_input = 28.0
+    if 'room_width_input' not in st.session_state:
+        st.session_state.room_width_input = 20.0
+
 
     with st.spinner("Initializing system modules..."):
         product_df, guidelines, data_issues = load_and_validate_data()
@@ -151,6 +162,14 @@ def main():
     create_header(main_logo_path, partner_logos_paths)
 
     st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
+
+    # ADDED: Callback function to update dimensions when room type changes
+    def update_dimensions_from_room_type():
+        room_type = st.session_state.room_type_select
+        if room_type in ROOM_SPECS and 'typical_dims_ft' in ROOM_SPECS[room_type]:
+            length, width = ROOM_SPECS[room_type]['typical_dims_ft']
+            st.session_state.room_length_input = float(length)
+            st.session_state.room_width_input = float(width)
 
     with st.sidebar:
         st.markdown(f'''
@@ -192,8 +211,20 @@ def main():
         
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
+        
+        # MODIFIED: Added on_change callback to the selectbox
         room_type_key = st.selectbox(
-            "Primary Space Type", list(ROOM_SPECS.keys()), key="room_type_select")
+            "Primary Space Type", 
+            list(ROOM_SPECS.keys()), 
+            key="room_type_select",
+            on_change=update_dimensions_from_room_type
+        )
+        
+        # ADDED: Logic to set initial dimensions on the first run
+        if 'initial_load' not in st.session_state:
+            update_dimensions_from_room_type()
+            st.session_state.initial_load = True
+
         st.select_slider(
             "Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], 
             value="Standard", key="budget_tier_slider")
@@ -242,12 +273,10 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    room_length = st.session_state.get('room_length_input', 24.0)
-                    room_width = st.session_state.get('room_width_input', 16.0)
-                    room_area = room_length * room_width
+                    # MODIFIED: More direct calculation, assumes session_state keys exist
+                    room_area = st.session_state.room_length_input * st.session_state.room_width_input
 
                     progress_bar.progress(25, text="🤖 Step 1: Querying AI model for equipment list...")
-                    # --- CHANGE START 1 of 2: Unpack the 4th returned value ---
                     boq_items, avixa_calcs, equipment_reqs, required_components = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
@@ -256,11 +285,9 @@ def main():
                         technical_reqs,
                         room_area 
                     )
-                    # --- CHANGE END 1 of 2 ---
                     
                     if boq_items:
                         progress_bar.progress(65, text="⚙️ Step 2: Applying post-processing and validation rules...")
-                        # --- CHANGE START 2 of 2: Pass the 4th value to the post-processing function ---
                         processed_boq, avixa_validation = post_process_boq(
                             boq_items,
                             product_df,
@@ -269,7 +296,6 @@ def main():
                             room_type_key,
                             required_components
                         )
-                        # --- CHANGE END 2 of 2 ---
                         
                         st.session_state.boq_items = processed_boq
                         st.session_state.validation_results = avixa_validation
