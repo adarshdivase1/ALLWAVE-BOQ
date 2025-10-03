@@ -124,69 +124,75 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     return base_prompt + json_format_instruction
 
 
-# --- MODIFICATION START: The _build_component_blueprint function is now more robust ---
+# --- MODIFICATION START: Updated _build_component_blueprint to read the 'control_system' key ---
 def _build_component_blueprint(equipment_reqs, technical_reqs):
     """
-    -- FINAL REVISION WITH DEFENSIVE LOGIC --
-    Builds the component list, but now checks if a component (like a display)
-    is actually required before adding it to the blueprint.
+    Builds the component list based on the explicit requirements from the room profile.
     """
-    blueprint = {} # Start with an empty blueprint
+    blueprint = {} 
 
     # --- Display Logic (Conditional) ---
-    # Only add a display if the equipment requirements from av_designer.py include one.
     if 'displays' in equipment_reqs:
         display_reqs = equipment_reqs.get('displays', {})
         blueprint['display'] = {
-            'category': 'Displays',
-            'sub_category': 'Professional Display',
-            'quantity': display_reqs.get('quantity', 1),
-            'priority': 1,
+            'category': 'Displays', 'sub_category': 'Professional Display', 'quantity': display_reqs.get('quantity', 1), 'priority': 1,
             'justification': f"Primary {display_reqs.get('size_inches', 65)}\" display."
         }
         blueprint['display_mount'] = {
-            'category': 'Mounts',
-            'sub_category': 'Display Mount / Cart',
-            'quantity': display_reqs.get('quantity', 1),
-            'priority': 8,
+            'category': 'Mounts', 'sub_category': 'Display Mount / Cart', 'quantity': display_reqs.get('quantity', 1), 'priority': 8,
             'justification': 'Wall mount for the display.'
         }
 
-    # --- Universal Connectivity ---
-    blueprint['table_connectivity_module'] = {
-        'category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate Module', 'quantity': 1, 'priority': 9,
-        'justification': 'Table-mounted input module (e.g., HDMI/USB-C).'
-    }
-    blueprint['network_cables'] = {
-        'category': 'Cables & Connectivity', 'sub_category': 'Network Cable', 'quantity': 5, 'priority': 10,
-        'justification': 'Network patch cables for devices.'
-    }
+    # --- Video System Logic ---
+    if 'video_system' in equipment_reqs:
+        video_system_reqs = equipment_reqs.get('video_system', {})
+        video_system_type = video_system_reqs.get('type')
+        if video_system_type == 'All-in-one Video Bar':
+            blueprint['video_bar_system'] = {'category': 'Video Conferencing', 'sub_category': 'Video Bar', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar system.'}
+        elif video_system_type == 'Modular Codec + PTZ Camera':
+            blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'quantity': 1, 'priority': 2, 'justification': 'Core video conferencing room kit.'}
 
-    # --- Video & Audio System Logic ---
-    video_system_type = equipment_reqs.get('video_system', {}).get('type')
-    needs_separate_dsp = equipment_reqs.get('audio_system', {}).get('dsp_required', False)
+    # --- Control System Logic (New and Explicit) ---
+    if 'control_system' in equipment_reqs:
+        control_reqs = equipment_reqs.get('control_system', {})
+        if control_reqs.get('type') == 'Touch Controller':
+            blueprint['in_room_controller'] = {
+                'category': 'Video Conferencing', 'sub_category': 'Touch Controller', 'quantity': 1, 'priority': 3,
+                'justification': 'In-room touch panel for meeting control.'
+            }
+
+    # --- Audio System Logic ---
+    if 'audio_system' in equipment_reqs:
+        audio_reqs = equipment_reqs.get('audio_system', {})
+        # DSP Logic
+        needs_separate_dsp = audio_reqs.get('dsp_required', False)
+        if 'voice lift' in technical_reqs.get('audio_requirements', '').lower():
+            needs_separate_dsp = True
+        # Don't add a separate DSP if a high-end kit can handle it for simpler rooms
+        elif 'video_system' in equipment_reqs and equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
+            if 'Boardroom' not in equipment_reqs.get('room_type', '') and 'Training' not in equipment_reqs.get('room_type', ''):
+                needs_separate_dsp = False
+
+        if needs_separate_dsp:
+            blueprint['dsp'] = {'category': 'Audio', 'sub_category': 'DSP / Processor', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for advanced audio control.'}
+        
+        # Microphone and Speaker Logic
+        if audio_reqs.get('microphone_type'):
+            blueprint['microphones'] = {'category': 'Audio', 'sub_category': 'Ceiling Microphone', 'quantity': audio_reqs.get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones for room coverage.'}
+        if audio_reqs.get('speaker_type'):
+            blueprint['speakers'] = {'category': 'Audio', 'sub_category': 'Loudspeaker', 'quantity': audio_reqs.get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for audio playback.'}
+            blueprint['amplifier'] = {'category': 'Audio', 'sub_category': 'Amplifier', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier for speakers.'}
+
+    # --- Universal Connectivity & Infrastructure ---
+    if 'content_sharing' in equipment_reqs:
+        blueprint['table_connectivity_module'] = {'category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate Module', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input module (e.g., HDMI/USB-C).'}
     
-    if video_system_type == 'All-in-one Video Bar':
-        blueprint['video_bar_system'] = {'category': 'Video Conferencing', 'sub_category': 'Video Bar', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar system.'}
-        blueprint['in_room_controller'] = {'category': 'Video Conferencing', 'sub_category': 'Touch Controller', 'quantity': 1, 'priority': 3, 'justification': 'In-room touch panel.'}
-    elif video_system_type == 'Modular Codec + PTZ Camera':
-        blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'quantity': 1, 'priority': 2, 'justification': 'Core video conferencing room kit.'}
-        if 'Boardroom' not in equipment_reqs.get('room_type', '') and 'Training' not in equipment_reqs.get('room_type', ''):
-            needs_separate_dsp = False
+    blueprint['network_cables'] = {'category': 'Cables & Connectivity', 'sub_category': 'Network Cable', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for devices.'}
 
-    if needs_separate_dsp:
-        blueprint['dsp'] = {'category': 'Audio', 'sub_category': 'DSP / Processor', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for advanced audio control.'}
-    
-    audio_system_reqs = equipment_reqs.get('audio_system', {})
-    if audio_system_reqs.get('microphone_type'):
-        blueprint['microphones'] = {'category': 'Audio', 'sub_category': 'Ceiling Microphone', 'quantity': audio_system_reqs.get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones for room coverage.'}
-    if audio_system_reqs.get('speaker_type'):
-        blueprint['speakers'] = {'category': 'Audio', 'sub_category': 'Loudspeaker', 'quantity': audio_system_reqs.get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for audio playback.'}
-        blueprint['amplifier'] = {'category': 'Audio', 'sub_category': 'Amplifier', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier for speakers.'}
-
-    if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
+    if 'housing' in equipment_reqs and equipment_reqs['housing'].get('type') == 'AV Rack':
         blueprint['av_rack'] = {'category': 'Infrastructure', 'sub_category': 'AV Rack', 'quantity': 1, 'priority': 12, 'justification': 'Full-size equipment rack.'}
-    if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
+    
+    if 'power_management' in equipment_reqs and equipment_reqs['power_management'].get('type') == 'Rackmount PDU':
         blueprint['pdu'] = {'category': 'Infrastructure', 'sub_category': 'Power (PDU/UPS)', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit.'}
         
     return blueprint
