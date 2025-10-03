@@ -362,38 +362,51 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 cell.alignment = Alignment(horizontal='center')
 
 # --- Main Entry Point ---
-def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
-    """Main function to generate the complete Excel workbook."""
+def generate_company_excel(boqs_and_summaries, project_details, usd_to_inr_rate, service_rate=0.30):
+    """
+    Creates a multi-sheet Excel file with a project summary and detailed BOQs for each room.
+    
+    Args:
+        boqs_and_summaries (dict): A dictionary containing BOQ data and summary info for each room.
+        project_details (dict): Project metadata (e.g., name, client, etc.).
+        usd_to_inr_rate (float): The current USD to INR exchange rate.
+        service_rate (float): The percentage to calculate service charges (e.g., 0.30 for 30%).
+    """
+    if not boqs_and_summaries:
+        return None
+
     workbook = openpyxl.Workbook()
     styles = _define_styles()
 
     _add_version_control_sheet(workbook, project_details, styles)
     # _add_scope_of_work_sheet(workbook, styles) # Can be re-enabled if needed
     
-    for room in rooms_data:
-        if room.get('boq_items'):
-            # Calculate room totals for the summary sheet
-            subtotal = sum(item.get('price', 0) * item.get('quantity', 1) for item in room['boq_items']) * usd_to_inr_rate
-            services_total = subtotal * 0.30  # Assuming 30% for services
-            total_without_gst = subtotal + services_total
-            
-            gst_electronics = sum(
-                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
-                for item in room['boq_items']
-            )
-            gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
-            total_gst = gst_electronics + gst_services
-            
-            room['subtotal'], room['gst'], room['total'] = total_without_gst, total_gst, total_without_gst + total_gst
+    for room in boqs_and_summaries:
+        # Calculate totals for the summary sheet
+        subtotal = sum(item.get('price', 0) * item.get('quantity', 1) for item in room['boq_items']) * usd_to_inr_rate
+        
+        # CHANGED: Replaced hardcoded 0.30 with a dynamic variable
+        services_total = subtotal * service_rate
+        
+        total_without_gst = subtotal + services_total
+        
+        gst_electronics = sum(
+            (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
+            for item in room['boq_items']
+        )
+        gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
+        total_gst = gst_electronics + gst_services
+        
+        room['subtotal'], room['gst'], room['total'] = total_without_gst, total_gst, total_without_gst + total_gst
 
-            safe_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:25]
-            room_sheet = workbook.create_sheet(title=f"BOQ - {safe_name}")
-            _populate_room_boq_sheet(
-                room_sheet, room['boq_items'], room['name'], styles,
-                usd_to_inr_rate, project_details.get('gst_rates', {})
-            )
+        safe_name = re.sub(r'[\\/*?:\"<>|]', '', room['name'])[:25]
+        room_sheet = workbook.create_sheet(title=f"BOQ - {safe_name}")
+        _populate_room_boq_sheet(
+            room_sheet, room['boq_items'], room['name'], styles,
+            usd_to_inr_rate, project_details.get('gst_rates', {})
+        )
 
-    # _add_proposal_summary_sheet(workbook, rooms_data, styles) # Can be re-enabled if needed
+    # _add_proposal_summary_sheet(workbook, boqs_and_summaries, styles) # Can be re-enabled if needed
 
     if "Sheet" in workbook.sheetnames:
         del workbook["Sheet"]
