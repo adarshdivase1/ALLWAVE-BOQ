@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 try:
-    from components.room_profiles import ROOM_SPECS
+    from components.visualizer import ROOM_SPECS
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
     from components.excel_generator import generate_company_excel
 except ImportError:
@@ -101,7 +101,7 @@ def create_multi_room_interface():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
             excel_data = generate_company_excel(
-                project_details=project_details, boqs_and_summaries=st.session_state.project_rooms,
+                project_details=project_details, rooms_data=st.session_state.project_rooms,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             if excel_data:
@@ -206,7 +206,7 @@ def display_boq_results(product_df, project_details):
 
             excel_data_current = generate_company_excel(
                 project_details=project_details,
-                boqs_and_summaries=single_room_data, # CORRECTED ARGUMENT NAME
+                rooms_data=single_room_data,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
             
@@ -373,8 +373,8 @@ def product_search_interface(product_df, currency):
 
     if search_term:
         mask = product_df.apply(lambda row: search_term.lower() in str(row['name']).lower() or
-                                             search_term.lower() in str(row['brand']).lower() or
-                                             search_term.lower() in str(row['features']).lower(), axis=1)
+                                          search_term.lower() in str(row['brand']).lower() or
+                                          search_term.lower() in str(row['features']).lower(), axis=1)
         search_results = product_df[mask]
         st.write(f"Found {len(search_results)} products:")
 
