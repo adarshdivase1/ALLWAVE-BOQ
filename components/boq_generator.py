@@ -64,7 +64,7 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
 
     base_prompt = f"""
     You are a world-class CTS-D Certified AV Systems Designer. Your task is to select the most appropriate products from a provided catalog to create a Bill of Quantities (BOQ) for a '{room_type}'.
-    Adhere strictly to the requirements. Your selections must be logical and create a fully functional system.
+    Adhere strictly to the requirements. Your selections must be logical and create a fully functional, compatible system.
 
     # Design Parameters
     - **Room Type:** {room_type}
@@ -77,9 +77,16 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
 
     {format_product_list()}
 
+    # --- MODIFICATION START: Added new rules to the AI prompt ---
+    # RULES & CONSTRAINTS
+    - **Prioritize Ecosystems**: For video conferencing, select components from a single brand (e.g., Poly, Yealink, Crestron) to ensure compatibility. Do not mix brands for the codec, camera, and touch panel.
+    - **Avoid Redundancy**: If you select a 'Video Bar' or a 'Room Kit', DO NOT select a separate PTZ camera, webcam, or microphone, as the kit already includes them.
+    - **Select Complete Products**: For components like microphones or wall plates, ensure your selection is the main product, not just a mounting accessory.
+    # --- MODIFICATION END ---
+
     # INSTRUCTIONS
     1.  Review all the requirements and the available product options for each component.
-    2.  Select exactly one product for each mandatory component key (e.g., 'display', 'video_bar').
+    2.  Select exactly one product for each mandatory component key (e.g., 'display', 'video_bar_system').
     3.  Your entire output MUST be a single, valid JSON object and nothing else. Do not include any text, greetings, or explanations before or after the JSON block.
     4.  The JSON keys must match the component keys provided (e.g., "display", "display_mount").
     5.  For each component, provide the EXACT 'name' and 'model_number' from the catalog list.
@@ -94,37 +101,48 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     return base_prompt + json_format_instruction
 
 
+# --- MODIFICATION START: Replaced _build_component_blueprint with "kit-aware" logic ---
 def _build_component_blueprint(equipment_reqs):
     """
-    Dynamically builds the list of required components, now with sub-categories
-    for precise filtering.
+    Dynamically builds the list of required components, now with intelligence
+    to handle all-in-one kits and prevent redundancy.
     """
+    # Base components required in almost any room
     blueprint = {
         'display': {'category': 'Displays', 'sub_category': 'Professional Display', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 1, 'justification': f"Primary {equipment_reqs['displays'].get('size_inches', 65)}\" display."},
         'display_mount': {'category': 'Mounts', 'sub_category': 'Display Mount / Cart', 'quantity': equipment_reqs['displays'].get('quantity', 1), 'priority': 8, 'justification': 'Wall mount for the display.'},
-        'in_room_controller': {'category': 'Video Conferencing', 'sub_category': 'Touch Controller', 'quantity': 1, 'priority': 3, 'justification': 'In-room touch panel for meeting control.'},
         'table_connectivity': {'category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate', 'quantity': 1, 'priority': 9, 'justification': 'Table-mounted input for wired presentation.'},
         'network_cables': {'category': 'Cables & Connectivity', 'sub_category': 'AV Cable', 'quantity': 5, 'priority': 10, 'justification': 'Network patch cables for devices.'},
     }
 
-    if equipment_reqs['video_system']['type'] == 'All-in-one Video Bar':
-        blueprint['video_bar'] = {'category': 'Video Conferencing', 'sub_category': 'Video Bar', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar (camera, mics, speakers).'}
-    
-    elif equipment_reqs['video_system']['type'] == 'Modular Codec + PTZ Camera':
-        blueprint['video_codec'] = {'category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'quantity': 1, 'priority': 2, 'justification': 'Core video codec.'}
-        blueprint['ptz_camera'] = {'category': 'Video Conferencing', 'sub_category': 'PTZ Camera', 'quantity': equipment_reqs['video_system'].get('camera_count', 1), 'priority': 2.1, 'justification': 'PTZ camera.'}
+    video_system_type = equipment_reqs['video_system']['type']
 
+    # If the system is an all-in-one solution, request the kit and DO NOT request individual parts.
+    if video_system_type == 'All-in-one Video Bar':
+        blueprint['video_bar_system'] = {'category': 'Video Conferencing', 'sub_category': 'Video Bar', 'quantity': 1, 'priority': 2, 'justification': 'All-in-one Video Bar (camera, mics, speakers).'}
+        blueprint['in_room_controller'] = {'category': 'Video Conferencing', 'sub_category': 'Touch Controller', 'quantity': 1, 'priority': 3, 'justification': 'In-room touch panel for meeting control.'}
+
+    # If the system is a modular kit, request the kit, which often includes camera and codec.
+    elif video_system_type == 'Modular Codec + PTZ Camera':
+        blueprint['video_conferencing_kit'] = {'category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'quantity': 1, 'priority': 2, 'justification': 'Core video conferencing room kit (codec, camera, controller).'}
+        # Since the Room Kit is requested, we no longer need to ask for a separate camera or codec.
+
+    # Logic for audio system remains, as it's often separate from the video kit.
     if equipment_reqs['audio_system'].get('dsp_required', False):
         blueprint['dsp'] = {'category': 'Audio', 'sub_category': 'DSP / Processor', 'quantity': 1, 'priority': 4, 'justification': 'Digital Signal Processor for audio.'}
         blueprint['microphones'] = {'category': 'Audio', 'sub_category': 'Ceiling Microphone', 'quantity': equipment_reqs['audio_system'].get('microphone_count', 2), 'priority': 5, 'justification': 'Microphones for room coverage.'}
         blueprint['speakers'] = {'category': 'Audio', 'sub_category': 'Loudspeaker', 'quantity': equipment_reqs['audio_system'].get('speaker_count', 2), 'priority': 6, 'justification': 'Speakers for audio playback.'}
         blueprint['amplifier'] = {'category': 'Audio', 'sub_category': 'Amplifier', 'quantity': 1, 'priority': 7, 'justification': 'Amplifier for speakers.'}
 
+    # Infrastructure logic
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
         blueprint['av_rack'] = {'category': 'Infrastructure', 'sub_category': 'AV Rack', 'quantity': 1, 'priority': 12, 'justification': 'Equipment rack.'}
     if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
         blueprint['pdu'] = {'category': 'Infrastructure', 'sub_category': 'Power (PDU/UPS)', 'quantity': 1, 'priority': 11, 'justification': 'Power distribution unit.'}
+        
     return blueprint
+# --- MODIFICATION END ---
+
 
 def _get_fallback_product(category, sub_category, product_df):
     """Gets a fallback product, filtering by sub-category first."""
@@ -208,33 +226,60 @@ def _correct_quantities(boq_items):
             item['quantity'] = 1
     return boq_items
 
+# --- MODIFICATION START: Replaced _remove_duplicate_core_components with a more aggressive version ---
 def _remove_duplicate_core_components(boq_items):
-    final_items = []
-    core_categories = ['Video Conferencing', 'Control', 'Audio']
+    """
+    More aggressive logic to remove redundant items if a 'kit' is present.
+    """
+    final_items = list(boq_items)
+
+    # Identify if a primary 'kit' system exists
+    kit_present = any(item.get('sub_category') in ['Video Bar', 'Room Kit / Codec'] for item in final_items)
+
+    if kit_present:
+        # If a kit exists, aggressively remove individual components that would be redundant
+        items_to_remove = []
+        redundant_sub_categories = ['PTZ Camera', 'Webcam / Personal Camera', 'Touch Controller', 'Table Microphone']
+        for item in final_items:
+            if item.get('sub_category') in redundant_sub_categories:
+                # Keep it only if it was manually added by the user
+                if "Manually added" not in item.get('justification', ''):
+                    items_to_remove.append(item)
+
+        # Remove the identified redundant items
+        final_items = [item for item in final_items if item not in items_to_remove]
     
-    # Pass through non-core items
-    for item in boq_items:
-        if item.get('category') not in core_categories:
-            final_items.append(item)
-            
-    # Process core items, keeping only the best one per sub-category
-    for category in core_categories:
-        cat_items = [item for item in boq_items if item.get('category') == category]
-        sub_cats_in_boq = {item.get('sub_category') for item in cat_items}
-        
-        for sub_cat in sub_cats_in_boq:
-            candidates = [item for item in cat_items if item.get('sub_category') == sub_cat]
-            if candidates:
-                # Keep the highest-priced item, assuming it's the "core" device
-                best_candidate = max(candidates, key=lambda x: x.get('price', 0))
-                final_items.append(best_candidate)
-                
     return _remove_exact_duplicates(final_items)
+# --- MODIFICATION END ---
 
 def validate_avixa_compliance(boq_items, avixa_calcs, equipment_reqs, room_type):
     issues, warnings = [], []
     # This logic can be expanded, but for now, it's a placeholder
     return {'issues': issues, 'warnings': warnings}
+
+# --- MODIFICATION START: Added new price sanity check function ---
+def _sanity_check_prices(boq_items):
+    """
+    Adds a warning to the justification field if a product's price seems
+    like an outlier for its category.
+    """
+    for item in boq_items:
+        price = item.get('price', 0)
+        category = item.get('category', '')
+        sub_category = item.get('sub_category', '')
+        warning_msg = " ⚠️ **PRICE WARNING**: Price seems unusually high for this category. Please verify."
+
+        # Flag any 'Amplifier' that costs more than $2,500
+        if sub_category == 'Amplifier' and price > 2500 and warning_msg not in item['justification']:
+            item['justification'] += warning_msg
+        
+        # Flag any 'Cable' or 'Connector' that costs more than $500
+        if category == 'Cables & Connectivity' and price > 500 and warning_msg not in item['justification']:
+            item['justification'] += warning_msg
+            
+    return boq_items
+# --- MODIFICATION END ---
+
 
 # --- CHANGE START: Added a new master function to consolidate post-processing ---
 def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_type):
@@ -251,7 +296,12 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     # Step 3: A more advanced rule to remove redundant core components, keeping the best option.
     processed_boq = _remove_duplicate_core_components(processed_boq)
     
-    # Step 4: Validate the final, cleaned BOQ against AVIXA standards.
+    # --- MODIFICATION START: Added price sanity check to the pipeline ---
+    # Step 4: Run a sanity check on prices to flag potential data errors.
+    processed_boq = _sanity_check_prices(processed_boq)
+    # --- MODIFICATION END ---
+
+    # Step 5: Validate the final, cleaned BOQ against AVIXA standards.
     validation_results = validate_avixa_compliance(processed_boq, avixa_calcs, equipment_reqs, room_type)
     
     return processed_boq, validation_results
