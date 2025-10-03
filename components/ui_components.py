@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 try:
-    from components.visualizer import ROOM_SPECS
+    from components.room_profiles import ROOM_SPECS
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
     from components.excel_generator import generate_company_excel
 except ImportError:
