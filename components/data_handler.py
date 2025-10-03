@@ -12,7 +12,6 @@ def load_and_validate_data():
     """
     data_issues = []
     try:
-        # --- CHANGE START: Simplified data loading ---
         df = pd.read_csv("master_product_catalog.csv")
 
         # --- Data Validation and Column Renaming ---
@@ -52,8 +51,6 @@ def load_and_validate_data():
         if initial_count > len(df):
             data_issues.append(f"Removed {initial_count - len(df)} products with a price of $0.")
 
-        # --- CHANGE END ---
-
         try:
             with open("avixa_guidelines.md", "r") as f:
                 guidelines = f.read()
@@ -78,14 +75,13 @@ def match_product_in_database(product_name, brand, model_number, product_df):
     if product_df is None or product_df.empty:
         return None
 
-    safe_model = str(model_number).strip() if pd.notna(model_number) else None
+    safe_model = str(model_number).strip().lower() if pd.notna(model_number) and model_number else None
     safe_name = str(product_name).strip() if pd.notna(product_name) else None
     safe_brand = str(brand).strip().lower() if pd.notna(brand) else None
 
-    # --- CHANGE START: Prioritize Model Number Matching ---
     # Strategy 1: Exact Model Number match (highest confidence)
     if safe_model:
-        model_match = product_df[product_df['model_number'].str.lower() == safe_model.lower()]
+        model_match = product_df[product_df['model_number'].str.lower() == safe_model]
         if not model_match.empty:
             return model_match.iloc[0].to_dict()
 
@@ -103,7 +99,6 @@ def match_product_in_database(product_name, brand, model_number, product_df):
         fuzzy_match = product_df[product_df['name'].str.contains(re.escape(safe_name), case=False, na=False)]
         if not fuzzy_match.empty:
             return fuzzy_match.iloc[0].to_dict()
-    # --- CHANGE END ---
     
     return None
 
@@ -125,10 +120,9 @@ def extract_enhanced_boq_items(boq_content, product_df):
             continue
         if in_table and line.startswith('|'):
             parts = [part.strip() for part in line.split('|') if part.strip()]
-            # Expecting more parts now: Cat, Brand, Name, Model, Qty, Price, Specs
+            # Expecting at least: Cat, Brand, Name, Model, Qty
             if len(parts) >= 5:
                 try:
-                    # --- CHANGE START: Parsing new AI output format ---
                     category, brand, product_name, model_number = parts[0], parts[1], parts[2], parts[3]
                     quantity = int(parts[4])
                     
@@ -139,6 +133,7 @@ def extract_enhanced_boq_items(boq_content, product_df):
                         # Use data from the database for accuracy
                         items.append({
                             'category': matched_product.get('category', category),
+                            'sub_category': matched_product.get('sub_category'),
                             'name': matched_product.get('name', product_name),
                             'brand': matched_product.get('brand', brand),
                             'model_number': matched_product.get('model_number', model_number),
@@ -156,13 +151,13 @@ def extract_enhanced_boq_items(boq_content, product_df):
                         # Handle cases where the AI might have hallucinated a model
                         items.append({
                             'category': category, 'name': product_name, 'brand': brand,
+                            'sub_category': 'Needs Classification',
                             'model_number': model_number, 'quantity': quantity, 'price': 0,
                             'justification': "AI Recommended, but NOT FOUND in catalog.",
                             'specifications': 'Model not found in database, please verify.',
                             'image_url': '', 'gst_rate': 18, 'warranty': 'N/A',
                             'lead_time_days': 14, 'matched': False
                         })
-                    # --- CHANGE END ---
                 except (ValueError, IndexError) as e:
                     # Skip malformed table rows
                     continue
