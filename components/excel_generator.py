@@ -219,7 +219,7 @@ def _add_scope_of_work_sheet(workbook, styles):
     
     sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
     sheet[f'A{row_cursor}'].value = "Scope of Work"
-    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    sheet[f'A{A{row_cursor}'].fill = styles['table_header_blue_fill']
     sheet[f'A{row_cursor}'].font = styles['bold_font']
     row_cursor += 1
     
