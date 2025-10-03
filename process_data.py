@@ -129,7 +129,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770']),
         ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wpp30']),
         ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']),
-        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', 'tcm-x']),
+        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))']),
         ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'conference phone']),
         ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', r'\d+\s*x\s*\d+w']),
         ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker']),
