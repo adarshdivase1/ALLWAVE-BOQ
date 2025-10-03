@@ -17,10 +17,8 @@ def _define_styles():
         "header_light_green_fill": PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
         "table_header_blue_fill": PatternFill(start_color="9BC2E6", end_color="9BC2E6", fill_type="solid"),
         "boq_category_fill": PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
-        "reasons_fill": PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),  # Light yellow for reasons
         "black_bold_font": Font(color="000000", bold=True),
         "bold_font": Font(bold=True),
-        "italic_font": Font(italic=True, size=9),
         "thin_border": thin_border,
         "currency_format": "₹ #,##0.00"
     }
@@ -38,31 +36,38 @@ def _add_image_to_cell(sheet, image_path, cell, height_px):
 
 def _create_sheet_header(sheet):
     """Creates the standard header with four logos contained within merged cells."""
+    # Set the height for the two rows that will form the header area
     sheet.row_dimensions[1].height = 50
     sheet.row_dimensions[2].height = 50
 
+    # Merge cells on the left to create containers for the first two logos
     sheet.merge_cells('A1:C2')
     sheet.merge_cells('D1:F2')
+
+    # Merge cells on the right for the other two logos
     sheet.merge_cells('M1:N2')
     sheet.merge_cells('O1:P2')
 
+    # Place each logo in the top-left corner of its merged container
     _add_image_to_cell(sheet, 'assets/company_logo.png', 'A1', 95)
     _add_image_to_cell(sheet, 'assets/crestron_logo.png', 'D1', 95)
     _add_image_to_cell(sheet, 'assets/iso_logo.png', 'M1', 95)
     _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'O1', 95)
-
+    
 def _add_version_control_sheet(workbook, project_details, styles):
     """Creates the Version Control & Contact Details sheet."""
     sheet = workbook.create_sheet(title="Version Control", index=0)
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
 
+    # Set column widths
     sheet.column_dimensions['A'].width = 25
     sheet.column_dimensions['B'].width = 25
     sheet.column_dimensions['D'].width = 5
     sheet.column_dimensions['E'].width = 25
     sheet.column_dimensions['F'].width = 25
     
+    # Version Control Table
     sheet.merge_cells('A3:B3')
     vc_header = sheet['A3']
     vc_header.value = "Version Control"
@@ -88,6 +93,7 @@ def _add_version_control_sheet(workbook, project_details, styles):
         sheet[f'A{row}'].fill = styles['header_light_green_fill']
         sheet[f'B{row}'].value = value
 
+    # Contact Details Table
     sheet.merge_cells('E3:F3')
     cd_header = sheet['E3']
     cd_header.value = "Contact Details"
@@ -121,12 +127,14 @@ def _add_scope_of_work_sheet(workbook, styles):
     sheet = workbook.create_sheet(title="Scope of Work", index=2)
     _create_sheet_header(sheet)
     
+    # Add title
     sheet.merge_cells('A3:C3')
     title_cell = sheet['A3']
     title_cell.value = "Scope of Work"
     title_cell.font = Font(size=14, bold=True)
     title_cell.alignment = Alignment(horizontal='center')
 
+    # Note section
     row_cursor = 5
     sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
     note_cell = sheet[f'A{row_cursor}']
@@ -175,6 +183,7 @@ def _add_scope_of_work_sheet(workbook, styles):
         sec_cell.border = styles['thin_border']
         row_cursor += 1
         
+        # Header row
         sheet[f'A{row_cursor}'] = "Sr. No"
         sheet[f'A{row_cursor}'].font = styles['bold_font']
         sheet[f'A{row_cursor}'].border = styles['thin_border']
@@ -207,6 +216,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
+    # Proposal Summary Table
     row_cursor = 4
     sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
     sheet[f'A{row_cursor}'].value = "Proposal Summary"
@@ -241,6 +251,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
                 grand_total_gst += room.get('gst', 0)
                 grand_total_final += room.get('total', 0)
         
+        # Grand Total row
         sheet.append(["", "Grand Total", "", "", grand_total_subtotal, grand_total_gst, grand_total_final])
 
     for row in sheet.iter_rows(min_row=header_row + 1, max_row=sheet.max_row):
@@ -250,13 +261,166 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
             cell.border = styles['thin_border']
             cell.alignment = Alignment(horizontal='center' if cell.column <= 3 else 'right')
     
-    # Commercial Terms Section (abbreviated for space)
+    # Commercial Terms Section
     row_cursor = sheet.max_row + 3
+    
+    # Section A: Delivery, Installations & Site Schedule
     sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
     sheet[f'A{row_cursor}'].value = "Commercial Terms"
     sheet[f'A{row_cursor}'].font = Font(size=12, bold=True)
     sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
-    
+    row_cursor += 2
+
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "A. Delivery, Installations & Site Schedule"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    row_cursor += 1
+
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "All Wave AV Systems undertake to ensure it's best efforts to complete the assignment for Client within the shortest timelines possible."
+    sheet[f'A{row_cursor}'].alignment = Alignment(wrap_text=True)
+    row_cursor += 2
+
+    # 1. Project Schedule & Site Requirements
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "1. Project Schedule & Site Requirements"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    row_cursor += 1
+
+    schedule_data = [
+        ("Week 1-3", ""),
+        ("All Wave AV Systems", "Design & Procurement"),
+        ("Client", "Site Preparations")
+    ]
+    for label, value in schedule_data:
+        sheet[f'B{row_cursor}'].value = label
+        sheet.merge_cells(f'C{row_cursor}:D{row_cursor}')
+        sheet[f'C{row_cursor}'].value = value
+        if label == "Week 1-3":
+            sheet[f'B{row_cursor}'].font = sheet[f'C{row_cursor}'].font = styles['bold_font']
+        row_cursor += 1
+    row_cursor += 1
+
+    # 2. Delivery Terms
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "2. Delivery Terms"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    row_cursor += 1
+
+    delivery_terms = [
+        "Duty Paid INR- Free delivery at site",
+        "Direct Import- FOB OR Ex-works of CIF"
+    ]
+    for term in delivery_terms:
+        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+        sheet[f'A{row_cursor}'].value = term
+        row_cursor += 1
+    row_cursor += 1
+
+    # NOTE section
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "NOTE"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    row_cursor += 1
+
+    note_items = [
+        "a. In case of Direct Import quoted price is exclusive of custom duty and clearing charges. In case these are applicable (for Direct Import orders) they are to borne by Client",
+        "b. Cable quantity shown is notional and will be supplied as per site requirement and would be charged Measurement + 10% which will account for bends curves end termination + wastage."
+    ]
+    for note in note_items:
+        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+        sheet[f'A{row_cursor}'].value = note
+        sheet[f'A{row_cursor}'].alignment = Alignment(wrap_text=True)
+        sheet.row_dimensions[row_cursor].height = 30
+        row_cursor += 1
+    row_cursor += 1
+
+    # 3. Deliveries Procedures
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "3. Deliveries Procedures:"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    row_cursor += 1
+
+    delivery_procedures = [
+        "All deliveries will be completed within 6-8 weeks of the receipt of a commercially clear Purchase Order from Client.",
+        "All Wave AV Systems will provide a Sales Order Acknowledgement detailing the delivery schedule within 3 days of receipt of this Purchase Order.",
+        "Equipment will be delivered in a phased manner as delivery times for various vendors/products differ. However All Wave AV Systems will make all efforts to complete delivery of all INR items within a max of 3 shipments.",
+        "Multiple Way bills If required to be given along with the P.O."
+    ]
+    for procedure in delivery_procedures:
+        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+        sheet[f'A{row_cursor}'].value = procedure
+        sheet[f'A{row_cursor}'].alignment = Alignment(wrap_text=True)
+        sheet.row_dimensions[row_cursor].height = 25
+        row_cursor += 1
+    row_cursor += 1
+
+    # 4. Implementation roles
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "4. Implementation roles:"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    row_cursor += 1
+
+    implementation_roles = [
+        "All Wave AV Systems shall complete all aspects of implementation – including design, procurement, installation, programming and documentation – within 12 weeks of release of receipt of advance payment.",
+        "Client will ensure that the site is dust-free, ready in all respects and is handed over to All Wave AV Systems within 8 weeks of issue of purchase order so that the above schedule can be met."
+    ]
+    for role in implementation_roles:
+        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+        sheet[f'A{row_cursor}'].value = role
+        sheet[f'A{row_cursor}'].alignment = Alignment(wrap_text=True)
+        sheet.row_dimensions[row_cursor].height = 30
+        row_cursor += 1
+    row_cursor += 1
+
+    # B] Payment Terms
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "B] Payment Terms"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    row_cursor += 2
+
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "1. Schedule of Payment"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    sheet[f'A{row_cursor}'].fill = styles['table_header_blue_fill']
+    row_cursor += 1
+
+    payment_schedule = [
+        ("Item", "Advance Payment"),
+        ("For Equipment and Materials (INR)", "20% Advance with PO"),
+        ("Installation and Commissioning", "Against system installation")
+    ]
+    for item, payment in payment_schedule:
+        sheet[f'B{row_cursor}'].value = item
+        sheet.merge_cells(f'C{row_cursor}:D{row_cursor}')
+        sheet[f'C{row_cursor}'].value = payment
+        if item == "Item":
+            sheet[f'B{row_cursor}'].font = sheet[f'C{row_cursor}'].font = styles['bold_font']
+        row_cursor += 1
+    row_cursor += 1
+
+    # Note about delays
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "Note: Delay in release of advance payment may alter the project schedule and equipment delivery. In the event the project is delayed beyond 12 weeks on account of site delays etc or any circumstance beyond the direct control of All Wave AV Systems, an additional labour charge @ Rs. 8000 + Service Tax per day will apply."
+    sheet[f'A{row_cursor}'].alignment = Alignment(wrap_text=True)
+    sheet.row_dimensions[row_cursor].height = 40
+    row_cursor += 2
+
+    # C] Validity
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "C] Validity"
+    sheet[f'A{row_cursor}'].font = styles['bold_font']
+    row_cursor += 1
+
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    sheet[f'A{row_cursor}'].value = "Offer Validity :- 7 Days"
+    row_cursor += 2
+
+    # Set column widths
     sheet.column_dimensions['A'].width = 12
     sheet.column_dimensions['B'].width = 35
     sheet.column_dimensions['C'].width = 20
@@ -266,7 +430,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     sheet.column_dimensions['G'].width = 18
 
 def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, gst_rates):
-    """Creates a fully detailed BOQ sheet for a single room with Top 3 Reasons for each product."""
+    """Creates a fully detailed BOQ sheet for a single room matching the template format."""
     _create_sheet_header(sheet)
     
     # Room Information Section
@@ -308,15 +472,17 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     ]
     headers2 = [None, None, None, None, None, None, None, None, 'Rate', 'Amt', 'Rate', 'Amt', None, None, None, None]
     
-    sheet.append([])
-    sheet.append([])
+    sheet.append([])  # Empty row
+    sheet.append([])  # Empty row
     sheet.append(headers1)
     sheet.append(headers2)
     header_start_row = sheet.max_row - 1
 
+    # Merge cells for SGST and CGST headers
     sheet.merge_cells(f'I{header_start_row}:J{header_start_row}')
     sheet.merge_cells(f'K{header_start_row}:L{header_start_row}')
     
+    # Format header rows
     for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row, min_col=1, max_col=len(headers1)):
         for cell in row:
             cell.fill = styles["table_header_blue_fill"]
@@ -356,7 +522,6 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             total_before_gst_hardware += subtotal
             total_gst_hardware += total_tax
 
-            # Main product row
             row_data = [
                 item_s_no, 
                 item.get('specifications', item.get('name', '')), 
@@ -376,35 +541,6 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 ""
             ]
             sheet.append(row_data)
-            product_row_idx = sheet.max_row
-            
-            # Add Top 3 Reasons row directly below product
-            top_3_reasons = item.get('top_3_reasons', [])
-            if top_3_reasons and len(top_3_reasons) == 3:
-                reasons_text = "Why this product?\n• " + "\n• ".join(top_3_reasons)
-                
-                # Create reasons row spanning columns B to O
-                sheet.append(["", reasons_text, "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
-                reasons_row_idx = sheet.max_row
-                
-                # Merge cells B to O for reasons
-                sheet.merge_cells(f'B{reasons_row_idx}:O{reasons_row_idx}')
-                
-                # Style the reasons cell
-                reasons_cell = sheet[f'B{reasons_row_idx}']
-                reasons_cell.fill = styles['reasons_fill']
-                reasons_cell.font = styles['italic_font']
-                reasons_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-                reasons_cell.border = styles['thin_border']
-                
-                # Apply border to all cells in the reasons row
-                for col in range(1, 17):
-                    cell = sheet.cell(row=reasons_row_idx, column=col)
-                    cell.border = styles['thin_border']
-                
-                # Increase row height for better readability
-                sheet.row_dimensions[reasons_row_idx].height = 45
-            
             item_s_no += 1
 
     # Add Services Category
@@ -484,11 +620,11 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     for row in sheet.iter_rows(min_row=header_start_row + 2, max_row=sheet.max_row):
         for cell in row:
             cell.border = styles['thin_border']
-            if cell.column in [7, 8, 10, 12, 13, 14]:
+            if cell.column in [7, 8, 10, 12, 13, 14]:  # Currency columns
                 if isinstance(cell.value, (int, float)):
                     cell.number_format = styles['currency_format']
                     cell.alignment = Alignment(horizontal='right')
-            elif cell.column in [1, 6]:
+            elif cell.column in [1, 6]:  # Sr. No and Qty columns
                 cell.alignment = Alignment(horizontal='center')
             else:
                 cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
@@ -511,11 +647,12 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
 
 def generate_company_excel(rooms_data, project_details, usd_to_inr_rate=83.0, gst_rates=None):
     """
-    Main function to generate the complete professional BOQ Excel workbook with Top 3 Reasons.
+    Main function to generate the complete professional BOQ Excel workbook.
     
     Args:
-        rooms_data: List of dicts with 'name' and 'items' (list of equipment with top_3_reasons)
+        rooms_data: List of dicts with 'name' and 'items' (list of equipment)
         project_details: Dict with project metadata
+        output_path: Where to save the Excel file
         usd_to_inr_rate: USD to INR conversion rate
         gst_rates: Dict of GST rates by category
     """
@@ -523,16 +660,19 @@ def generate_company_excel(rooms_data, project_details, usd_to_inr_rate=83.0, gs
         gst_rates = {'Electronics': 18, 'Services': 18}
     
     workbook = openpyxl.Workbook()
-    workbook.remove(workbook.active)
+    workbook.remove(workbook.active)  # Remove default sheet
     styles = _define_styles()
 
+    # Add Version Control sheet
     _add_version_control_sheet(workbook, project_details, styles)
 
+    # Add Proposal Summary sheet (placeholder, will update after room sheets)
     room_summaries = []
 
+    # Create BOQ sheets for each room
     for room in rooms_data:
         room_name = room.get('name', 'Room')
-        sheet = workbook.create_sheet(title=room_name[:31])
+        sheet = workbook.create_sheet(title=room_name[:31])  # Excel sheet name limit
         room_summary = _populate_room_boq_sheet(
             sheet, 
             room.get('items', []), 
@@ -548,10 +688,14 @@ def generate_company_excel(rooms_data, project_details, usd_to_inr_rate=83.0, gs
             'total': room_summary['total']
         })
 
+    # Update Proposal Summary with calculated totals
     _add_proposal_summary_sheet(workbook, room_summaries, styles)
+    
+    # Add Scope of Work sheet
     _add_scope_of_work_sheet(workbook, styles)
 
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
     return output.getvalue()
+    return output_path
