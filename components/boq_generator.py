@@ -32,7 +32,7 @@ def _validate_display_size_for_room(display_size, room_length, room_type):
     min_viewing_distance = display_height_ft * 4  # AVIXA 4:1 ratio
     
     # Add 20% buffer for actual usable viewing distance
-    required_room_length = min_view_ing_distance * 1.2
+    required_room_length = min_viewing_distance * 1.2
     
     if room_length < required_room_length:
         # Calculate maximum recommended size
@@ -1110,3 +1110,4 @@ def export_boq_to_excel(boq_df, filename="boq_export.xlsx"):
     
     output.seek(0)
     return output
+
