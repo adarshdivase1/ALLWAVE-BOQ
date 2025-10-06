@@ -19,7 +19,7 @@ FALLBACK_INR_TO_USD = 83.5
 
 # --- QUALITY THRESHOLDS ---
 MIN_DESCRIPTION_LENGTH = 10
-MAX_PRICE_USD = 200000 
+MAX_PRICE_USD = 200000
 MIN_PRICE_USD = 1.0
 REJECTION_SCORE_THRESHOLD = 30
 
@@ -218,8 +218,15 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     if matches_any(['audio mixer', 'mixing console', 'mixer(?!.*dsp)']) and not matches_any(['dsp', 'processor']):
         return {'primary_category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
     
-    if matches_any([r'\bamplifier\b', r'\bamp-\b', r'revamp\d+', 'poweramp', r'\d+\s*x\s*\d+w',
-                    'power amplifier', 'netpa', r'xpa \d+', r'ma\d{4}', 'multi.*channel.*amp']):
+    # FIXED: Summing amplifiers (signal processors, NOT power amps)
+    if matches_any(['summing.*amplifier', 'active.*summing', 'quad.*active.*amplifier',
+                    'line.*driver', 'audio.*summing']):
+        return {'primary_category': 'Audio', 'sub_category': 'Audio Interface / Extender', 'needs_review': False}
+
+    # FIXED: Power amplifiers only
+    if matches_any([r'\bpower\s*amplifier\b', r'\bpoweramp\b', r'\d+\s*x\s*\d+w',
+                    'multi.*channel.*amp', 'netpa', r'xpa\s*\d+', r'spa\s*\d+', r'ma\d{4}',
+                    '70v.*amp', '100v.*amp', r'\d+\s*channel.*amplifier']):
         return {'primary_category': 'Audio', 'sub_category': 'Amplifier', 'needs_review': False}
 
     if matches_any(['ceiling speaker', 'in-ceiling speaker', 'pendant speaker', 'ceiling.*loudspeaker',
@@ -341,7 +348,13 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
                     'power pack', r'pw-\d+', r'qs-ps-', 'csa-pws', 'battery.*backup', 'surge.*protect']):
         return {'primary_category': 'Infrastructure', 'sub_category': 'Power Management', 'needs_review': False}
 
-    # PRIORITY 8: Mounts
+    # PRIORITY 8: Mounts - SPECIFIC FIRST
+    # Video conferencing equipment mounts (NOT display mounts)
+    if matches_any([r'poly.*x\d{2}', r'studio.*x\d{2}', r'x\d{2}.*vesa', 
+                    'rally.*mount', 'video.*bar.*mount', 'soundbar.*mount',
+                    'bar.*mount.*kit', 'codec.*mount']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Camera Mount', 'needs_review': False}
+    
     if matches_any(['projector mount', 'projector ceiling mount', 'ceiling.*mount.*projector']):
         return {'primary_category': 'Mounts', 'sub_category': 'Projector Mount', 'needs_review': False}
     
