@@ -116,28 +116,38 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
                 available_sizes.sort(key=lambda x: x[0])
                 matches = pd.DataFrame([available_sizes[0][1]])
 
-    # Intelligent Mount Selection
+    # === ENHANCED MOUNT FILTERING ===
     if category == 'Mounts' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
-        # CRITICAL: Remove ALL non-display mounts
+        # CRITICAL: Remove ALL non-display mounts - ENHANCED PATTERN
         matches = matches[~matches['name'].str.contains(
-            r'\b(X30|X50|X70|Rally|Studio|video bar|soundbar|camera|tablet|for Poly|for Cisco|for Logitech)\b',
+            r'\b(X\d{2}|Rally|Studio|video\s*bar|soundbar|camera|tablet|Poly\s*X|Cisco\s*\w+\s*mount|Logitech\s*\w+\s*mount)\b',
             case=False, na=False, regex=True
         )]
         
-        # Also check model numbers
+        # Double-check model numbers
         matches = matches[~matches['model_number'].str.contains(
-            r'(X\d{2}|VB-|CAM-)',
+            r'(X\d{2}|VB-|CAM-|RALLY-)',
             case=False, na=False, regex=True
         )]
         
-        # For 90"+ displays, require explicit large mount keywords
+        # For 90"+ displays, REQUIRE heavy-duty keywords
         if req_size >= 90:
             matches = matches[matches['name'].str.contains(
-                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large)',
+                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format)',
                 case=False, na=False, regex=True
             )]
+            
+        # Additional safety: check for VESA + reasonable weight capacity
+        if not matches.empty:
+            # Prefer mounts with weight specs for large displays
+            heavy_matches = matches[matches['name'].str.contains(
+                r'(\d{2,3}\s*lbs|\d{2,3}\s*kg|heavy|commercial)',
+                case=False, na=False, regex=True
+            )]
+            if not heavy_matches.empty:
+                matches = heavy_matches
 
     # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
@@ -205,24 +215,25 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         if not pdu_matches.empty:
             matches = pdu_matches
 
-    # Amplifiers: Strict power amplifier selection
+    # === STRICT AMPLIFIER FILTERING ===
     if sub_category == 'Amplifier':
-        # Explicitly exclude non-power-amps
+        # PHASE 1: Exclude all non-power-amps
         matches = matches[~matches['name'].str.contains(
-            r'\b(summing|distribution|line.*driver|active.*summing|quad.*active)\b',
+            r'\b(summing|distribution|line.*driver|active.*summing|quad.*active|audio.*summing|mixer|dsp)\b',
             case=False, na=False, regex=True
         )]
         
-        # Require power amp keywords
+        # PHASE 2: REQUIRE power amp indicators
         power_amp_matches = matches[matches['name'].str.contains(
-            r'(power\s*amp|70v|100v|spa\d+|xpa\d+|\d+-channel.*amp|\d+w.*amp)',
+            r'(power\s*amp|70v|100v|spa\d+|xpa\d+|multi.*channel|amplifier.*\d+w|\d+\s*watt.*amp)',
             case=False, na=False, regex=True
         )]
         
         if not power_amp_matches.empty:
             matches = power_amp_matches
         else:
-            return None  # Force failure if no real power amps available
+            st.warning(f"⚠️ No valid power amplifiers found for passive speaker system")
+            return None # Force fallback failure
             
     # Microphone Type Validation
     if sub_category == 'Ceiling Microphone':
