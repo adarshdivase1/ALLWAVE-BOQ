@@ -18,7 +18,7 @@ DEFAULT_GST_RATE = 18
 FALLBACK_INR_TO_USD = 83.5
 
 # --- QUALITY THRESHOLDS ---
-MIN_DESCRIPTION_LENGTH = 15
+MIN_DESCRIPTION_LENGTH = 10 # Lowered slightly for specific items
 MAX_PRICE_USD = 75000
 MIN_PRICE_USD = 1.0
 REJECTION_SCORE_THRESHOLD = 40
@@ -54,7 +54,7 @@ def clean_price(price_str: Any) -> float:
 def extract_warranty(description: str) -> str:
     if not isinstance(description, str): return "Not Specified"
     desc_lower = description.lower()
-    match = re.search(r'(\d+)\s*[-]?\s*y(ea)?r[s]?\s*(warranty|wty)', desc_lower)
+    match = re.search(r'(\d+)\s*[-]?\s*y(ea)?r[s]?\s*(warranty|wty|support)', desc_lower)
     if match: return f"{match.group(1)} Year{'s' if int(match.group(1)) > 1 else ''}"
     if 'lifetime' in desc_lower: return "Lifetime"
     match = re.search(r'(\d+)\s*month[s]?\s*(warranty|wty)', desc_lower)
@@ -64,10 +64,22 @@ def extract_warranty(description: str) -> str:
 def clean_model_number(model_str: Any) -> str:
     if pd.isna(model_str): return ""
     model_str = str(model_str).strip().replace('\n', ' ')
-    potential_models = re.findall(r'[a-zA-Z]{1,4}[- ]?\d+[- ]?[a-zA-Z0-9-]*', model_str)
-    if potential_models: return max(potential_models, key=len).strip()
-    potential_models = re.findall(r'([a-zA-Z0-9]+(?:[-/.][a-zA-Z0-9]+)+)', model_str)
-    if potential_models: return max(potential_models, key=len).strip()
+    # Prioritize specific patterns first
+    patterns = [
+        r'\b[A-Z0-9]{2,}-\d{2,}[A-Z0-9-]*\b', # e.g., A40-031
+        r'\b\w{2,}\d{2,}[A-Z-]*\b',           # e.g., MVC400
+        r'\b[A-Z]{3,}\d{2,}[A-Z0-9-]*\b',     # e.g., RP8602
+        r'\b\d{3}-\d{5}\b',                   # e.g., 960-001317
+        r'[a-zA-Z]{1,4}[- ]?\d+[- ]?[a-zA-Z0-9-]*',
+        r'([a-zA-Z0-9]+(?:[-/.][a-zA-Z0-9]+)+)'
+    ]
+    for pattern in patterns:
+        potential_models = re.findall(pattern, model_str)
+        if potential_models:
+            # Filter out generic terms
+            filtered = [m for m in potential_models if not m.lower() in ['poly', 'yealink', 'logitech', 'version']]
+            if filtered:
+                return max(filtered, key=len).strip()
     return model_str.split(' ')[0]
 
 def clean_filename_brand(filename: str) -> str:
@@ -86,11 +98,22 @@ def create_clean_description(raw_desc: str, brand: str, max_length: int = 200) -
 
 def generate_product_name(brand: str, model: str, description: str) -> str:
     name_parts = [brand]
-    if model and model.lower() not in brand.lower(): name_parts.append(model)
+    if model and model.lower() not in brand.lower().replace(' ', ''): name_parts.append(model)
+    
+    # Add a short, descriptive part if available and not redundant
     if description:
+        # Create a combined string of brand and model to check for redundancy
         combined_lower = (brand + ' ' + model).lower()
-        if description.lower() not in combined_lower: name_parts.append(f"- {description}")
+        
+        # Extract the core descriptive phrase
+        short_desc = description.split(',')[0].split(' with ')[0].strip()
+        
+        # Check if the short description is not already in the brand/model name
+        if short_desc and short_desc.lower() not in combined_lower:
+            name_parts.append(f"- {short_desc}")
+            
     return ' '.join(name_parts)
+
 
 def infer_unit_of_measure(description: str, category: str) -> str:
     desc_lower = str(description).lower()
@@ -98,227 +121,109 @@ def infer_unit_of_measure(description: str, category: str) -> str:
     if 'cable' in desc_lower and re.search(r'\d+\s*(ft|feet|m|meter|inch|\'|\")', desc_lower): return 'piece'
     if 'kit' in desc_lower or 'system' in desc_lower: return 'set'
     if 'pair' in desc_lower and 'cable' not in desc_lower: return 'pair'
-    if 'pack' in desc_lower or 'pack of' in desc_lower: return 'pack'
+    if re.search(r'pack of \d+', desc_lower) or 'pack' in desc_lower : return 'pack'
     return 'piece'
 
 def estimate_lead_time(category: str, sub_category: str) -> int:
     if 'Commissioning' in sub_category: return 45
-    if 'Video Wall' in sub_category or 'Direct-View LED' in category: return 30
-    if category in ['Control Systems', 'Video Processing', 'DSP']: return 21
-    if category in ['Video Conferencing', 'Audio', 'Displays']: return 14
+    if 'Video Wall' in sub_category or 'Direct-View LED' in sub_category: return 30
+    if category in ['Control Systems', 'Signal Management', 'Audio']: return 21
+    if category in ['Video Conferencing', 'Displays']: return 14
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure']: return 7
     return 14
 
 # --- ENHANCED CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
+    """
+    Categorizes products based on a comprehensive and ordered set of rules.
+    Rules are processed from most specific to most general.
+    """
     text_to_search = (str(description) + ' ' + str(model)).lower()
     
-    # Accessory detection (keep this first)
-    accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 
-                          'chassis', 'faceplate', 'pendant']
-    is_likely_accessory = any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords)
+    # --- Accessory Detection ---
+    # This check helps prioritize main product categories over accessory categories.
+    accessory_keywords = [
+        'mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit(?!.*room|.*kit-)', 
+        'housing', 'chassis', 'faceplate', 'pendant', 'cart', 'trolley', 'holder',
+        'extender(?!.*usb|.*byod)', 'coupler', 'converter', 'dongle', 'pod', 'hub(?!.*avhub)',
+        'dock', 'power supply', 'pdu', 'rack', 'shelf', 'panel(?!.*touch|.*display|.*scheduling)'
+    ]
+    # A product is likely an accessory if its description is short and contains an accessory keyword.
+    is_likely_accessory = (len(text_to_search.split()) < 10 and any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords))
 
-    # Priority-ordered categorization rules (more specific first)
+    # --- Categorization Rules (Ordered by Priority) ---
+    # The more specific a rule, the higher up it should be.
     category_rules = [
-        # VIDEO CONFERENCING - Most specific patterns first
-        ('Video Conferencing', 'Collaboration Display', [
-            'meetingboard', 'collaboration display', 'dten', 'surface hub', 
-            'meeting.*board', 'interactive.*whiteboard', 'smart.*whiteboard',
-            r'\bmb\d{2}-', 'deskvision'
-        ]),
+        # 1. Video Conferencing (High Specificity)
+        ('Video Conferencing', 'Collaboration Display', ['meetingboard', 'collaboration display', 'deskvision', 'surface hub', 'dten d7', r'mb\d{2}-', 'smart collaboration whiteboard']),
+        ('Video Conferencing', 'Video Bar', ['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio', 'meetup', 'all-in-one.*video', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam']),
+        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', r'mvc\d+', 'mcorekit', 'teams rooms system', 'vc system', 'video conferencing system', r'\bmvcs\d+', 'g7500']),
+        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eageleye', 'ptz pro']),
+        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c9\d{2}', 'personal video']),
+        ('Video Conferencing', 'Touch Controller / Panel', ['touch controller', 'touch panel', 'tap ip', r'tc\d{2}\b', r'ctp\d{2}\b', 'collaboration touch', 'mtouch', 'gc8']),
+        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'scheduling panel', 'room panel', r'tss-\d+', 'tap scheduler']),
+        ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', r'wpp\d+', 'wireless presentation', 'presentation pod', 'room cast', 'mshare', 'sharing box', r'vch\d+']),
         
-        ('Video Conferencing', 'Video Bar', [
-            'video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio',
-            'meetup', 'all-in-one.*video', 'aio.*video', r'\ba\d{2}-\d{3}\b',
-            r'\ba\d{2}\b', 'uvc\d{2}', 'smartvision', 'intelligent.*usb.*video',
-            'all-in-one.*collaboration', 'conferencing camera'
-        ]),
+        # 2. Audio (High Specificity)
+        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b', 'ceiling.*microphone.*array', 'sl cm sk']),
+        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', 'conference phone', 'tabletop.*mic', 'mxa310', 'rally mic pod', 'ip table microphone']),
+        ('Audio', 'Wireless Microphone System', ['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter', 'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd']),
+        ('Audio', 'Gooseneck/Podium Microphone', ['gooseneck', r'meg \d+']),
+        ('Audio', 'Headset / Headworn Mic', ['headset', 'earset', 'zone wireless', 'h\d{3}e']),
+        ('Audio', 'Speakerphone', ['speakerphone', 'poly sync', 'speak \d+', 'mobile speakerphone']),
+        ('Audio', 'DSP / Audio Processor', ['dsp', 'digital signal processor', 'audio processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'intellimix', 'audio conferencing processor', 'dmp \d+', 'bss blu', 'avhub']),
+        ('Audio', 'Amplifier', ['amplifier', r'\bamp-\b', r'revamp\d+', 'poweramp', r'\d+\s*x\s*\d+w', 'power amplifier', 'netpa', r'xpa \d+']),
+        ('Audio', 'Loudspeaker / Speaker', ['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 'pendant speaker', 'in-ceiling speaker', 'surface mount speaker', r'ad-c\d+', r'ad-s\d+', 'saros', 'control \d+c']),
+        ('Audio', 'Audio Interface / Extender', ['dante interface', 'audio.*extender', 'audio interface', 'axi \d+', 'usb.*audio.*bridge']),
+
+        # 3. Displays
+        ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'direct.*view.*led', 'absen']),
+        ('Displays', 'Video Wall Display', ['video wall(?!.*mount)', 'videowall display']),
+        ('Displays', 'Interactive Display', ['interactive display', 'touch display', 'smart board', 'interactive.*monitor', 'ifp\d+', r'rp\d{4}']),
+        ('Displays', 'Professional Display', ['display(?!.*mount)', 'monitor(?!.*mount)', 'signage', 'bravia', 'commercial monitor', 'professional display', 'lfd', r'\b(qb|qm|uh)\d{2}\b']),
+        ('Displays', 'Projector', ['projector', 'dlp', '3lcd', 'laser projector', r'eb-l\d+', r'vpl-\w+']),
         
-        ('Video Conferencing', 'Room Kit / Codec', [
-            'room kit', 'codec', r'mvc\d+', 'mcore', 'mini-pc', 'teams rooms system',
-            'vc system', 'video conferencing system', 'mtouch', 'base bundle',
-            r'\bmvcs?\d+\b', 'avhub', 'audio.*video processor', 'mcorekit'
-        ]),
+        # 4. Signal Management
+        ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'presentations.*switcher', 'dmps', 'crosspoint', r'vm\d{4}', r'vs\d{3}']),
+        ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', r'hd-tx\d*', r'hd-rx\d*', 'dphd', 'tps-tx', 'tps-rx']),
+        ('Signal Management', 'Scaler / Converter', ['scaler', 'converter', 'scan converter', 'up/down/cross-converter', r'dsc \d+']),
+        ('Signal Management', 'Distribution Amplifier', ['distribution amplifier', r'da\dhd', r'hd-da\d+']),
+        ('Signal Management', 'AV over IP (Encoder/Decoder)', ['av over ip', 'dm nvx', 'encoder', 'decoder', 'nav e \d+', 'nav sd \d+']),
+        ('Signal Management', 'Signal Processor', ['signal processor', 'edid', 'audio embedder', 'de-embedder', 'annotation processor']),
         
-        ('Video Conferencing', 'PTZ Camera', [
-            'ptz camera', 'pan.*tilt.*zoom', 'optical zoom camera', 'tracking camera',
-            'uvc8[46]', r'\d+x.*optical.*zoom', 'dual-eye tracking', 'auto.*framing',
-            r'\bmb-camera'
-        ]),
+        # 5. Control Systems
+        ('Control Systems', 'Control Processor', ['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx', 'ipcp pro']),
+        ('Control Systems', 'Touch Panel / Controller', ['touch panel(?!.*collaboration)', 'touch screen(?!.*display)', 'modero', r'tsw-\d+', r'tst-\d+']),
+        ('Control Systems', 'Keypad', ['keypad', r'c2n-\w+', r'hz-kp\w+']),
+        ('Control Systems', 'Sensor', ['sensor', 'occupancy', 'daylight', 'gls-']),
+
+        # 6. Cables & Connectivity
+        ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'aoc', 'vga cable', 'audio cable', 'displayport cable', 'bnc cable', 'dvi cable']),
+        ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cord', 'ethernet cable', 'rj45 cable']),
+        ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk', 'spool', 'reel', r'1000ft', r'305m', 'speaker wire']),
+        ('Cables & Connectivity', 'Connectors & Adapters', ['adapter', 'connector', 'dongle', 'gender changer', 'terminator', 'coupler']),
+        ('Cables & Connectivity', 'Wall & Table Plates / Modules', ['wall plate', 'table plate', 'faceplate', 'aap module', 'keystone jack', 'cable cubby', 'tbus', 'hydraport', 'fliptop']),
+        ('Cables & Connectivity', 'Fiber Optic', ['fiber optic', 'sfp', 'lc-lc', 'om4', 'singlemode']),
+
+        # 7. Mounts
+        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak)']),
+        ('Mounts', 'Projector Mount', ['projector mount', 'projector ceiling mount']),
+        ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
+        ('Mounts', 'Speaker/Mic Mount', ['speaker mount', 'mic mount', 'microphone suspension']),
         
-        ('Video Conferencing', 'Webcam / Personal Camera', [
-            'webcam', 'brio', 'c930', 'usb camera', 'desktop camera'
-        ]),
-        
-        ('Video Conferencing', 'Touch Controller', [
-            'touch controller', 'touch panel', 'tap ip', r'\btc\d+\b', r'\bctp\d+\b',
-            'collaboration touch', 'control panel', 'android.*touch', 'mtouch'
-        ]),
-        
-        ('Video Conferencing', 'Scheduling Panel', [
-            'scheduler', 'room booking', 'scheduling panel', 'room panel',
-            'tss-', 'meeting room.*panel', 'room schduling', 'roompanel'
-        ]),
-        
-        ('Video Conferencing', 'Wireless Presentation', [
-            'clickshare', 'airtame', 'via connect', 'wpp\d+', 'wireless presentation',
-            'screen sharing', 'presentation pod', 'room cast', 'byod.*extender',
-            'mshare', 'sharing box', 'vch\d+', 'byod-extender'
-        ]),
-        
-        ('Video Conferencing', 'VC Accessory', [
-            'tv mount.*kit', 'floorstand.*meeting', r'\bmb-floorstand'
-        ]),
-        
-        # AUDIO - More specific patterns
-        ('Audio', 'Ceiling Microphone', [
-            'ceiling mic', 'mxa9[012]0', 'tcc2', r'\bvcm\d+\b', r'\bcm\d+\b',
-            r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))', 
-            'ceiling.*microphone.*array', 'ceiling.*mic.*array'
-        ]),
-        
-        ('Audio', 'Table Microphone', [
-            'table mic', 'boundary mic', 'conference phone', 'tabletop.*mic', 
-            'desktop.*mic', 'wired.*microphone.*array', 'vcm35'
-        ]),
-        
-        ('Audio', 'Wireless Microphone System', [
-            'wireless mic', 'wireless.*microphone', 'vcm\d+.*w\b', 'handheld.*mic',
-            'lapel.*mic', 'lavalier'
-        ]),
-        
-        ('Audio', 'Team Phone', [
-            'team phone', 'conference phone', 'speakerphone', r'\bmp\d{2}\b',
-            'common area.*phone', 'executive.*phone'
-        ]),
-        
-        ('Audio', 'Ceiling Speaker', [
-            'ceiling speaker', 'in-ceiling', 'coaxial.*ceiling', r'\bcs\d+\b',
-            'skysound', 'network.*ceiling.*speaker', 'celling speaker'
-        ]),
-        
-        ('Audio', 'DSP / Processor', [
-            'dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp',
-            'p300', 'audio mixer', 'audio processor', 'dante.*processor'
-        ]),
-        
-        ('Audio', 'Amplifier', [
-            'amplifier', r'\bamp\b', 'poweramp', r'\d+\s*x\s*\d+w', 'power.*amplifier'
-        ]),
-        
-        ('Audio', 'Loudspeaker', [
-            'speaker(?!.*phone)', 'soundbar', 'loudspeaker', 'pendant speaker',
-            r'\bms speaker\b'
-        ]),
-        
-        ('Audio', 'Audio Kit', [
-            'cmkit', 'audio.*kit', 'microphone.*speaker.*kit', 'cm20.*cs10'
-        ]),
-        
-        # DISPLAYS
-        ('Displays', 'Interactive Display', [
-            'interactive(?!.*whiteboard)', 'touch display(?!.*collaboration)', 
-            'smart board', 'interactive.*monitor'
-        ]),
-        
-        ('Displays', 'Professional Display', [
-            'display(?!.*mount|.*collaboration)', 'monitor(?!.*mount)', 'signage', 
-            'bravia', 'commercial monitor', 'professional.*display', 'flat panel',
-            'led.*display', 'lcd.*display'
-        ]),
-        
-        ('Displays', 'Video Wall Display', [
-            'video wall'
-        ]),
-        
-        ('Displays', 'Direct-View LED', [
-            'led wall', 'dvled', 'direct.*view.*led'
-        ]),
-        
-        ('Displays', 'Projector', [
-            'projector', 'dlp', 'laser projector'
-        ]),
-        
-        # MOUNTS (check after identifying core products)
-        ('Mounts', 'Display Mount / Cart', [
-            'tv mount', 'display mount', 'wall mount', 'trolley', 'cart', 
-            'floor stand', 'fusion', 'chief', 'vcs-tvmount', 'floorstand',
-            r'\bmb-floorstand'
-        ]),
-        
-        ('Mounts', 'Camera Mount', [
-            'camera mount', 'cam-mount', 'camera bracket'
-        ]),
-        
-        ('Mounts', 'Rack Accessory', [
-            'rack shelf', 'blanking panel', 'rack rail'
-        ]),
-        
-        # INFRASTRUCTURE
-        ('Infrastructure', 'Network Switch', [
-            'switch', 'poe switch', 'managed.*switch', r'\brch\d+\b', 'ethernet switch',
-            r'\d+-port.*switch', 'poe\+.*switch'
-        ]),
-        
-        ('Infrastructure', 'AV Rack', [
-            r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack'
-        ]),
-        
-        ('Infrastructure', 'Power (PDU/UPS)', [
-            'pdu', 'ups', 'power distribution'
-        ]),
-        
-        # SIGNAL MANAGEMENT
-        ('Signal Management', 'Matrix Switcher', [
-            'matrix', 'switcher(?!.*network|.*poe|.*switch)', 'video.*switcher'
-        ]),
-        
-        ('Signal Management', 'Extender (TX/RX)', [
-            'extender(?!.*byod)', 'transmitter', 'receiver', 'hdbaset', 'tx/rx'
-        ]),
-        
-        # CABLES & CONNECTIVITY
-        ('Cables & Connectivity', 'Wall & Table Plate Frame', [
-            'mounting frame', 'aap frame', 'wall plate.*frame'
-        ]),
-        
-        ('Cables & Connectivity', 'Wall & Table Plate Module', [
-            'aap module', 'hdmi plate', 'usb plate', 'keystone', 'wall.*module'
-        ]),
-        
-        ('Cables & Connectivity', 'Network Cable', [
-            'cat6', 'cat5e', 'utp', 'patch cable', 'ethernet cable'
-        ]),
-        
-        ('Cables & Connectivity', 'Control Cable', [
-            'rs-232', 'serial cable', 'control.*cable'
-        ]),
-        
-        ('Cables & Connectivity', 'AV Cable', [
-            'hdmi(?!.*plate)', 'usb-c(?!.*plate)', 'aoc', 'vga', 'audio cable', 
-            'displayport', 'av.*cable'
-        ]),
-        
-        ('Cables & Connectivity', 'Bulk Cable / Wire', [
-            'bulk', 'spool', 'reel', r'\d+ft.*cable', r'\d+m.*cable'
-        ]),
+        # 8. Infrastructure
+        ('Infrastructure', 'AV Rack & Accessories', [r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack', 'rack shelf', 'blanking panel']),
+        ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply']),
     ]
 
-    # Apply rules in order
     for primary, sub, patterns in category_rules:
-        # Skip mount/accessory categories if this is a core product
-        if primary in ['Mounts', 'Cables & Connectivity'] and not is_likely_accessory:
-            # Unless the description is REALLY about mounts/cables
-            if not any(mount_word in text_to_search for mount_word in ['mount', 'cable', 'plate', 'bracket', 'stand']):
-                continue
-        
-        # Check if any pattern matches
-        for pattern in patterns:
-            if re.search(pattern, text_to_search, re.IGNORECASE):
-                return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
+        # If the item seems like an accessory, we should be careful not to misclassify it.
+        # However, a specific match in a non-accessory category is strong evidence.
+        if any(re.search(pattern, text_to_search, re.IGNORECASE) for pattern in patterns):
+            return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
 
-    # If nothing matched, flag for review
+    # If no specific rule matched, it's likely a General AV product or needs a new rule.
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
 
 
@@ -382,8 +287,8 @@ def main():
             inr_price_col = next((c for c in df.columns if any(k in c for k in ['inr', 'buy price', 'mrp']) and 'usd' not in c), None)
             usd_price_col = next((c for c in df.columns if 'usd' in c), None)
 
-            if not model_col or not desc_col:
-                print(f"  Warning: Could not map required Model/Description columns. Skipping.")
+            if not desc_col:
+                print(f"  Warning: Could not map required Description column. Skipping.")
                 continue
             
             stats['files_processed'] += 1
@@ -391,11 +296,12 @@ def main():
             for _, row in df.iterrows():
                 stats['products_found'] += 1
                 raw_model = row.get(model_col, '')
-                if pd.isna(raw_model) or not str(raw_model).strip():
+                
+                raw_description = str(row.get(desc_col, '')).strip()
+                if pd.isna(raw_description) or not raw_description:
                     continue
 
-                model_clean = clean_model_number(raw_model)
-                raw_description = str(row.get(desc_col, '')).strip()
+                model_clean = clean_model_number(raw_model) if model_col else ""
                 clean_desc = create_clean_description(raw_description, file_brand)
                 categories = categorize_product_comprehensively(raw_description, model_clean)
                 
@@ -455,13 +361,14 @@ def main():
 
     final_df = pd.DataFrame(all_products)
     initial_rows = len(final_df)
+    # Drop duplicates based on a combination of brand and model number
     final_df.drop_duplicates(subset=['brand', 'model_number'], keep='last', inplace=True)
     final_rows = len(final_df)
 
     print(f"\n{'='*60}\nProcessing Summary:\n{'='*60}")
     print(f"Files processed: {stats['files_processed']}")
     print(f"Total Products Found: {stats['products_found']}")
-    print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {final_rows}")
+    print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {initial_rows}")
     print(f"  - Valid (Score 100): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
     print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
