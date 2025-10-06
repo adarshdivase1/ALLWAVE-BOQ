@@ -1110,4 +1110,3 @@ def export_boq_to_excel(boq_df, filename="boq_export.xlsx"):
     
     output.seek(0)
     return output
-
