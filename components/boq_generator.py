@@ -1,5 +1,5 @@
 # components/boq_generator.py
-# FINAL, FULLY LOGICAL VERSION
+# PRODUCTION-READY VERSION - With complete validation and room physics
 
 import streamlit as st
 import pandas as pd
@@ -20,10 +20,59 @@ except ImportError as e:
     def match_product_in_database(*args): return None
 
 
-# ==================== IMPROVED FALLBACK LOGIC ====================
+# ==================== ROOM PHYSICS VALIDATION ====================
+def _validate_display_size_for_room(display_size, room_length, room_type):
+    """
+    Validate display size using AVIXA viewing distance standards
+    Returns: (is_valid, corrected_size, reason)
+    """
+    # AVIXA standard: viewing distance = 4x display height for detailed work
+    # For 16:9 display: height = diagonal / 2.22
+    display_height_ft = (display_size / 2.22) / 12
+    min_viewing_distance = display_height_ft * 4  # AVIXA 4:1 ratio
+    
+    # Add 20% buffer for actual usable viewing distance
+    required_room_length = min_viewing_distance * 1.2
+    
+    if room_length < required_room_length:
+        # Calculate maximum recommended size
+        max_height_ft = (room_length * 0.8) / 4
+        max_size = int(max_height_ft * 12 * 2.22)
+        # Snap to standard sizes
+        standard_sizes = [43, 55, 65, 75, 85, 98]
+        max_size = max([s for s in standard_sizes if s <= max_size], default=43)
+        
+        reason = f"Display {display_size}\" too large for {room_length:.1f}ft room (AVIXA 4:1 ratio)"
+        return False, max_size, reason
+    
+    return True, display_size, "Valid"
+
+
+def _validate_audio_coverage(speaker_count, room_area, ceiling_height):
+    """
+    Validate speaker count provides adequate coverage
+    Returns: (is_valid, recommended_count, reason)
+    """
+    # AVIXA guideline: 1 ceiling speaker per 150-200 sq ft
+    min_speakers = max(2, int(room_area / 200))
+    recommended_speakers = max(2, int(room_area / 150))
+    
+    if speaker_count < min_speakers:
+        return False, recommended_speakers, f"Insufficient coverage: {speaker_count} speakers for {room_area:.0f} sq ft"
+    
+    # Check ceiling height for ceiling speakers
+    if ceiling_height > 12:
+        recommended_speakers = int(recommended_speakers * 1.5)  # Need more for high ceilings
+        if speaker_count < recommended_speakers:
+            return False, recommended_speakers, f"High ceiling ({ceiling_height}ft) requires more speakers"
+    
+    return True, speaker_count, "Adequate coverage"
+
+
+# ==================== ENHANCED FALLBACK LOGIC ====================
 def _get_fallback_product(category, sub_category, product_df, equipment_reqs=None, budget_tier='Standard'):
     """
-    Intelligent fallback product selection with filtering and validation
+    Intelligent fallback product selection with comprehensive filtering
     """
     # Initial filtering
     if sub_category:
@@ -37,19 +86,25 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
     if matches.empty:
         return None
 
-    # === CRITICAL FILTERING: Exclude service contracts from hardware ===
+    # === GLOBAL SERVICE CONTRACT FILTER ===
     if category not in ['Software & Services']:
-        matches = matches[~matches['name'].str.contains(
-            r'\b(ess|con-snt|con-ecdn|support|warranty|service contract|smartcare)\b',
-            case=False, na=False, regex=True
-        )]
+        # Separate single-word and multi-word service keywords
+        service_keywords_single = ['ess', 'con-snt', 'con-ecdn', 'smartcare', 'jumpstart']
+        service_keywords_multi = ['support', 'warranty', 'service contract', 'extended warranty', 'care pack']
+        
+        # Build regex pattern
+        single_pattern = '|'.join([f'\\b{kw}\\b' for kw in service_keywords_single])
+        multi_pattern = '|'.join(service_keywords_multi)
+        full_pattern = f'({single_pattern})|({multi_pattern})'
+        
+        matches = matches[~matches['name'].str.contains(full_pattern, case=False, na=False, regex=True)]
 
     if matches.empty:
         return None
 
     # === CATEGORY-SPECIFIC INTELLIGENT SELECTION ===
 
-    # Displays: Match size requirement
+    # Displays: Match size requirement with validation
     if category == 'Displays' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         size_range = range(req_size - 3, req_size + 4)
@@ -58,32 +113,52 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         size_matches = matches[matches['name'].str.contains(size_pattern, na=False, regex=True)]
         if not size_matches.empty:
             matches = size_matches
+        else:
+            # If no exact match, find closest available size
+            available_sizes = []
+            for _, prod in matches.iterrows():
+                size_match = re.search(r'(\d{2,3})["\']', prod['name'])
+                if size_match:
+                    available_sizes.append((abs(int(size_match.group(1)) - req_size), prod))
+            if available_sizes:
+                available_sizes.sort(key=lambda x: x[0])
+                matches = pd.DataFrame([available_sizes[0][1]])
 
     # Intelligent Mount Selection
     if category == 'Mounts' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
+        # Exclude incompatible mounts
         matches = matches[~matches['name'].str.contains(
-            r'\b(video bar|soundbar|Studio X30|Studio X50|Rally Bar|Meetup|for Poly)\b',
+            r'\b(video bar|soundbar|Studio X30|Studio X50|Rally Bar|Meetup|for Poly|camera mount)\b',
             case=False, na=False, regex=True
         )]
         
-        if req_size >= 65:
+        # Select appropriate mount type based on size
+        if req_size >= 75:
             large_mounts = matches[matches['name'].str.contains(
-                r'(heavy-duty|large display|65"|75"|85"|86"|98"|universal flat)',
+                r'(heavy-duty|large display|extra large|75"|85"|86"|98"|universal flat|articulating)',
                 case=False, na=False, regex=True
             )]
             if not large_mounts.empty:
                 matches = large_mounts
+        elif req_size >= 55:
+            medium_mounts = matches[matches['name'].str.contains(
+                r'(55"|60"|65"|70"|medium|standard|universal)',
+                case=False, na=False, regex=True
+            )]
+            if not medium_mounts.empty:
+                matches = medium_mounts
 
-    # Video Conferencing: Prefer quality brands based on ecosystem
+    # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
         preferred_ecosystem = equipment_reqs.get('preferred_ecosystem') if equipment_reqs else None
         base_priority = ['Poly', 'Cisco', 'Logitech', 'Yealink', 'Neat', 'Crestron']
         
         brand_priority = base_priority
         if preferred_ecosystem and preferred_ecosystem.capitalize() in base_priority:
-            brand_priority = [preferred_ecosystem.capitalize()] + [b for b in base_priority if b.lower() != preferred_ecosystem.lower()]
+            brand_priority = [preferred_ecosystem.capitalize()] + \
+                           [b for b in base_priority if b.lower() != preferred_ecosystem.lower()]
 
         for brand in brand_priority:
             brand_matches = matches[matches['brand'].str.contains(brand, case=False, na=False)]
@@ -91,67 +166,91 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
                 matches = brand_matches
                 break
 
-    # Audio DSP: Exclude mixers, amplifiers, and invalid products
+    # Audio DSP: Strict processor selection
     if sub_category in ['DSP / Processor', 'DSP / Audio Processor / Mixer']:
+        # Exclude non-DSP products
         matches = matches[~matches['name'].str.contains(
-            r'\b(amplifier|amp-|summing|quad active|wall mount power)\b',
+            r'\b(amplifier|amp-|summing|quad active|wall mount power|line driver|distribution)\b',
             case=False, na=False, regex=True
         )]
-        dsp_brands = ['Biamp', 'QSC', 'Shure', 'Extron', 'Crestron', 'BSS']
+        
+        # Prioritize known DSP brands
+        dsp_brands = ['Biamp', 'QSC', 'Shure', 'Extron', 'Crestron', 'BSS', 'Symetrix']
         for brand in dsp_brands:
             brand_matches = matches[matches['brand'].str.contains(brand, case=False, na=False)]
             if not brand_matches.empty:
                 matches = brand_matches
                 break
+        
+        # Ensure product has DSP keywords
+        if not matches.empty:
+            dsp_matches = matches[matches['name'].str.contains(
+                r'(dsp|processor|dante|aec|matrix|tesira|core)',
+                case=False, na=False, regex=True
+            )]
+            if not dsp_matches.empty:
+                matches = dsp_matches
 
-    # Touch Controllers: Exclude room kits and service contracts
+    # Touch Controllers: Exclude incorrect products
     if sub_category in ['Touch Controller', 'Touch Controller / Panel']:
         matches = matches[~matches['name'].str.contains(
-            r'\b(room kit|ess|codec|service)\b',
+            r'\b(room kit|ess|codec|service|camera|display)\b',
             case=False, na=False, regex=True
         )]
+        # Require touch controller keywords
         matches = matches[matches['name'].str.contains(
-            r'(touch|panel|controller|tap|pad)',
+            r'(touch|panel|controller|tap|pad|navigator|scheduler)',
             case=False, na=False, regex=True
         )]
 
-    # PDU: Exclude wall mount power supplies
+    # PDU: Strict rackmount PDU selection
     if sub_category == 'Power (PDU/UPS)':
         matches = matches[~matches['name'].str.contains(
-            r'\b(wall mount|power pack|adapter|injector)\b',
+            r'\b(wall mount|power pack|adapter|injector|power supply)\b',
             case=False, na=False, regex=True
         )]
         pdu_matches = matches[matches['name'].str.contains(
-            r'(pdu|power distribution|rack.*power|ups)',
+            r'(pdu|power distribution|rack.*power|ups|rackmount)',
             case=False, na=False, regex=True
         )]
         if not pdu_matches.empty:
             matches = pdu_matches
 
-    # --- MODIFICATION START: Intelligent Power Amplifier Selection ---
-    # Amplifiers: Exclude utility/line amps and PRIORITIZE power amps
+    # Amplifiers: Strict power amplifier selection
     if sub_category == 'Amplifier':
-        # 1. Exclude devices that are not power amplifiers
+        # Exclude non-amplifier products
         matches = matches[~matches['name'].str.contains(
-            r'\b(processor|dsp|summing|mixer|line driver|distribution|extender)\b',
+            r'\b(processor|dsp|summing|mixer|matrix|line driver|distribution|extender)\b',
             case=False, na=False, regex=True
         )]
         
-        # 2. Prioritize true power amplifiers by looking for relevant keywords
+        # Prioritize power amplifiers
         power_amp_matches = matches[matches['name'].str.contains(
-            r'(power amp|70v|100v|\d-channel|\dW)',
+            r'(power amp|70v|100v|\d-channel|\dW|watt|amplifier)',
             case=False, na=False, regex=True
         )]
         
         if not power_amp_matches.empty:
             matches = power_amp_matches
-    # --- MODIFICATION END ---
+        elif matches.empty:
+            return None  # Explicit failure if no valid amplifiers
 
+    # Ceiling Speakers: Proper speaker selection
+    if sub_category == 'Ceiling Loudspeaker':
+        matches = matches[matches['name'].str.contains(
+            r'(ceiling|in-ceiling|pendant|flush mount)',
+            case=False, na=False, regex=True
+        )]
+        # Exclude subwoofers and line arrays
+        matches = matches[~matches['name'].str.contains(
+            r'\b(subwoofer|sub|line array|column)\b',
+            case=False, na=False, regex=True
+        )]
 
     # Table Connectivity: Exclude wall plates
     if sub_category == 'Wall & Table Plate Module':
         table_matches = matches[matches['name'].str.contains(
-            r'(table|tbus|floor|cubby|connectivity box|retractor)',
+            r'(table|tbus|floor|cubby|connectivity box|retractor|cable retractor)',
             case=False, na=False, regex=True
         )]
         if not table_matches.empty:
@@ -173,25 +272,45 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         selection_pool = sorted_matches.iloc[:end_idx] if end_idx > 0 else sorted_matches
         return selection_pool.iloc[len(selection_pool) // 2].to_dict()
 
+    # Standard: Middle 50%
     start_idx = int(len(sorted_matches) * 0.25)
     end_idx = int(len(sorted_matches) * 0.75)
     selection_pool = sorted_matches.iloc[start_idx:end_idx] if end_idx > start_idx else sorted_matches
+    
+    if selection_pool.empty:
+        return sorted_matches.iloc[len(sorted_matches)//2].to_dict()
 
     return selection_pool.iloc[len(selection_pool) // 2].to_dict()
 
 
-# ==================== IMPROVED COMPONENT BLUEPRINT ====================
-def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Standard'):
+# ==================== ENHANCED COMPONENT BLUEPRINT ====================
+def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Standard', room_area=300):
     """
-    Build component requirements with detailed specifications
+    Build component requirements with physics validation
     """
     blueprint = {}
+    
+    # Extract room dimensions
+    room_length = technical_reqs.get('room_length', (room_area ** 0.5) * 1.2)
+    room_width = technical_reqs.get('room_width', room_area / room_length if room_length > 0 else 15)
+    ceiling_height = technical_reqs.get('ceiling_height', 10)
 
-    # Displays
+    # Displays with validation
     if 'displays' in equipment_reqs:
         display_reqs = equipment_reqs.get('displays', {})
         qty = display_reqs.get('quantity', 1)
         size = display_reqs.get('size_inches', 65)
+        
+        # Validate display size
+        is_valid, corrected_size, reason = _validate_display_size_for_room(
+            size, room_length, technical_reqs.get('room_type', '')
+        )
+        
+        if not is_valid:
+            st.warning(f"Display size adjusted: {reason}. Using {corrected_size}\" instead of {size}\"")
+            size = corrected_size
+            # Update equipment_reqs for consistency
+            equipment_reqs['displays']['size_inches'] = corrected_size
 
         blueprint['primary_display'] = {
             'category': 'Displays',
@@ -207,7 +326,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             'sub_category': 'Display Mount / Cart',
             'quantity': qty,
             'priority': 8,
-            'justification': f'Heavy-duty wall mount for {size}" display',
+            'justification': f'Heavy-duty mount for {size}" display',
             'size_requirement': size
         }
 
@@ -254,18 +373,21 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                 'justification': 'Touch control panel for intuitive meeting control'
             }
 
-    # Audio System
+    # Audio System with validation
     if 'audio_system' in equipment_reqs:
         audio_reqs = equipment_reqs.get('audio_system', {})
         audio_type = audio_reqs.get('type', '')
         needs_dsp = audio_reqs.get('dsp_required', False)
         has_integrated_audio = 'integrated' in audio_type.lower() or 'video bar' in audio_type.lower()
 
-        is_large_room_audio = any(x in audio_type.lower() for x in ['ceiling audio', 'pro audio', 'voice reinforcement'])
+        # Determine if this is a large room requiring distributed audio
+        is_large_room_audio = any(x in audio_type.lower() for x in 
+                                   ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
         if is_large_room_audio:
             has_integrated_audio = False
             needs_dsp = True
         
+        # Voice Reinforcement Systems
         if 'voice reinforcement' in audio_type.lower() or 'voice lift' in technical_reqs.get('audio_requirements', '').lower():
             blueprint['audio_dsp'] = {
                 'category': 'Audio',
@@ -283,6 +405,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             }
             needs_dsp = False
 
+        # Dedicated DSP for complex audio
         elif needs_dsp and not has_integrated_audio:
             blueprint['audio_dsp'] = {
                 'category': 'Audio',
@@ -292,9 +415,11 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                 'justification': 'Digital signal processor for advanced audio control and mixing'
             }
 
+        # Microphones
         mic_type = audio_reqs.get('microphone_type', '')
         if mic_type and not has_integrated_audio:
             mic_count = audio_reqs.get('microphone_count', 2)
+
             if 'ceiling' in mic_type.lower():
                 blueprint['ceiling_microphones'] = {
                     'category': 'Audio',
@@ -312,16 +437,28 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     'justification': f'{mic_count}x table microphones for participant audio'
                 }
 
+        # Speakers with coverage validation
         speaker_type = audio_reqs.get('speaker_type', '')
         if speaker_type and not has_integrated_audio:
             speaker_count = audio_reqs.get('speaker_count', 2)
+            
+            # Validate speaker coverage
+            is_valid, recommended_count, reason = _validate_audio_coverage(
+                speaker_count, room_area, ceiling_height
+            )
+            
+            if not is_valid:
+                st.warning(f"Speaker count adjusted: {reason}. Using {recommended_count} speakers")
+                speaker_count = recommended_count
+                audio_reqs['speaker_count'] = recommended_count
+
             if 'ceiling' in speaker_type.lower():
                 blueprint['ceiling_speakers'] = {
                     'category': 'Audio',
                     'sub_category': 'Ceiling Loudspeaker',
                     'quantity': speaker_count,
                     'priority': 6,
-                    'justification': f'{speaker_count}x ceiling speakers for even audio distribution'
+                    'justification': f'{speaker_count}x ceiling speakers for even audio distribution (1 per 150 sq ft)'
                 }
             elif 'wall' in speaker_type.lower():
                 blueprint['wall_speakers'] = {
@@ -332,13 +469,14 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     'justification': f'{speaker_count}x wall-mounted speakers'
                 }
 
+            # Add amplifier for passive speakers (only if speakers exist)
             if speaker_count > 0:
                 blueprint['power_amplifier'] = {
                     'category': 'Audio',
                     'sub_category': 'Amplifier',
                     'quantity': 1,
                     'priority': 7,
-                    'justification': f'Power amplifier for {speaker_count}x speakers'
+                    'justification': f'Power amplifier for {speaker_count}x passive speakers'
                 }
 
     # Connectivity & Infrastructure
@@ -351,14 +489,17 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             'justification': 'Table connectivity solution with HDMI/USB-C inputs'
         }
 
+    # Network Cables (scale with room complexity)
+    cable_count = 5 if room_area < 400 else 8
     blueprint['network_cables'] = {
         'category': 'Cables & Connectivity',
         'sub_category': 'AV Cable',
-        'quantity': 5,
+        'quantity': cable_count,
         'priority': 10,
-        'justification': 'Cat6 network patch cables for equipment connections'
+        'justification': f'Cat6 network patch cables for equipment connections'
     }
 
+    # Rack Infrastructure (for rooms with modular systems)
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
         blueprint['equipment_rack'] = {
             'category': 'Infrastructure',
@@ -368,123 +509,214 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             'justification': 'Professional equipment rack for AV components'
         }
 
+    # Power Management (essential for rack-based systems)
     if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
         blueprint['power_distribution'] = {
             'category': 'Infrastructure',
             'sub_category': 'Power (PDU/UPS)',
             'quantity': 1,
             'priority': 11,
-            'justification': 'Rackmount power distribution unit for equipment power'
+            'justification': 'Rackmount PDU with surge protection and power management'
         }
 
     return blueprint
 
 
-# (The rest of the file remains unchanged)
 # ==================== AI PROMPT ====================
-def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, product_df, budget_tier, features):
+def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, product_df, budget_tier, features, room_length=None, room_width=None):
+    """
+    Generate AI prompt for product selection
+    """
     def format_product_list():
         product_text = ""
         for comp_key, comp_spec in sorted(required_components.items(), key=lambda x: x[1]['priority']):
             product_text += f"\n## {comp_key.replace('_', ' ').upper()}\n"
             product_text += f"**Requirement:** {comp_spec['justification']}\n"
+            
             cat = comp_spec['category']
             sub_cat = comp_spec.get('sub_category')
+            
             if sub_cat:
-                filtered_df = product_df[(product_df['category'] == cat) & (product_df['sub_category'] == sub_cat)].copy()
+                filtered_df = product_df[
+                    (product_df['category'] == cat) &
+                    (product_df['sub_category'] == sub_cat)
+                ].copy()
             else:
                 filtered_df = product_df[product_df['category'] == cat].copy()
+            
             if cat not in ['Software & Services']:
-                filtered_df = filtered_df[~filtered_df['name'].str.contains(r'\b(ess|con-snt|con-ecdn|support|warranty|service contract|smartcare|jumpstart)\b', case=False, na=False, regex=True)]
+                filtered_df = filtered_df[~filtered_df['name'].str.contains(
+                    r'\b(ess|con-snt|con-ecdn|support|warranty|service contract|smartcare|jumpstart)\b',
+                    case=False, na=False, regex=True
+                )]
+            
             if cat == 'Displays':
-                req_size = equipment_reqs.get('displays', {}).get('size_inches')
+                req_size = comp_spec.get('size_requirement')
                 if req_size:
                     size_range = range(req_size - 3, req_size + 4)
                     size_pattern = '|'.join([f'{s}"' for s in size_range])
-                    size_filtered = filtered_df[filtered_df['name'].str.contains(size_pattern, na=False, regex=True)]
+                    size_filtered = filtered_df[filtered_df['name'].str.contains(
+                        size_pattern, na=False, regex=True
+                    )]
                     if not size_filtered.empty:
                         filtered_df = size_filtered
-                        product_text += f"     **CRITICAL:** Must be approximately {req_size}\" display (±3 inches)\n"
+                    product_text += f"    **CRITICAL:** Must be {req_size}\" display (±3 inches)\n"
+            
             if sub_cat in ['DSP / Processor', 'DSP / Audio Processor / Mixer']:
-                filtered_df = filtered_df[~filtered_df['name'].str.contains(r'\b(amplifier|amp-|summing|quad active)\b', case=False, na=False, regex=True)]
-                product_text += "     **CRITICAL:** Must be actual DSP/processor, NOT amplifier or mixer\n"
+                filtered_df = filtered_df[~filtered_df['name'].str.contains(
+                    r'\b(amplifier|amp-|summing|quad active|line driver)\b',
+                    case=False, na=False, regex=True
+                )]
+                product_text += "    **CRITICAL:** Must be actual DSP/processor, NOT amplifier\n"
+            
             if sub_cat and 'Touch Controller' in sub_cat:
-                filtered_df = filtered_df[~filtered_df['name'].str.contains(r'\b(room kit|codec|ess)\b', case=False, na=False, regex=True)]
-                product_text += "     **CRITICAL:** Must be touch panel/controller, NOT room kit or codec\n"
+                filtered_df = filtered_df[~filtered_df['name'].str.contains(
+                    r'\b(room kit|codec|ess|camera)\b',
+                    case=False, na=False, regex=True
+                )]
+                product_text += "    **CRITICAL:** Must be touch panel/controller, NOT room kit/codec\n"
+            
             if sub_cat == 'Power (PDU/UPS)':
-                filtered_df = filtered_df[~filtered_df['name'].str.contains(r'\b(wall mount|power pack|adapter)\b', case=False, na=False, regex=True)]
-                product_text += "     **CRITICAL:** Must be rackmount PDU, NOT wall power supply\n"
+                filtered_df = filtered_df[~filtered_df['name'].str.contains(
+                    r'\b(wall mount|power pack|adapter|power supply)\b',
+                    case=False, na=False, regex=True
+                )]
+                product_text += "    **CRITICAL:** Must be rackmount PDU, NOT wall power supply\n"
+            
+            if sub_cat == 'Amplifier':
+                filtered_df = filtered_df[~filtered_df['name'].str.contains(
+                    r'\b(processor|dsp|mixer|line driver)\b',
+                    case=False, na=False, regex=True
+                )]
+                product_text += "    **CRITICAL:** Must be POWER AMPLIFIER, NOT DSP\n"
+            
             if not filtered_df.empty:
-                product_text += "     **Available Products:**\n"
-                product_text += "     | Brand | Model | Product Name | Price (USD) |\n"
-                product_text += "     |-------|-------|--------------|-------------|\n"
-                for _, prod in filtered_df.head(25).iterrows():
+                product_text += "    **Available Products:**\n"
+                product_text += "    | Brand | Model | Product Name | Price (USD) |\n"
+                product_text += "    |-------|-------|--------------|-------------|\n"
+                
+                for _, prod in filtered_df.head(20).iterrows():
                     safe_name = str(prod['name'])[:60].replace('|', '-')
-                    product_text += f"     | {prod['brand']} | {prod['model_number']} | {safe_name} | ${prod['price']:.0f} |\n"
+                    product_text += f"    | {prod['brand']} | {prod['model_number']} | {safe_name} | ${prod['price']:.0f} |\n"
             else:
-                product_text += "     ⚠️ **WARNING:** No matching products found after filtering\n"
+                product_text += "    ⚠️ **WARNING:** No matching products found after filtering\n"
+        
         return product_text
+
     base_prompt = f"""You are a CTS-D certified AV systems designer selecting products for a professional '{room_type}' installation.
+
 # CRITICAL SELECTION RULES (MUST FOLLOW)
-1. Select ONLY products that EXACTLY match the component's sub-category.
-2. NEVER select service contracts (ESS, warranty, support agreements) for hardware components.
-3. For displays: Match size requirement within ±3 inches.
-4. For DSPs: Select actual digital signal processors, NEVER amplifiers or mixers.
-5. For Touch Controllers: Select touch panels/controllers, NEVER room kits or codecs.
-6. For PDUs: Select rackmount power distribution, NEVER wall-mount power supplies.
-7. Verify each selection makes sense for the component role described.
+1. Select ONLY products that EXACTLY match the component's sub-category
+2. NEVER select service contracts, warranties, or support agreements for hardware
+3. For displays: Match size requirement within ±3 inches
+4. For DSPs: Select ACTUAL processors with DSP capabilities, NEVER amplifiers
+5. For Amplifiers: Select POWER AMPLIFIERS only, NEVER DSPs or mixers
+6. For Touch Controllers: Select touch panels ONLY, NEVER room kits
+7. For PDUs: Select rackmount power distribution ONLY
+8. Verify product name matches the requirement before selection
+
 # Room Configuration
 - **Room Type:** {room_type}
 - **Budget Level:** {budget_tier}
 - **Special Requirements:** {features if features else 'Standard professional AV configuration'}
+
 # Required Components and Available Products
 {format_product_list()}
+
 # OUTPUT REQUIREMENTS
-Return ONLY valid JSON with exact product names and models from the lists above.
-Double-check each selection matches the component requirement.
+Return ONLY valid JSON with exact product names and models from the tables above.
+
 JSON Format:
 {{"""
+    
     json_format = '\n'
     for i, (comp_key, comp_spec) in enumerate(required_components.items()):
         comma = "," if i < len(required_components) - 1 else ""
         json_format += f'  "{comp_key}": {{"name": "EXACT product name from table", "model_number": "EXACT model from table", "qty": {comp_spec["quantity"]}}}{comma}\n'
     json_format += "}\n"
+    
     return base_prompt + json_format
 
+
+# ==================== PARSING & BOQ CONSTRUCTION ====================
 def _parse_ai_product_selection(ai_response_text):
+    """Parse AI response with error handling"""
     try:
         cleaned = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
-        if cleaned: return json.loads(cleaned.group(0))
+        if cleaned:
+            return json.loads(cleaned.group(0))
         st.warning("Could not find valid JSON in AI response.")
         return {}
     except Exception as e:
         st.warning(f"Failed to parse AI response: {e}")
         return {}
 
+
 def _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs):
+    """Build BOQ items from AI selection"""
     boq_items = []
+    
     for comp_key, selection in ai_selection.items():
-        if comp_key not in required_components: continue
+        if comp_key not in required_components:
+            continue
+        
         comp_spec = required_components[comp_key]
-        matched_product = match_product_in_database(product_name=selection.get('name'), brand=None, model_number=selection.get('model_number'), product_df=product_df)
+        
+        matched_product = match_product_in_database(
+            product_name=selection.get('name'),
+            brand=None,
+            model_number=selection.get('model_number'),
+            product_df=product_df
+        )
+        
         if matched_product:
-            item = {'category': matched_product.get('category', comp_spec['category']), 'sub_category': matched_product.get('sub_category', comp_spec.get('sub_category', '')), 'name': matched_product.get('name', ''), 'brand': matched_product.get('brand', ''), 'model_number': matched_product.get('model_number', ''), 'quantity': selection.get('qty', comp_spec['quantity']), 'price': float(matched_product.get('price', 0)), 'justification': comp_spec['justification'], 'specifications': matched_product.get('specifications', ''), 'image_url': matched_product.get('image_url', ''), 'gst_rate': matched_product.get('gst_rate', 18), 'warranty': matched_product.get('warranty', 'Not Specified'), 'lead_time_days': matched_product.get('lead_time_days', 14), 'matched': True}
+            item = {
+                'category': matched_product.get('category', comp_spec['category']),
+                'sub_category': matched_product.get('sub_category', comp_spec.get('sub_category', '')),
+                'name': matched_product.get('name', ''),
+                'brand': matched_product.get('brand', ''),
+                'model_number': matched_product.get('model_number', ''),
+                'quantity': selection.get('qty', comp_spec['quantity']),
+                'price': float(matched_product.get('price', 0)),
+                'justification': comp_spec['justification'],
+                'specifications': matched_product.get('specifications', ''),
+                'image_url': matched_product.get('image_url', ''),
+                'gst_rate': matched_product.get('gst_rate', 18),
+                'warranty': matched_product.get('warranty', 'Not Specified'),
+                'lead_time_days': matched_product.get('lead_time_days', 14),
+                'matched': True
+            }
             boq_items.append(item)
         else:
-            fallback = _get_fallback_product(comp_spec['category'], comp_spec.get('sub_category'), product_df, equipment_reqs, 'Standard')
+            fallback = _get_fallback_product(
+                comp_spec['category'],
+                comp_spec.get('sub_category'),
+                product_df,
+                equipment_reqs,
+                'Standard'
+            )
             if fallback:
-                fallback.update({'quantity': comp_spec['quantity'], 'justification': f"{comp_spec['justification']} (Auto-selected fallback)", 'matched': False})
+                fallback.update({
+                    'quantity': comp_spec['quantity'],
+                    'justification': f"{comp_spec['justification']} (Auto-selected fallback)",
+                    'matched': False
+                })
                 boq_items.append(fallback)
+    
     return boq_items
 
+
 def _validate_boq_selections(boq_items, equipment_reqs):
+    """Validate BOQ selections for common errors"""
     for item in boq_items:
         name_lower = item.get('name', '').lower()
         category = item.get('category', '')
+        
         if category not in ['Software & Services']:
             if any(keyword in name_lower for keyword in ['ess', 'support', 'warranty', 'service contract', 'con-snt']):
                 item['justification'] += " ⚠️ **VALIDATION ERROR**: Service contract detected in hardware category"
                 item['matched'] = False
+        
         if category == 'Displays':
             req_size = equipment_reqs.get('displays', {}).get('size_inches')
             if req_size:
@@ -493,125 +725,250 @@ def _validate_boq_selections(boq_items, equipment_reqs):
                     actual_size = int(size_match.group(1))
                     if abs(actual_size - req_size) > 5:
                         item['justification'] += f" ⚠️ **SIZE MISMATCH**: Required ~{req_size}\", selected {actual_size}\""
+        
         if 'DSP' in item.get('sub_category', '') or 'Processor' in item.get('sub_category', ''):
             if any(word in name_lower for word in ['amplifier', 'amp-', 'summing']):
                 item['justification'] += " ⚠️ **WRONG TYPE**: Amplifier selected instead of DSP"
                 item['matched'] = False
+        
         if 'Touch Controller' in item.get('sub_category', ''):
             if any(word in name_lower for word in ['room kit', 'codec', 'ess']):
                 item['justification'] += " ⚠️ **WRONG TYPE**: Room kit/codec selected instead of touch panel"
                 item['matched'] = False
+        
         if item.get('sub_category') == 'Power (PDU/UPS)':
             if any(word in name_lower for word in ['wall mount', 'power pack', 'adapter']):
                 item['justification'] += " ⚠️ **WRONG TYPE**: Wall power supply selected instead of PDU"
                 item['matched'] = False
+    
     return boq_items
 
+
 def _remove_exact_duplicates(boq_items):
+    """Remove duplicate products from BOQ"""
     seen = set()
     unique_items = []
+    
     for item in boq_items:
         identifier = item.get('model_number') or item.get('name')
         if identifier not in seen:
             unique_items.append(item)
             seen.add(identifier)
+    
     return unique_items
 
+
 def _correct_quantities(boq_items):
+    """Ensure all quantities are valid positive integers"""
     for item in boq_items:
-        try: item['quantity'] = int(float(item.get('quantity', 1)))
-        except (ValueError, TypeError): item['quantity'] = 1
-        if item['quantity'] == 0: item['quantity'] = 1
+        try:
+            item['quantity'] = int(float(item.get('quantity', 1)))
+        except (ValueError, TypeError):
+            item['quantity'] = 1
+        
+        if item['quantity'] == 0:
+            item['quantity'] = 1
+    
     return boq_items
 
+
 def validate_boq_completeness(boq_items, required_components):
+    """Check if BOQ has all required components"""
     missing_components = []
     present_sub_categories = {item.get('sub_category') for item in boq_items}
+    
     for comp_key, comp_spec in required_components.items():
         if comp_spec.get('sub_category') not in present_sub_categories:
-            missing_components.append({'component': comp_key, 'category': comp_spec['category'], 'justification': comp_spec['justification']})
+            missing_components.append({
+                'component': comp_key,
+                'category': comp_spec['category'],
+                'justification': comp_spec['justification']
+            })
+    
     return missing_components
 
+
 def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_type, required_components):
+    """Post-process BOQ with validation"""
     processed_boq = _correct_quantities(boq_items)
     processed_boq = _remove_exact_duplicates(processed_boq)
     processed_boq = _validate_boq_selections(processed_boq, equipment_reqs)
+    
     validation_results = {'issues': [], 'warnings': []}
+    
     missing_components = validate_boq_completeness(processed_boq, required_components)
     if missing_components:
         for missing in missing_components:
             issue_text = f"Missing Component: The BOQ is missing a required '{missing['component'].replace('_', ' ')}' ({missing['category']}). Justification: {missing['justification']}"
             validation_results['issues'].append(issue_text)
+    
     return processed_boq, validation_results
 
+
 def create_smart_fallback_boq(product_df, equipment_reqs, technical_reqs, budget_tier='Standard'):
+    """Create BOQ using fallback logic"""
     st.warning("AI selection unavailable. Building BOQ with intelligent fallback logic.")
+    
     required_components = _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier)
     fallback_items = []
+    
     for comp_key, comp_spec in required_components.items():
-        product = _get_fallback_product(comp_spec['category'], comp_spec.get('sub_category'), product_df, equipment_reqs, budget_tier)
+        product = _get_fallback_product(
+            comp_spec['category'],
+            comp_spec.get('sub_category'),
+            product_df,
+            equipment_reqs,
+            budget_tier
+        )
+        
         if product:
-            product.update({'quantity': comp_spec['quantity'], 'justification': f"{comp_spec['justification']} (Intelligent auto-selection)", 'matched': False})
+            product.update({
+                'quantity': comp_spec['quantity'],
+                'justification': f"{comp_spec['justification']} (Intelligent auto-selection)",
+                'matched': False
+            })
             fallback_items.append(product)
+    
     return fallback_items, required_components
 
+
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
+    """Main BOQ generation function"""
     length = (room_area ** 0.5) * 1.2
     width = room_area / length
-    avixa_calcs = calculate_avixa_recommendations(length, width, technical_reqs.get('ceiling_height', 10), room_type)
+    
+    avixa_calcs = calculate_avixa_recommendations(
+        length, width,
+        technical_reqs.get('ceiling_height', 10),
+        room_type
+    )
+    
     equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     required_components = _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier)
-    prompt = _get_prompt_for_room_type(room_type, equipment_reqs, required_components, product_df, budget_tier, features)
+    
+    prompt = _get_prompt_for_room_type(
+        room_type, equipment_reqs, required_components,
+        product_df, budget_tier, features, length, width
+    )
+    
     try:
         response = generate_with_retry(model, prompt)
-        if not response or not hasattr(response, 'text') or not response.text: raise Exception("AI returned empty response")
+        if not response or not hasattr(response, 'text') or not response.text:
+            raise Exception("AI returned empty response")
+        
         ai_selection = _parse_ai_product_selection(response.text)
-        if not ai_selection: raise Exception("Failed to parse AI product selection")
+        if not ai_selection:
+            raise Exception("Failed to parse AI product selection")
+        
         boq_items = _build_boq_from_ai_selection(ai_selection, required_components, product_df, equipment_reqs)
-        if not boq_items: raise Exception("No BOQ items generated from AI selection")
+        if not boq_items:
+            raise Exception("No BOQ items generated from AI selection")
+            
     except Exception as e:
         st.warning(f"AI generation failed ({str(e)}). Using intelligent fallback system.")
-        boq_items, required_components = create_smart_fallback_boq(product_df, equipment_reqs, technical_reqs, budget_tier)
-    processed_boq, validation_results = post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_type, required_components)
+        boq_items, required_components = create_smart_fallback_boq(
+            product_df, equipment_reqs, technical_reqs, budget_tier
+        )
+    
+    processed_boq, validation_results = post_process_boq(
+        boq_items, product_df, avixa_calcs,
+        equipment_reqs, room_type, required_components
+    )
+    
     return processed_boq, avixa_calcs, equipment_reqs, validation_results
 
+
 def boq_to_dataframe(boq_items):
-    if not boq_items: return pd.DataFrame()
+    """Convert BOQ items to DataFrame"""
+    if not boq_items:
+        return pd.DataFrame()
+    
     df = pd.DataFrame(boq_items)
-    required_columns = ['category', 'sub_category', 'name', 'brand', 'model_number', 'quantity', 'price', 'justification', 'specifications', 'gst_rate', 'warranty', 'lead_time_days']
+    
+    required_columns = [
+        'category', 'sub_category', 'name', 'brand', 'model_number',
+        'quantity', 'price', 'justification', 'specifications',
+        'gst_rate', 'warranty', 'lead_time_days'
+    ]
+    
     for col in required_columns:
-        if col not in df.columns: df[col] = ''
+        if col not in df.columns:
+            df[col] = ''
+    
     df['line_total'] = df['quantity'] * df['price']
     df['gst_amount'] = df['line_total'] * (df['gst_rate'] / 100)
     df['total_with_gst'] = df['line_total'] + df['gst_amount']
-    column_order = ['category', 'sub_category', 'brand', 'model_number', 'name', 'quantity', 'price', 'line_total', 'gst_rate', 'gst_amount', 'total_with_gst', 'justification', 'specifications', 'warranty', 'lead_time_days']
+    
+    column_order = [
+        'category', 'sub_category', 'brand', 'model_number', 'name',
+        'quantity', 'price', 'line_total', 'gst_rate', 'gst_amount',
+        'total_with_gst', 'justification', 'specifications',
+        'warranty', 'lead_time_days'
+    ]
+    
     column_order = [col for col in column_order if col in df.columns]
     df = df[column_order]
+    
     return df
 
+
 def calculate_boq_summary(boq_df):
-    if boq_df.empty: return {'total_items': 0, 'total_quantity': 0, 'subtotal': 0, 'total_gst': 0, 'grand_total': 0, 'categories': {}}
-    summary = {'total_items': len(boq_df), 'total_quantity': int(boq_df['quantity'].sum()), 'subtotal': float(boq_df['line_total'].sum()), 'total_gst': float(boq_df['gst_amount'].sum()), 'grand_total': float(boq_df['total_with_gst'].sum()), 'categories': {}}
+    """Calculate BOQ summary statistics"""
+    if boq_df.empty:
+        return {
+            'total_items': 0,
+            'total_quantity': 0,
+            'subtotal': 0,
+            'total_gst': 0,
+            'grand_total': 0,
+            'categories': {}
+        }
+    
+    summary = {
+        'total_items': len(boq_df),
+        'total_quantity': int(boq_df['quantity'].sum()),
+        'subtotal': float(boq_df['line_total'].sum()),
+        'total_gst': float(boq_df['gst_amount'].sum()),
+        'grand_total': float(boq_df['total_with_gst'].sum()),
+        'categories': {}
+    }
+    
     if 'category' in boq_df.columns:
-        summary['categories'] = boq_df.groupby('category').agg({'quantity': 'sum', 'line_total': 'sum', 'total_with_gst': 'sum'}).to_dict('index')
+        summary['categories'] = boq_df.groupby('category').agg({
+            'quantity': 'sum',
+            'line_total': 'sum',
+            'total_with_gst': 'sum'
+        }).to_dict('index')
+    
     return summary
 
+
 def export_boq_to_excel(boq_df, filename="boq_export.xlsx"):
+    """Export BOQ to Excel file"""
     from io import BytesIO
+    
     output = BytesIO()
+    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         boq_df.to_excel(writer, sheet_name='BOQ', index=False)
+        
         workbook = writer.book
         worksheet = writer.sheets['BOQ']
+        
         for column in worksheet.columns:
             max_length = 0
             column_letter = column[0].column_letter
+            
             for cell in column:
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(cell.value)
-                except: pass
+                except:
+                    pass
+            
             adjusted_width = min(max_length + 2, 50)
             worksheet.column_dimensions[column_letter].width = adjusted_width
+    
     output.seek(0)
     return output
+
