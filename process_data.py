@@ -116,112 +116,297 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure', 'Peripherals & Accessories']: return 7
     return 14
 
-# --- V5.0 ULTIMATE CATEGORIZATION ENGINE ---
+# --- ENHANCED V6.0 CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
+    """
+    Enhanced categorization with broader pattern matching and better fallback logic.
+    Priority order matters - most specific rules first.
+    """
     text_to_search = (str(description) + ' ' + str(model)).lower()
     
-    category_rules = [
-        # 1. Software & Services (Highest Priority)
-        ('Software & Services', 'Support & Warranty', [r'\d\s*y(ea)?r.*poly\+', r'\d\s*y(ea)?r.*support', 'jumpstart', 'partner premier', 'onsite support', r'\bcon-snt\b', r'\bcon-ecdn\b']),
-        ('Software & Services', 'Software License', ['license', 'saas', 'software license', 'annual license', r'l-kit\w+-ms']),
-        ('Software & Services', 'Cloud Service', ['cloud service', 'bsn.cloud', 'xiocloud']),
+    # Helper function for pattern matching
+    def matches_any(patterns):
+        return any(re.search(pattern, text_to_search, re.IGNORECASE) for pattern in patterns)
+    
+    # PRIORITY 1: Software & Services (Must be caught first)
+    if matches_any([r'\d+\s*y(ea)?r.*warranty', r'\d+\s*y(ea)?r.*support', 'poly\+', 'partner premier', 
+                    'jumpstart', 'onsite support', r'\bcon-snt\b', r'\bcon-ecdn\b', 'smartcare',
+                    'maintenance', 'support contract', 'extended warranty']):
+        return {'primary_category': 'Software & Services', 'sub_category': 'Support & Warranty', 'needs_review': False}
+    
+    if matches_any(['license', 'licensing', 'saas', 'software license', 'subscription', 'annual license',
+                    r'l-kit\w+-ms', 'cloud license']):
+        return {'primary_category': 'Software & Services', 'sub_category': 'Software License', 'needs_review': False}
+    
+    if matches_any(['cloud service', 'cloud platform', 'bsn.cloud', 'xiocloud', 'cloud management']):
+        return {'primary_category': 'Software & Services', 'sub_category': 'Cloud Service', 'needs_review': False}
 
-        # 2. Furniture & Large Structures
-        ('Furniture', 'Podium / Lectern', ['podium', 'lectern']),
-        ('Furniture', 'AV Credenza / Stand', ['credenza', 'logic pod']),
-        
-        # 3. Infrastructure (Architectural, Racks, Power)
-        ('Infrastructure', 'Architectural / In-Wall', ['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby', 'tbus', 'hydraport', 'fliptop', 'mud ring']),
-        ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter']),
-        ('Infrastructure', 'Power Management', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply', 'poe injector', 'power pack', r'pw-\d+', r'qs-ps-', 'csa-pws']),
+    # PRIORITY 2: Video Conferencing (Before cameras/displays to catch room systems)
+    if matches_any(['meetingboard', 'collaboration display', 'deskvision', 'surface hub', 'dten d7',
+                    r'mb\d{2}-', 'smart collaboration whiteboard', 'all-in-one smart whiteboard',
+                    'neat board', 'interactive whiteboard.*teams', 'teams board']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Collaboration Display', 'needs_review': False}
+    
+    if matches_any(['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio.*bar',
+                    'meetup', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam',
+                    'meetingbar', 'neat bar', 'panacast 50', 'all-in-one.*conferencing',
+                    'soundbar.*video', 'videobar']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Video Bar', 'needs_review': False}
+    
+    if matches_any(['room kit', 'codec(?!.*cable)', r'mvc\d+', 'mcorekit', 'teams rooms system',
+                    'vc system', 'video conferencing system', r'mvcs\d+', 'g7500', 'thinksmart core',
+                    'uc-engine', r'cs-kit\w+', 'room system', 'conferencing system', 'teams room']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Room Kit / Codec', 'needs_review': False}
+    
+    if matches_any(['ptz camera', 'pan.*tilt.*zoom', 'optical zoom camera', 'tracking camera',
+                    r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera',
+                    'precision 60', 'huddly.*camera', r'iv-cam-\w+', r'nc-12x80', r'nc-20x60',
+                    'ptz pro', 'conference camera.*zoom']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'PTZ Camera', 'needs_review': False}
+    
+    if matches_any(['webcam', 'brio', r'c9\d{2}', 'personal video', 'usb camera(?!.*ptz)',
+                    'poly studio p15', 'usb.*webcam', 'hd camera(?!.*ptz)', '4k camera(?!.*ptz)']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Webcam / Personal Camera', 'needs_review': False}
+    
+    if matches_any(['touch controller(?!.*lighting)', 'touch panel.*conferenc', 'tap ip', r'tc\d+\b',
+                    r'ctp\d+\b', 'collaboration touch', 'mtouch', 'gc8', 'neat pad', 'touch 10',
+                    'vc.*touch.*panel', 'teams.*controller']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Touch Controller / Panel', 'needs_review': False}
+    
+    if matches_any(['scheduler', 'room booking', 'scheduling panel', 'room panel', r'tss-\d+',
+                    'tap scheduler', 'meeting room panel', 'booking panel']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'Scheduling Panel', 'needs_review': False}
+    
+    if matches_any(['trio c60', r'mp\d{2}', 'team phone', 'conference phone', 'voip.*video',
+                    'video phone', 'sip.*video.*phone']):
+        return {'primary_category': 'Video Conferencing', 'sub_category': 'VC Phone', 'needs_review': False}
 
-        # 4. Mounts
-        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak|.*proj)', r'bt\d+', 'lpa\d+', 'steelcase.*mount', 'heckler.*cart']),
-        ('Mounts', 'Projector Mount', ['projector mount', 'projector ceiling mount']),
-        ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
-        ('Mounts', 'Component / Rack Mount', ['rack shelf', 'rackmount kit', 'component storage', 'mounting shelf', 'mounting kit(?!.*display|.*tv)']),
-        ('Mounts', 'Speaker/Mic Mount', ['speaker mount', 'mic mount', 'microphone suspension', 'pendant mount']),
+    # PRIORITY 3: Audio Equipment
+    if matches_any(['ceiling mic', r'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b',
+                    r'tcm-x\b', 'ceiling.*microphone', 'overhead mic', 'pendant mic']):
+        return {'primary_category': 'Audio', 'sub_category': 'Ceiling Microphone', 'needs_review': False}
+    
+    if matches_any(['table mic', 'boundary mic', r'mxa3\d\d', 'rally mic pod', 'ip table microphone',
+                    r'vcm35', 'table array', r'cs-mic-table', 'conference.*microphone', 'tabletop mic']):
+        return {'primary_category': 'Audio', 'sub_category': 'Table/Boundary Microphone', 'needs_review': False}
+    
+    if matches_any(['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter',
+                    'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd', 'mxwapt',
+                    r'blx\d+', 'uhf.*mic', 'rf.*microphone']):
+        return {'primary_category': 'Audio', 'sub_category': 'Wireless Microphone System', 'needs_review': False}
+    
+    if matches_any(['gooseneck', r'meg \d+', 'gooseneck.*mic', 'flexible.*mic']):
+        return {'primary_category': 'Audio', 'sub_category': 'Gooseneck Microphone', 'needs_review': False}
+    
+    if matches_any(['headset', 'earset', 'zone wireless', r'h\d{3}e', 'lavalier(?!.*system)',
+                    'headworn', 'head.*mic', 'earbud.*mic']):
+        return {'primary_category': 'Audio', 'sub_category': 'Headset / Wearable Mic', 'needs_review': False}
+    
+    if matches_any(['speakerphone', 'poly sync', r'speak \d+', 'mobile speakerphone', 'usb.*speakerphone',
+                    'bluetooth.*speaker.*phone', 'conference speaker']):
+        return {'primary_category': 'Audio', 'sub_category': 'Speakerphone', 'needs_review': False}
+    
+    if matches_any(['dsp(?!.*cable)', 'digital signal processor', 'audio processor', 'tesira',
+                    'q-sys core', 'biamp', r'p300\b', 'intellimix', 'audio conferencing processor',
+                    r'dmp \d+', 'bss blu', 'avhub', 'audio mixer', 'sound processor', 'mixing console']):
+        return {'primary_category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
+    
+    if matches_any([r'\bamplifier\b', r'\bamp-\b', r'revamp\d+', 'poweramp', r'\d+\s*x\s*\d+w',
+                    'power amplifier', 'netpa', r'xpa \d+', r'ma\d{4}', 'multi.*channel.*amp']):
+        return {'primary_category': 'Audio', 'sub_category': 'Amplifier', 'needs_review': False}
+    
+    if matches_any(['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 'pendant speaker',
+                    'in-ceiling speaker', 'ceiling speaker', 'surface mount speaker', r'ad-c\d+',
+                    r'ad-s\d+', 'saros', r'control \d+c', r'\bms speaker\b', 'wall.*speaker',
+                    'column speaker', 'line array']):
+        return {'primary_category': 'Audio', 'sub_category': 'Loudspeaker / Speaker', 'needs_review': False}
+    
+    if matches_any(['dante interface', 'audio.*extender', 'audio interface', r'axi \d+',
+                    'usb.*audio.*bridge', 'audio.*over.*ip', 'aes67']):
+        return {'primary_category': 'Audio', 'sub_category': 'Audio Interface / Extender', 'needs_review': False}
+    
+    if matches_any(['intercom', 'freespeak', 'communication.*system', 'talkback']):
+        return {'primary_category': 'Audio', 'sub_category': 'Intercom System', 'needs_review': False}
+    
+    if matches_any(['antenna(?!.*wifi)', 'combiner', 'rf.*splitter', r'ua\d+', 'rf.*combiner']):
+        return {'primary_category': 'Audio', 'sub_category': 'RF & Antenna', 'needs_review': False}
+    
+    if matches_any(['charging station', r'mxwncs\d', r'chg\d\w+', 'charger.*mic', 'battery.*charger']):
+        return {'primary_category': 'Audio', 'sub_category': 'Charging Station', 'needs_review': False}
 
-        # 5. Peripherals & Accessories
-        ('Peripherals & Accessories', 'Keyboard & Mouse', ['keyboard', 'mouse', r'mk\d+', 'mx master', 'combo touch']),
-        ('Peripherals & Accessories', 'Docking Station / Hub', ['docking station', 'usb hub', 'logidock', 'mic pod hub', 'usb-c.*hub', 'thunderbolt.*dock']),
-        ('Peripherals & Accessories', 'Remote Control', ['remote control', r'\brc\d+', r'hr-\d+', r'rm-ip\d+']),
-        ('Peripherals & Accessories', 'Stylus / Pen', ['stylus', 'pen', 'crayon digital pencil']),
-        ('Peripherals & Accessories', 'Whiteboard Camera', ['scribe']),
-        ('Peripherals & Accessories', 'IR Emitter/Receiver', ['ir emitter', 'ir receiver', 'ir sensor']),
-        ('Peripherals & Accessories', 'Card Reader', ['card reader']),
+    # PRIORITY 4: Displays & Projectors
+    if matches_any(['led wall', 'dvled', 'direct.*view.*led', 'absen', 'fine.*pitch.*led',
+                    'micro.*led', 'cob.*led']):
+        return {'primary_category': 'Displays', 'sub_category': 'Direct-View LED', 'needs_review': False}
+    
+    if matches_any(['video wall(?!.*processor|.*mount)', 'videowall display', 'video.*wall.*display',
+                    'multi.*display.*wall', 'lcd.*wall']):
+        return {'primary_category': 'Displays', 'sub_category': 'Video Wall Display', 'needs_review': False}
+    
+    if matches_any(['interactive display', 'touch display(?!.*controller)', 'smart board', 
+                    'interactive.*monitor', r'ifp\d+', r'rp\d{4}', 'touch.*screen.*display',
+                    'interactive.*flat.*panel', 'interactive.*whiteboard(?!.*teams)']):
+        return {'primary_category': 'Displays', 'sub_category': 'Interactive Display', 'needs_review': False}
+    
+    if matches_any(['projector', 'dlp(?!.*cable)', '3lcd', 'laser projector', r'eb-l\d+',
+                    r'vpl-\w+', r'ls\d{3}', 'short.*throw.*projector', 'ultra.*short.*throw']):
+        return {'primary_category': 'Displays', 'sub_category': 'Projector', 'needs_review': False}
+    
+    if matches_any(['display(?!.*mount|.*port.*cable)', 'monitor(?!.*mount|.*arm)', 'signage',
+                    'bravia', 'commercial monitor', 'professional display', 'lfd', 
+                    r'\b(qb|qm|uh|fw-)\d{2}\b', r'me\d{2}\b', 'digital signage', 'flat.*panel',
+                    r'\d{2}["\'].*display', r'\d{2}["\'].*monitor', 'lcd.*display', 'led.*display(?!.*wall)']):
+        return {'primary_category': 'Displays', 'sub_category': 'Professional Display', 'needs_review': False}
 
-        # 6. Cables & Connectivity
-        ('Cables & Connectivity', 'Cable Retractor / Management', ['retractor', 'cable caddy', 'cable ring', 'cable organizer', 'cable bag']),
-        ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'aoc', 'vga cable', 'audio cable', 'displayport cable', 'bnc cable', 'dvi cable', 'sdi cable']),
-        ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cord', 'ethernet cable', 'rj45 cable']),
-        ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk cable', 'spool', 'reel', r'1000ft', r'305m', 'speaker wire', 'coax.*cable']),
-        ('Cables & Connectivity', 'Connectors, Adapters & Dongles', ['adapter', 'connector', 'dongle', 'gender changer', 'terminator', 'coupler', 'adapter ring', 'capture dongle', 'usb capture']),
-        ('Cables & Connectivity', 'Fiber Optic', ['fiber optic', 'sfp', 'lc-lc', 'om4', 'singlemode']),
+    # PRIORITY 5: Signal Management
+    if matches_any(['matrix', 'video.*switcher', 'av.*switcher', 'presentation.*switcher',
+                    'dmps', 'crosspoint', r'vm\d{4}', r'vs\d{3}(?!a)', 'dxp hd', 'seamless.*switcher',
+                    r'\d+x\d+.*matrix', 'hdmi.*matrix']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Matrix Switcher', 'needs_review': False}
+    
+    if matches_any(['extender(?!.*cable)', 'transmitter(?!.*wireless.*mic)', 'receiver(?!.*wireless.*mic)',
+                    'hdbaset', r'tx/rx\b', r'hd-tx\d*', r'hd-rx\d*', 'dphd', 'tps-tx', 'tps-rx',
+                    'dtp(?!.*cable)', r'tp-\d+r', 'balun', r'\d+m.*extender']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Extender (TX/RX)', 'needs_review': False}
+    
+    if matches_any(['video wall processor', 'multi screen controller', 'video.*wall.*controller',
+                    'display.*wall.*processor']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Video Wall Processor', 'needs_review': False}
+    
+    if matches_any(['brightsign', 'media player', 'digital signage player', 'content.*player']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Digital Signage Player', 'needs_review': False}
+    
+    if matches_any(['scaler', 'converter(?!.*fiber)', 'scan converter', r'dsc \d+', 'signal processor',
+                    'edid', 'embedder', 'de-embedder', 'annotation processor', 'video capture',
+                    'format.*converter', 'resolution.*converter', 'hdmi.*scaler']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Scaler / Converter / Processor', 'needs_review': False}
+    
+    if matches_any(['distribution amplifier', r'da\dhd', r'hd-da\d+', 'hdmi splitter', r'vs\d{3}a',
+                    'signal.*splitter', r'1x\d+.*splitter', 'video.*splitter']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'Distribution Amplifier / Splitter', 'needs_review': False}
+    
+    if matches_any(['av over ip', 'dm nvx', 'encoder(?!.*audio)', 'decoder', r'nav e \d+',
+                    r'nav sd \d+', 'network.*video', 'streaming.*encoder', 'sdi.*encoder']):
+        return {'primary_category': 'Signal Management', 'sub_category': 'AV over IP (Encoder/Decoder)', 'needs_review': False}
 
-        # 7. Video Conferencing
-        ('Video Conferencing', 'Collaboration Display', ['meetingboard', 'collaboration display', 'deskvision', 'surface hub', 'dten d7', r'mb\d{2}-', 'smart collaboration whiteboard', 'all-in-one smart whiteboard', 'neat board']),
-        ('Video Conferencing', 'Video Bar', ['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio', 'meetup', 'all-in-one.*video', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam', 'meetingbar', 'neat bar', 'panacast 50']),
-        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec(?!.*cable)', r'mvc\d+', 'mcorekit', 'teams rooms system', 'vc system', 'video conferencing system', r'mvcs\d+', 'g7500', 'thinksmart core', 'uc-engine', r'cs-kit\w+']),
-        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera', 'precision 60', 'huddly', r'iv-cam-\w+', r'nc-12x80', r'nc-20x60']),
-        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c9\d{2}', 'personal video', 'usb camera', 'poly studio p15']),
-        ('Video Conferencing', 'Touch Controller / Panel', ['touch controller', 'touch panel', 'tap ip', r'tc\d+\b', r'ctp\d+\b', 'collaboration touch', 'mtouch', 'gc8', 'neat pad', 'touch 10']),
-        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'scheduling panel', 'room panel', r'tss-\d+', 'tap scheduler']),
-        ('Video Conferencing', 'VC Phone', ['trio c60', r'mp\d{2}', 'team phone']),
+    # PRIORITY 6: Control Systems
+    if matches_any(['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx',
+                    'ipcp pro', r'nx-\d+', 'automation.*processor', 'av.*control.*processor']):
+        return {'primary_category': 'Control Systems', 'sub_category': 'Control Processor', 'needs_review': False}
+    
+    if matches_any(['touch panel(?!.*collaboration|.*conferenc)', 'touch screen(?!.*display)',
+                    'modero', r'tsw-\d+', r'tst-\d+', r'\d+["\'].*touch.*panel',
+                    'control.*touch.*screen']):
+        return {'primary_category': 'Control Systems', 'sub_category': 'Touch Panel', 'needs_review': False}
+    
+    if matches_any(['keypad', r'c2n-\w+', r'hz-kp\w+', 'ebus button panel', 'button.*panel',
+                    'wall.*keypad', 'control.*keypad']):
+        return {'primary_category': 'Control Systems', 'sub_category': 'Keypad', 'needs_review': False}
+    
+    if matches_any(['interface(?!.*audio)', 'gateway', r'exb-io\d', r'cen-io', r'inet-ioex',
+                    'relay.*module', 'io.*module', 'control.*interface']):
+        return {'primary_category': 'Control Systems', 'sub_category': 'I/O Interface / Gateway', 'needs_review': False}
+    
+    if matches_any(['sensor(?!.*mic)', 'occupancy', 'daylight', 'gls-', 'motion.*sensor',
+                    'presence.*detect', 'ambient.*light.*sensor']):
+        return {'primary_category': 'Control Systems', 'sub_category': 'Sensor', 'needs_review': False}
 
-        # 8. Audio
-        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b', r'tcm-x\b', 'ceiling.*microphone']),
-        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', r'mxa3\d\d', 'rally mic pod', 'ip table microphone', r'vcm35', 'table array', r'cs-mic-table']),
-        ('Audio', 'Wireless Microphone System', ['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter', 'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd', 'mxwapt', 'blx\d+']),
-        ('Audio', 'Gooseneck Microphone', ['gooseneck', r'meg \d+']),
-        ('Audio', 'Headset / Wearable Mic', ['headset', 'earset', 'zone wireless', 'h\d{3}e', 'lavalier(?!.*system)', 'headworn']),
-        ('Audio', 'Speakerphone', ['speakerphone', 'poly sync', 'speak \d+', 'mobile speakerphone']),
-        ('Audio', 'DSP / Audio Processor / Mixer', ['dsp', 'digital signal processor', 'audio processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'intellimix', 'audio conferencing processor', 'dmp \d+', 'bss blu', 'avhub', 'audio mixer', 'studiomaster mixer']),
-        ('Audio', 'Amplifier', ['amplifier', r'\bamp-\b', r'revamp\d+', 'poweramp', r'\d+\s*x\s*\d+w', 'power amplifier', 'netpa', r'xpa \d+', r'ma\d{4}']),
-        ('Audio', 'Loudspeaker / Speaker', ['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 'pendant speaker', 'in-ceiling speaker', 'ceiling speaker', 'surface mount speaker', r'ad-c\d+', r'ad-s\d+', 'saros', 'control \d+c', r'\bms speaker\b']),
-        ('Audio', 'Audio Interface / Extender', ['dante interface', 'audio.*extender', 'audio interface', 'axi \d+', 'usb.*audio.*bridge']),
-        ('Audio', 'Intercom System', ['intercom', 'freespeak']),
-        ('Audio', 'RF & Antenna', ['antenna', 'combiner', 'splitter(?!.*hdmi)', r'ua\d+']),
-        ('Audio', 'Charging Station', ['charging station', r'mxwncs\d', r'chg\d\w+']),
-        
-        # 9. Displays
-        ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'direct.*view.*led', 'absen']),
-        ('Displays', 'Video Wall Display', ['video wall(?!.*mount)', 'videowall display']),
-        ('Displays', 'Interactive Display', ['interactive display', 'touch display', 'smart board', 'interactive.*monitor', 'ifp\d+', r'rp\d{4}']),
-        ('Displays', 'Professional Display', ['display(?!.*mount)', 'monitor(?!.*mount)', 'signage', 'bravia', 'commercial monitor', 'professional display', 'lfd', r'\b(qb|qm|uh|fw-)\d{2}\b', r'me\d{2}\b']),
-        ('Displays', 'Projector', ['projector', 'dlp', '3lcd', 'laser projector', r'eb-l\d+', r'vpl-\w+', r'ls\d{3}']),
-        
-        # 10. Signal Management
-        ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'presentations.*switcher', 'dmps', 'crosspoint', r'vm\d{4}', r'vs\d{3}', 'dxp hd']),
-        ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', r'hd-tx\d*', r'hd-rx\d*', 'dphd', 'tps-tx', 'tps-rx', 'dtp', 'tp-\d+r']),
-        ('Signal Management', 'Video Wall Processor', ['video wall processor', 'multi screen controller']),
-        ('Signal Management', 'Digital Signage Player', ['brightsign', 'media player']),
-        ('Signal Management', 'Scaler / Converter / Processor', ['scaler', 'converter', 'scan converter', r'dsc \d+', 'signal processor', 'edid', 'embedder', 'de-embedder', 'annotation processor', 'video capture']),
-        ('Signal Management', 'Distribution Amplifier / Splitter', ['distribution amplifier', r'da\dhd', r'hd-da\d+', 'hdmi splitter', 'vs\d{3}a']),
-        ('Signal Management', 'AV over IP (Encoder/Decoder)', ['av over ip', 'dm nvx', 'encoder', 'decoder', 'nav e \d+', 'nav sd \d+']),
-        
-        # 11. Control Systems
-        ('Control Systems', 'Control Processor', ['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx', 'ipcp pro', r'nx-\d+']),
-        ('Control Systems', 'Touch Panel', ['touch panel(?!.*collaboration)', 'touch screen(?!.*display)', 'modero', r'tsw-\d+', r'tst-\d+']),
-        ('Control Systems', 'Keypad', ['keypad', r'c2n-\w+', r'hz-kp\w+', 'ebus button panel']),
-        ('Control Systems', 'I/O Interface / Gateway', ['interface', 'gateway', r'exb-io\d', r'cen-io', r'inet-ioex']),
-        ('Control Systems', 'Sensor', ['sensor', 'occupancy', 'daylight', 'gls-']),
+    # PRIORITY 7: Infrastructure
+    if matches_any(['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby',
+                    'tbus', 'hydraport', 'fliptop', 'mud ring', 'floor.*box', 'connectivity.*box',
+                    'table.*box', 'grommet']):
+        return {'primary_category': 'Infrastructure', 'sub_category': 'Architectural / In-Wall', 'needs_review': False}
+    
+    if matches_any([r'\d+u.*rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter',
+                    'server.*rack', 'relay.*rack', 'cabinet.*rack']):
+        return {'primary_category': 'Infrastructure', 'sub_category': 'AV Rack', 'needs_review': False}
+    
+    if matches_any(['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner',
+                    'power supply(?!.*camera)', 'poe injector', 'power pack', r'pw-\d+',
+                    r'qs-ps-', 'csa-pws', 'battery.*backup', 'surge.*protect', 'power.*inject']):
+        return {'primary_category': 'Infrastructure', 'sub_category': 'Power Management', 'needs_review': False}
 
-        # 12. Computers
-        ('Computers', 'Desktop / SFF PC', ['desktop', 'optiplex', 'mini conference pc', 'asus nuc']),
-        ('Computers', 'Tablet', ['ipad']),
-        ('Computers', 'OPS Module', [r'\bops\b', 'pc module']),
-        
-        # 13. Lighting
-        ('Lighting', 'Lighting Control', ['dali', 'lutron', 'qsne', 'dimmer module']),
-    ]
+    # PRIORITY 8: Mounts
+    if matches_any(['projector mount', 'projector ceiling mount', 'ceiling.*mount.*projector']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Projector Mount', 'needs_review': False}
+    
+    if matches_any(['camera mount(?!.*projector)', 'cam-mount', 'camera bracket', 'wall.*mount.*camera',
+                    'ceiling.*mount.*camera', 'camera.*mounting']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Camera Mount', 'needs_review': False}
+    
+    if matches_any(['speaker mount(?!.*display)', 'mic mount', 'microphone suspension',
+                    'pendant mount(?!.*speaker)', 'wall.*mount.*speaker', 'ceiling.*mount.*speaker']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Speaker/Mic Mount', 'needs_review': False}
+    
+    if matches_any(['rack shelf', 'rackmount kit', 'component storage', 'mounting shelf',
+                    'mounting kit(?!.*display|.*tv|.*camera)', 'shelf.*bracket', 'equipment.*shelf']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Component / Rack Mount', 'needs_review': False}
+    
+    if matches_any(['tv mount', 'display mount', 'wall mount(?!.*camera|.*speaker)', 'trolley',
+                    'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount',
+                    'ceiling mount(?!.*mic|.*speak|.*proj|.*camera)', r'bt\d+', r'lpa\d+',
+                    'steelcase.*mount', 'heckler.*cart', 'display.*cart', 'tv.*cart', 'mobile.*stand',
+                    'tilting.*mount', 'fixed.*mount', 'articulating.*mount']):
+        return {'primary_category': 'Mounts', 'sub_category': 'Display Mount / Cart', 'needs_review': False}
 
-    for primary, sub, patterns in category_rules:
-        if any(re.search(pattern, text_to_search, re.IGNORECASE) for pattern in patterns):
-            return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
+    # PRIORITY 9: Cables & Connectivity
+    if matches_any(['retractor', 'cable caddy', 'cable ring', 'cable organizer', 'cable bag',
+                    'cable.*management', 'cable.*wrap']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Cable Retractor / Management', 'needs_review': False}
+    
+    if matches_any(['bulk cable', 'spool', 'reel', r'1000ft', r'305m', 'speaker wire', r'coax.*cable',
+                    r'\d+m.*cable.*spool', 'roll.*cable']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Bulk Cable / Wire', 'needs_review': False}
+    
+    if matches_any(['fiber optic', 'sfp', 'lc-lc', 'om4', 'singlemode', 'multimode.*fiber',
+                    'optical.*cable', 'fiber.*patch']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Fiber Optic', 'needs_review': False}
+    
+    if matches_any(['adapter(?!.*power)', 'connector(?!.*power)', 'dongle', 'gender changer',
+                    'terminator', 'coupler', 'adapter ring', 'capture dongle', 'usb capture',
+                    'hdmi.*adapter', 'usb.*adapter', 'converter.*cable']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Connectors, Adapters & Dongles', 'needs_review': False}
+    
+    if matches_any(['cable(?!.*caddy|.*organ|.*retract)', 'cord', 'lead', 'patch', r'\d+ft', r'\d+m\b',
+                    'hdmi', 'usb-c', 'displayport', 'vga', 'audio.*cable', 'video.*cable',
+                    'power.*cord', 'iec.*cable', 'xlr.*cable', 'trs.*cable', 'cat\d',
+                    'ethernet', 'network.*cable']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'AV Cable', 'needs_review': False}
 
-    # Final fallback
+    # PRIORITY 10: Lighting
+    if matches_any(['lighting control', 'dimmer', 'lutron', 'dali', 'qsne', 'light.*sensor',
+                    'dmx', 'architectural.*lighting']):
+        return {'primary_category': 'Lighting', 'sub_category': 'Lighting Control', 'needs_review': False}
+
+    # PRIORITY 11: Networking
+    if matches_any(['switch(?!.*video|.*matrix)', 'network switch', 'managed switch', 'poe.*switch',
+                    r'sg\d{3}', 'cisco.*switch', 'netgear.*switch', 'ethernet.*switch']):
+        return {'primary_category': 'Networking', 'sub_category': 'Network Switch', 'needs_review': False}
+    
+    if matches_any(['router', 'wireless.*access.*point', r'\bwap\b', 'wifi.*access',
+                    'access point', 'mesh.*network']):
+        return {'primary_category': 'Networking', 'sub_category': 'Router / Access Point', 'needs_review': False}
+
+    # PRIORITY 12: Computers
+    if matches_any(['desktop', 'optiplex', 'mini conference pc', 'compute stick', 'nuc',
+                    'workstation', 'pc(?!.*module)', 'computer(?!.*mount)']):
+        return {'primary_category': 'Computers', 'sub_category': 'Desktop / SFF PC', 'needs_review': False}
+    
+    if matches_any(['ipad', 'tablet', 'surface pro', 'galaxy tab']):
+        return {'primary_category': 'Computers', 'sub_category': 'Tablet', 'needs_review': False}
+    
+    if matches_any([r'\bops\b', 'pc module', 'slot.*pc', 'compute module']):
+        return {'primary_category': 'Computers', 'sub_category': 'OPS Module', 'needs_review': False}
+
+    # PRIORITY 13: Furniture
+    if matches_any(['podium', 'lectern', 'presentation.*furniture']):
+        return {'primary_category': 'Furniture', 'sub_category': 'Podium / Lectern', 'needs_review': False}
+    
+    if matches_any(['credenza', 'logic pod', 'av.*furniture', 'media.*cabinet']):
+        return {'primary_category': 'Furniture', 'sub_category': 'AV Credenza / Stand', 'needs_review': False}
+
+    # FALLBACK: If nothing matches
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
 
 
