@@ -7,24 +7,24 @@ ROOM_SPECS = {
         'capacity': (2, 3),
         'primary_use': 'Ad-hoc collaboration, quick calls',
         'typical_dims_ft': (12, 10),
-        'displays': {  # CORRECTED: No list
+        'displays': {
             'quantity': 1,
             'type': 'Commercial 4K Display'
         },
-        'audio_system': {  # CORRECTED: No list
+        'audio_system': {
             'type': 'Integrated in Video Bar',
             'dsp_required': False,
             'microphone_count': 0,
             'speaker_count': 0
         },
-        'video_system': {  # CORRECTED: No list
+        'video_system': {
             'type': 'All-in-one Video Bar',
             'camera_type': 'ePTZ 4K'
         },
-        'control_system': {  # CORRECTED: No list
+        'control_system': {
             'type': 'Touch Controller'
         },
-        'housing': {  # CORRECTED: No list
+        'housing': {
             'type': 'Wall Mount Solution'
         }
     },
