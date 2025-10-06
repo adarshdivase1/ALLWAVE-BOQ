@@ -35,11 +35,12 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     """ -- REWRITTEN FOR PROFILE-DRIVEN LOGIC & ECOSYSTEM AWARENESS -- """
     preferred_ecosystem = equipment_reqs.get('preferred_ecosystem', '').lower()
 
+    # --- BUG FIX: Define sorted_components here in the outer scope ---
+    sorted_components = sorted(required_components.items(), key=lambda x: (x[1].get('category', ''), x[0]))
+
     def format_product_list():
         product_text = ""
-        # Sort by category then by component key for consistent ordering
-        sorted_components = sorted(required_components.items(), key=lambda x: (x[1].get('category', ''), x[0]))
-
+        # The variable is now accessed from the outer scope, not defined here.
         for comp_key, comp_spec in sorted_components:
             justification = comp_spec.get('justification', f"Core component for a {room_type}.")
             product_text += f"\n## {comp_key.replace('_', ' ').upper()} (Requirement: {justification})\n"
@@ -99,6 +100,7 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
     For each key, provide the EXACT "name" and "model_number" from the options provided.
     """
     json_format_instruction = "\n# REQUIRED JSON OUTPUT FORMAT\n{\n"
+    # This loop can now access sorted_components correctly.
     for i, (comp_key, comp_spec) in enumerate(sorted_components):
         comma = "," if i < len(sorted_components) - 1 else ""
         json_format_instruction += f'  "{comp_key}": {{"name": "EXACT product name from list", "model_number": "EXACT model number from list", "qty": {comp_spec.get("quantity", 1)}}}{comma}\n'
