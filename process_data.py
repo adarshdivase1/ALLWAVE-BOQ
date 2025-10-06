@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 DATA_FOLDER = 'data'
 OUTPUT_FILENAME = 'master_product_catalog.csv'
 VALIDATION_REPORT = 'data_quality_report_final.txt'
-HEADER_KEYWORDS = ['description', 'model', 'part', 'price', 'sku', 'item', 'mrp']
+HEADER_KEYWORDS = ['description', 'model', 'part', 'price', 'sku', 'item', 'mrp', 'buy price', 'inr', 'usd']
 DEFAULT_GST_RATE = 18
 FALLBACK_INR_TO_USD = 83.5
 
@@ -23,7 +23,7 @@ MAX_PRICE_USD = 75000
 MIN_PRICE_USD = 1.0
 REJECTION_SCORE_THRESHOLD = 40
 
-# --- HELPER FUNCTIONS (No changes needed here) ---
+# --- HELPER FUNCTIONS ---
 
 def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> int:
     encodings_to_try = ['utf-8', 'latin1', 'cp1252']
@@ -41,6 +41,9 @@ def find_header_row(file_path: str, keywords: List[str], max_rows: int = 20) -> 
 def clean_price(price_str: Any) -> float:
     if pd.isna(price_str): return 0.0
     price_str = str(price_str).strip()
+    # Remove currency symbols and commas
+    price_str = re.sub(r'[₹$,]', '', price_str)
+    # Remove any non-digit/non-decimal characters
     price_str = re.sub(r'[^\d.]', '', price_str)
     if not price_str: return 0.0
     try:
@@ -106,14 +109,14 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure']: return 7
     return 14
 
-# --- CATEGORIZATION ENGINE (ENHANCED) ---
+# --- ENHANCED CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
     
     # Accessory detection (keep this first)
     accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 
-                          'chassis', 'faceplate', 'pendant', 'cable', 'cord', 'wire']
+                          'chassis', 'faceplate', 'pendant']
     is_likely_accessory = any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords)
 
     # Priority-ordered categorization rules (more specific first)
@@ -121,24 +124,27 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         # VIDEO CONFERENCING - Most specific patterns first
         ('Video Conferencing', 'Collaboration Display', [
             'meetingboard', 'collaboration display', 'dten', 'surface hub', 
-            'interactive display', 'touch display.*collaboration', 'smart.*whiteboard'
+            'meeting.*board', 'interactive.*whiteboard', 'smart.*whiteboard',
+            r'\bmb\d{2}-', 'deskvision'
         ]),
         
         ('Video Conferencing', 'Video Bar', [
             'video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio',
-            'meetup', 'all-in-one.*video', 'aio.*video', r'\ba\d{2}-\d{3}\b', # Yealink A-series
-            'uvc\d{2}', 'smartvision', 'intelligent.*usb.*video'
+            'meetup', 'all-in-one.*video', 'aio.*video', r'\ba\d{2}-\d{3}\b',
+            r'\ba\d{2}\b', 'uvc\d{2}', 'smartvision', 'intelligent.*usb.*video',
+            'all-in-one.*collaboration', 'conferencing camera'
         ]),
         
         ('Video Conferencing', 'Room Kit / Codec', [
-            'room kit', 'codec', 'mvc\d+', 'mcore', 'mini-pc', 'teams rooms system',
+            'room kit', 'codec', r'mvc\d+', 'mcore', 'mini-pc', 'teams rooms system',
             'vc system', 'video conferencing system', 'mtouch', 'base bundle',
-            r'\bmvc[s]?\d+\b', 'avhub', 'audio.*video processor'
+            r'\bmvcs?\d+\b', 'avhub', 'audio.*video processor', 'mcorekit'
         ]),
         
         ('Video Conferencing', 'PTZ Camera', [
             'ptz camera', 'pan.*tilt.*zoom', 'optical zoom camera', 'tracking camera',
-            'uvc8[46]', r'\d+x.*optical.*zoom', 'dual-eye tracking', 'auto.*framing'
+            'uvc8[46]', r'\d+x.*optical.*zoom', 'dual-eye tracking', 'auto.*framing',
+            r'\bmb-camera'
         ]),
         
         ('Video Conferencing', 'Webcam / Personal Camera', [
@@ -146,36 +152,50 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ]),
         
         ('Video Conferencing', 'Touch Controller', [
-            'touch controller', 'touch panel', 'tap ip', 'tc\d+', 'ctp\d+',
-            'collaboration touch', 'control panel', 'android.*touch'
+            'touch controller', 'touch panel', 'tap ip', r'\btc\d+\b', r'\bctp\d+\b',
+            'collaboration touch', 'control panel', 'android.*touch', 'mtouch'
         ]),
         
         ('Video Conferencing', 'Scheduling Panel', [
             'scheduler', 'room booking', 'scheduling panel', 'room panel',
-            'tss-', 'meeting room.*panel', 'room schduling'
+            'tss-', 'meeting room.*panel', 'room schduling', 'roompanel'
         ]),
         
         ('Video Conferencing', 'Wireless Presentation', [
             'clickshare', 'airtame', 'via connect', 'wpp\d+', 'wireless presentation',
             'screen sharing', 'presentation pod', 'room cast', 'byod.*extender',
-            'mshare', 'sharing box', 'vch\d+'
+            'mshare', 'sharing box', 'vch\d+', 'byod-extender'
+        ]),
+        
+        ('Video Conferencing', 'VC Accessory', [
+            'tv mount.*kit', 'floorstand.*meeting', r'\bmb-floorstand'
         ]),
         
         # AUDIO - More specific patterns
         ('Audio', 'Ceiling Microphone', [
-            'ceiling mic', 'mxa9[012]0', 'tcc2', 'vcm\d+', 'cm\d+',
+            'ceiling mic', 'mxa9[012]0', 'tcc2', r'\bvcm\d+\b', r'\bcm\d+\b',
             r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))', 
             'ceiling.*microphone.*array', 'ceiling.*mic.*array'
         ]),
         
         ('Audio', 'Table Microphone', [
-            'table mic', 'boundary mic', 'conference phone', 'speakerphone',
-            'tabletop.*mic', 'desktop.*mic', 'vcm\d+.*wireless', 'ms speaker'
+            'table mic', 'boundary mic', 'conference phone', 'tabletop.*mic', 
+            'desktop.*mic', 'wired.*microphone.*array', 'vcm35'
+        ]),
+        
+        ('Audio', 'Wireless Microphone System', [
+            'wireless mic', 'wireless.*microphone', 'vcm\d+.*w\b', 'handheld.*mic',
+            'lapel.*mic', 'lavalier'
+        ]),
+        
+        ('Audio', 'Team Phone', [
+            'team phone', 'conference phone', 'speakerphone', r'\bmp\d{2}\b',
+            'common area.*phone', 'executive.*phone'
         ]),
         
         ('Audio', 'Ceiling Speaker', [
-            'ceiling speaker', 'in-ceiling', 'coaxial.*ceiling', 'cs\d+.*ceiling',
-            'skysound', 'network.*ceiling.*speaker'
+            'ceiling speaker', 'in-ceiling', 'coaxial.*ceiling', r'\bcs\d+\b',
+            'skysound', 'network.*ceiling.*speaker', 'celling speaker'
         ]),
         
         ('Audio', 'DSP / Processor', [
@@ -188,12 +208,12 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ]),
         
         ('Audio', 'Loudspeaker', [
-            'speaker', 'soundbar', 'loudspeaker', 'pendant speaker',
-            '(?!ceiling).*speaker(?!phone)'
+            'speaker(?!.*phone)', 'soundbar', 'loudspeaker', 'pendant speaker',
+            r'\bms speaker\b'
         ]),
         
         ('Audio', 'Audio Kit', [
-            'cmkit', 'audio.*kit', 'microphone.*speaker.*kit'
+            'cmkit', 'audio.*kit', 'microphone.*speaker.*kit', 'cm20.*cs10'
         ]),
         
         # DISPLAYS
@@ -203,8 +223,9 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ]),
         
         ('Displays', 'Professional Display', [
-            'display(?!.*mount)', 'monitor(?!.*mount)', 'signage', 'bravia', 
-            'commercial monitor', 'professional.*display', 'flat panel'
+            'display(?!.*mount|.*collaboration)', 'monitor(?!.*mount)', 'signage', 
+            'bravia', 'commercial monitor', 'professional.*display', 'flat panel',
+            'led.*display', 'lcd.*display'
         ]),
         
         ('Displays', 'Video Wall Display', [
@@ -222,7 +243,8 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         # MOUNTS (check after identifying core products)
         ('Mounts', 'Display Mount / Cart', [
             'tv mount', 'display mount', 'wall mount', 'trolley', 'cart', 
-            'floor stand', 'fusion', 'chief', 'vcs-tvmount', 'floorstand'
+            'floor stand', 'fusion', 'chief', 'vcs-tvmount', 'floorstand',
+            r'\bmb-floorstand'
         ]),
         
         ('Mounts', 'Camera Mount', [
@@ -235,8 +257,8 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         
         # INFRASTRUCTURE
         ('Infrastructure', 'Network Switch', [
-            'switch', 'poe switch', 'managed.*switch', 'rch\d+', 'ethernet switch',
-            r'\d+-port.*switch'
+            'switch', 'poe switch', 'managed.*switch', r'\brch\d+\b', 'ethernet switch',
+            r'\d+-port.*switch', 'poe\+.*switch'
         ]),
         
         ('Infrastructure', 'AV Rack', [
@@ -249,11 +271,11 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         
         # SIGNAL MANAGEMENT
         ('Signal Management', 'Matrix Switcher', [
-            'matrix', 'switcher(?!.*network|.*poe)', 'video.*switcher'
+            'matrix', 'switcher(?!.*network|.*poe|.*switch)', 'video.*switcher'
         ]),
         
         ('Signal Management', 'Extender (TX/RX)', [
-            'extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', 'usb.*extender'
+            'extender(?!.*byod)', 'transmitter', 'receiver', 'hdbaset', 'tx/rx'
         ]),
         
         # CABLES & CONNECTIVITY
@@ -293,7 +315,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         
         # Check if any pattern matches
         for pattern in patterns:
-            if re.search(r'\b' + pattern + r'\b', text_to_search, re.IGNORECASE):
+            if re.search(pattern, text_to_search, re.IGNORECASE):
                 return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
 
     # If nothing matched, flag for review
@@ -306,18 +328,24 @@ def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
     score = 100
     issues = []
     if len(product.get('description', '')) < MIN_DESCRIPTION_LENGTH:
-        score -= 20; issues.append(f"Description too short")
+        score -= 20
+        issues.append(f"Description too short")
     price = product.get('price_usd', 0)
     if price < MIN_PRICE_USD:
-        score -= 50; issues.append(f"Price is zero or too low")
+        score -= 50
+        issues.append(f"Price is zero or too low")
     elif price > MAX_PRICE_USD:
-        score -= 10; issues.append(f"Price unusually high")
+        score -= 10
+        issues.append(f"Price unusually high")
     if not product.get('name'):
-        score -= 40; issues.append("Missing generated product name")
+        score -= 40
+        issues.append("Missing generated product name")
     if not product.get('model_number'):
-        score -= 20; issues.append("Missing model number")
+        score -= 20
+        issues.append("Missing model number")
     if product.get('needs_review', False):
-        score -= 25; issues.append("Category could not be classified")
+        score -= 25
+        issues.append("Category could not be classified")
     return max(0, score), issues
 
 
@@ -329,7 +357,8 @@ def main():
     stats = {'files_processed': 0, 'products_found': 0, 'products_valid': 0, 'products_flagged': 0, 'products_rejected': 0}
 
     if not os.path.exists(DATA_FOLDER):
-        print(f"Error: The '{DATA_FOLDER}' directory was not found."); return
+        print(f"Error: The '{DATA_FOLDER}' directory was not found.")
+        return
 
     csv_files = [f for f in os.listdir(DATA_FOLDER) if f.lower().endswith('.csv')]
     print(f"Starting BOQ dataset generation...\nFound {len(csv_files)} CSV files to process.\n")
@@ -345,53 +374,84 @@ def main():
             df.dropna(how='all', inplace=True)
             df.columns = [str(col).lower().strip() for col in df.columns]
 
+            # Find columns
             model_col = next((c for c in df.columns if any(k in c for k in ['model no', 'part no', 'sku', 'model'])), None)
             desc_col = next((c for c in df.columns if any(k in c for k in ['description', 'desc', 'product name'])), None)
-            inr_price_col = next((c for c in df.columns if any(k in c for k in ['inr', 'mrp', 'buy price'])), None)
+            
+            # Look for both INR and USD price columns
+            inr_price_col = next((c for c in df.columns if any(k in c for k in ['inr', 'buy price', 'mrp']) and 'usd' not in c), None)
             usd_price_col = next((c for c in df.columns if 'usd' in c), None)
 
             if not model_col or not desc_col:
-                print(f"  Warning: Could not map required Model/Description columns. Skipping."); continue
+                print(f"  Warning: Could not map required Model/Description columns. Skipping.")
+                continue
+            
             stats['files_processed'] += 1
 
             for _, row in df.iterrows():
                 stats['products_found'] += 1
-                raw_model = row.get(model_col, '');
-                if pd.isna(raw_model) or not str(raw_model).strip(): continue
+                raw_model = row.get(model_col, '')
+                if pd.isna(raw_model) or not str(raw_model).strip():
+                    continue
 
                 model_clean = clean_model_number(raw_model)
                 raw_description = str(row.get(desc_col, '')).strip()
                 clean_desc = create_clean_description(raw_description, file_brand)
                 categories = categorize_product_comprehensively(raw_description, model_clean)
-                price_inr = clean_price(row.get(inr_price_col, 0))
-                price_usd = clean_price(row.get(usd_price_col, 0))
-                final_price_usd = price_usd if price_usd > 0 else (price_inr / FALLBACK_INR_TO_USD)
+                
+                # Get both prices
+                price_inr = clean_price(row.get(inr_price_col, 0)) if inr_price_col else 0
+                price_usd = clean_price(row.get(usd_price_col, 0)) if usd_price_col else 0
+                
+                # Determine final USD price
+                if price_usd > 0:
+                    final_price_usd = price_usd
+                elif price_inr > 0:
+                    final_price_usd = price_inr / FALLBACK_INR_TO_USD
+                else:
+                    final_price_usd = 0
 
                 product = {
-                    'brand': file_brand, 'name': generate_product_name(file_brand, model_clean, clean_desc),
-                    'model_number': model_clean, 'primary_category': categories['primary_category'],
-                    'sub_category': categories['sub_category'], 'price_usd': round(final_price_usd, 2),
-                    'warranty': extract_warranty(raw_description), 'description': clean_desc,
-                    'full_specifications': raw_description, 'unit_of_measure': infer_unit_of_measure(raw_description, categories['primary_category']),
-                    'min_order_quantity': 1, 'lead_time_days': estimate_lead_time(categories['primary_category'], categories['sub_category']),
-                    'gst_rate': DEFAULT_GST_RATE, 'image_url': '', 'needs_review': categories['needs_review'], 'source_file': filename,
+                    'brand': file_brand,
+                    'name': generate_product_name(file_brand, model_clean, clean_desc),
+                    'model_number': model_clean,
+                    'primary_category': categories['primary_category'],
+                    'sub_category': categories['sub_category'],
+                    'price_inr': round(price_inr, 2),
+                    'price_usd': round(final_price_usd, 2),
+                    'warranty': extract_warranty(raw_description),
+                    'description': clean_desc,
+                    'full_specifications': raw_description,
+                    'unit_of_measure': infer_unit_of_measure(raw_description, categories['primary_category']),
+                    'min_order_quantity': 1,
+                    'lead_time_days': estimate_lead_time(categories['primary_category'], categories['sub_category']),
+                    'gst_rate': DEFAULT_GST_RATE,
+                    'image_url': '',
+                    'needs_review': categories['needs_review'],
+                    'source_file': filename,
                 }
+                
                 score, issues = score_product_quality(product)
                 product['data_quality_score'] = score
 
                 if score < REJECTION_SCORE_THRESHOLD:
-                    stats['products_rejected'] += 1; continue
+                    stats['products_rejected'] += 1
+                    continue
+                
                 if issues:
                     stats['products_flagged'] += 1
                     validation_log.append({'product': product['name'], 'score': score, 'issues': ', '.join(issues)})
                 else:
                     stats['products_valid'] += 1
+                
                 all_products.append(product)
+                
         except Exception as e:
             print(f"  Error processing {filename}: {e}")
 
     if not all_products:
-        print("\nNo valid products could be processed. Exiting."); return
+        print("\nNo valid products could be processed. Exiting.")
+        return
 
     final_df = pd.DataFrame(all_products)
     initial_rows = len(final_df)
@@ -404,12 +464,12 @@ def main():
     print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {final_rows}")
     print(f"  - Valid (Score 100): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
-    # --- THIS IS THE FIX ---
     print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
     print(f"Duplicates Removed: {initial_rows - final_rows}")
     print(f"\nTop 10 Category Distribution:")
     category_counts = final_df['primary_category'].value_counts()
-    for cat, count in category_counts.head(10).items(): print(f"  - {cat:<25}: {count} products")
+    for cat, count in category_counts.head(10).items():
+        print(f"  - {cat:<25}: {count} products")
 
     final_df.to_csv(OUTPUT_FILENAME, index=False)
     print(f"\n✅ Created Master Catalog: '{OUTPUT_FILENAME}' with {final_rows} products")
@@ -421,6 +481,7 @@ def main():
             for entry in sorted(validation_log, key=lambda x: x['score']):
                 f.write(f"Product: {entry['product']}\nScore: {entry['score']}\nIssues: {entry['issues']}\n\n")
         print(f"ℹ️  Created Validation Report: '{VALIDATION_REPORT}'")
+    
     print(f"\n{'='*60}\nBOQ dataset generation complete!\n{'='*60}\n")
 
 if __name__ == "__main__":
