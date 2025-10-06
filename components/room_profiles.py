@@ -1,4 +1,5 @@
 # components/room_profiles.py
+# CORRECTED VERSION - Removed unnecessary lists around component dictionaries
 
 # This file is the single source of truth for all room specifications.
 ROOM_SPECS = {
@@ -31,7 +32,7 @@ ROOM_SPECS = {
             'type': 'Wall Mount Solution'
         }
     },
-    
+
     'Medium Huddle Room (4-6 People)': {
         'area_sqft': (150, 250),
         'capacity': (4, 6),
@@ -62,7 +63,7 @@ ROOM_SPECS = {
             'type': 'Wall Mount Solution'
         }
     },
-    
+
     'Standard Conference Room (6-8 People)': {
         'area_sqft': (250, 400),
         'capacity': (6, 8),
@@ -94,7 +95,7 @@ ROOM_SPECS = {
             'type': 'Wall Mount or Credenza'
         }
     },
-    
+
     'Large Conference Room (8-12 People)': {
         'area_sqft': (400, 600),
         'capacity': (8, 12),
@@ -130,7 +131,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Executive Boardroom (10-16 People)': {
         'area_sqft': (600, 800),
         'capacity': (10, 16),
@@ -169,7 +170,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Training Room (15-25 People)': {
         'area_sqft': (750, 1250),
         'capacity': (15, 25),
@@ -208,7 +209,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Large Training/Presentation Room (25-40 People)': {
         'area_sqft': (1250, 2000),
         'capacity': (25, 40),
@@ -247,7 +248,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Multipurpose Event Room (40+ People)': {
         'area_sqft': (2000, 4000),
         'capacity': (40, 100),
@@ -283,7 +284,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Video Production Studio': {
         'area_sqft': (500, 1500),
         'capacity': (3, 10),
@@ -323,7 +324,7 @@ ROOM_SPECS = {
             'type': 'Rackmount PDU'
         }
     },
-    
+
     'Telepresence Suite': {
         'area_sqft': (400, 800),
         'capacity': (6, 12),
