@@ -88,7 +88,8 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
 
     # === GLOBAL SERVICE CONTRACT FILTER ===
     if category not in ['Software & Services']:
-        service_pattern = r'\b(ess|con-snt|con-ecdn|smartcare|jumpstart|carepack|care pack|premier|advanced replacement|onsite|warranty|support contract|maintenance|extended service)\b'
+        # More specific pattern - avoid matching model numbers
+        service_pattern = r'\b(support.*contract|maintenance.*contract|extended.*service|con-snt|con-ecdn|smartcare.*contract|jumpstart.*service|carepack|care\s*pack|premier.*support|advanced.*replacement.*service)\b'
         matches = matches[~matches['name'].str.contains(service_pattern, case=False, na=False, regex=True)]
 
     if matches.empty:
@@ -116,38 +117,29 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
                 available_sizes.sort(key=lambda x: x[0])
                 matches = pd.DataFrame([available_sizes[0][1]])
 
-    # === ENHANCED MOUNT FILTERING ===
+    # Intelligent Mount Selection
     if category == 'Mounts' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
-        # CRITICAL: Remove ALL non-display mounts - ENHANCED PATTERN
-        matches = matches[~matches['name'].str.contains(
-            r'\b(X\d{2}|Rally|Studio|video\s*bar|soundbar|camera|tablet|Poly\s*X|Cisco\s*\w+\s*mount|Logitech\s*\w+\s*mount)\b',
-            case=False, na=False, regex=True
-        )]
+        # CRITICAL: Only get Display Mounts, exclude Camera Mounts
+        if 'sub_category' in equipment_reqs.get('displays', {}):
+            # If explicitly requesting display mount
+            matches = matches[matches['sub_category'] == 'Display Mount / Cart']
+        else:
+            # Filter by sub_category to exclude camera/projector mounts
+            matches = matches[matches['sub_category'].isin(['Display Mount / Cart', 'Component / Rack Mount'])]
         
-        # Double-check model numbers
-        matches = matches[~matches['model_number'].str.contains(
-            r'(X\d{2}|VB-|CAM-|RALLY-)',
-            case=False, na=False, regex=True
-        )]
+        # Additional blacklist for known problematic mounts
+        MOUNT_BLACKLIST = ['X70 VESA', 'X50 VESA', 'X30 VESA', 'Rally Mount', 'Studio Mount']
+        for blacklisted in MOUNT_BLACKLIST:
+            matches = matches[~matches['model_number'].str.contains(blacklisted, case=False, na=False)]
         
-        # For 90"+ displays, REQUIRE heavy-duty keywords
+        # For 90"+ displays, require heavy-duty keywords
         if req_size >= 90:
             matches = matches[matches['name'].str.contains(
                 r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format)',
                 case=False, na=False, regex=True
             )]
-            
-        # Additional safety: check for VESA + reasonable weight capacity
-        if not matches.empty:
-            # Prefer mounts with weight specs for large displays
-            heavy_matches = matches[matches['name'].str.contains(
-                r'(\d{2,3}\s*lbs|\d{2,3}\s*kg|heavy|commercial)',
-                case=False, na=False, regex=True
-            )]
-            if not heavy_matches.empty:
-                matches = heavy_matches
 
     # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
@@ -215,25 +207,28 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         if not pdu_matches.empty:
             matches = pdu_matches
 
-    # === STRICT AMPLIFIER FILTERING ===
+    # Amplifiers: Strict power amplifier selection
     if sub_category == 'Amplifier':
-        # PHASE 1: Exclude all non-power-amps
-        matches = matches[~matches['name'].str.contains(
-            r'\b(summing|distribution|line.*driver|active.*summing|quad.*active|audio.*summing|mixer|dsp)\b',
-            case=False, na=False, regex=True
-        )]
+        # PHASE 1: Exclude Audio Interface / Extender products
+        # These are often miscategorized summing amps
+        matches = matches[matches['sub_category'] != 'Audio Interface / Extender']
         
-        # PHASE 2: REQUIRE power amp indicators
+        # PHASE 2: Explicit blacklist
+        AMP_BLACKLIST = ['60-552', '60-553', 'Summing', 'Active Summing', 'Quad Active']
+        for blacklisted in AMP_BLACKLIST:
+            matches = matches[~matches['name'].str.contains(blacklisted, case=False, na=False, regex=True)]
+        
+        # PHASE 3: Require power amp indicators
         power_amp_matches = matches[matches['name'].str.contains(
-            r'(power\s*amp|70v|100v|spa\d+|xpa\d+|multi.*channel|amplifier.*\d+w|\d+\s*watt.*amp)',
+            r'(power\s*amp|70v|100v|spa\d+|xpa\d+|\d+-channel.*amp|\d+w.*amp)',
             case=False, na=False, regex=True
         )]
         
         if not power_amp_matches.empty:
             matches = power_amp_matches
         else:
-            st.warning(f"⚠️ No valid power amplifiers found for passive speaker system")
-            return None # Force fallback failure
+            st.warning(f"⚠️ No valid power amplifiers found in database for passive speakers")
+            return None
             
     # Microphone Type Validation
     if sub_category == 'Ceiling Microphone':
@@ -336,7 +331,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
 
         blueprint['display_mount'] = {
             'category': 'Mounts',
-            'sub_category': 'Display Mount / Cart',
+            'sub_category': 'Display Mount / Cart',  # Explicitly request display mounts
             'quantity': qty,
             'priority': 8,
             'justification': f'Heavy-duty mount for {size}" display',
