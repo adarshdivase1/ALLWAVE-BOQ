@@ -32,7 +32,7 @@ def _validate_display_size_for_room(display_size, room_length, room_type):
     min_viewing_distance = display_height_ft * 4  # AVIXA 4:1 ratio
     
     # Add 20% buffer for actual usable viewing distance
-    required_room_length = min_viewing_distance * 1.2
+    required_room_length = min_view_ing_distance * 1.2
     
     if room_length < required_room_length:
         # Calculate maximum recommended size
@@ -74,7 +74,7 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
     """
     Intelligent fallback product selection with comprehensive filtering
     """
-    # Initial filtering
+    # Initial filtering - SUB-CATEGORY IS MANDATORY
     if sub_category:
         matches = product_df[
             (product_df['category'] == category) &
@@ -84,7 +84,8 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         matches = product_df[product_df['category'] == category].copy()
 
     if matches.empty:
-        return None
+        st.warning(f"No products found for {category} / {sub_category}")
+        return None  # Don't try to substitute from wrong sub-category
 
     # === GLOBAL SERVICE CONTRACT FILTER ===
     if category not in ['Software & Services']:
