@@ -122,58 +122,25 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
     if category == 'Mounts' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
-        # CRITICAL: Only get Display Mounts, exclude all other mount types
-        matches = matches[matches['sub_category'] == 'Display Mount / Cart']
+        # CRITICAL: Only get Display Mounts, exclude Camera Mounts
+        if 'sub_category' in equipment_reqs.get('displays', {}):
+            # If explicitly requesting display mount
+            matches = matches[matches['sub_category'] == 'Display Mount / Cart']
+        else:
+            # Filter by sub_category to exclude camera/projector mounts
+            matches = matches[matches['sub_category'].isin(['Display Mount / Cart', 'Component / Rack Mount'])]
         
-        # ENHANCED: Exclude non-structural mounting accessories
-        MOUNT_ACCESSORY_BLACKLIST = [
-            'finishing ring', 'trim ring', 'bezel', 'cover plate', 
-            'cosmetic', 'decorator', 'adapter plate', 'interface bracket',
-            'extension column', 'spacer', 'cover', 'cable management',
-            'cable cover'
-        ]
-        
-        for blacklisted in MOUNT_ACCESSORY_BLACKLIST:
-            matches = matches[~matches['name'].str.contains(blacklisted, case=False, na=False)]
-        
-        # CRITICAL: Exclude projector mounts (they're categorized as display mounts incorrectly)
-        matches = matches[~matches['name'].str.contains(
-            r'\b(projector|ceiling.*mount(?!.*tv|.*display|.*monitor)|mcm\d+u)\b',
-            case=False, na=False, regex=True
-        )]
-        
-        # Additional blacklist for known problematic mount models
-        MOUNT_MODEL_BLACKLIST = ['X70 VESA', 'X50 VESA', 'X30 VESA', 'Rally Mount', 
-                                 'Studio Mount', 'CMA-6', 'CMA-3', 'CMA-4', 'MCM1U']
-        for blacklisted in MOUNT_MODEL_BLACKLIST:
+        # Additional blacklist for known problematic mounts
+        MOUNT_BLACKLIST = ['X70 VESA', 'X50 VESA', 'X30 VESA', 'Rally Mount', 'Studio Mount']
+        for blacklisted in MOUNT_BLACKLIST:
             matches = matches[~matches['model_number'].str.contains(blacklisted, case=False, na=False)]
         
-        # REQUIRE structural mount keywords - must have at least one
-        structural_matches = matches[matches['name'].str.contains(
-            r'(wall.*mount|fixed.*wall|tilting.*wall|articulating|full.*motion|swing.*arm|cart|trolley|mobile.*stand|floor.*stand|tv.*mount|display.*mount|monitor.*mount|flat.*panel.*mount)',
-            case=False, na=False, regex=True
-        )]
-        
-        if not structural_matches.empty:
-            matches = structural_matches
-        else:
-            st.warning(f"⚠️ No structural display mounts found for {req_size}\" display")
-            return None
-        
-        # For 90"+ displays, require heavy-duty specifications
+        # For 90"+ displays, require heavy-duty keywords
         if req_size >= 90:
-            large_display_matches = matches[matches['name'].str.contains(
-                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format|universal.*mount|extra.*large.*display)',
+            matches = matches[matches['name'].str.contains(
+                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format)',
                 case=False, na=False, regex=True
             )]
-            if not large_display_matches.empty:
-                matches = large_display_matches
-            else:
-                # Fallback: look for high weight capacity indicators
-                matches = matches[matches['name'].str.contains(
-                    r'(commercial|professional|heavy|universal)',
-                    case=False, na=False, regex=True
-                )]
 
     # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
@@ -264,44 +231,16 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
             st.warning(f"⚠️ No valid power amplifiers found in database for passive speakers")
             return None
             
-    # Microphone Type Validation - STRICT ceiling mic enforcement
+    # Microphone Type Validation
     if sub_category == 'Ceiling Microphone':
-        # REQUIRE ceiling-specific keywords
-        ceiling_mic_matches = matches[matches['name'].str.contains(
-            r'(ceiling|pendant|overhead|array.*ceiling|mxa9\d+|tcc[\s-]?2|vcm3[0-9](?!5))',
+        matches = matches[matches['name'].str.contains(
+            r'(ceiling|pendant|overhead|array.*ceiling|mxa\d+|tcc\d|vcm3[0-9])',
             case=False, na=False, regex=True
         )]
         
-        if not ceiling_mic_matches.empty:
-            matches = ceiling_mic_matches
-        else:
-            st.warning(f"⚠️ No ceiling microphones found in database")
-            return None
-        
-        # CRITICAL: Exclude table/boundary/USB/wired video conferencing mics
+        # Exclude table/USB mics
         matches = matches[~matches['name'].str.contains(
-            r'(wired.*video|usb(?!.*ceiling)|table|boundary|desktop|vcm35|conference.*microphone(?!.*ceiling)|speakerphone)',
-            case=False, na=False, regex=True
-        )]
-        
-        if matches.empty:
-            st.warning(f"⚠️ All ceiling microphones filtered out - may be miscategorized products")
-            return None
-
-    # Add similar strict validation for table microphones
-    if sub_category == 'Table/Boundary Microphone':
-        # REQUIRE table/boundary keywords
-        table_mic_matches = matches[matches['name'].str.contains(
-            r'(table|boundary|desktop|conference.*mic|discussion|vcm35|mxa3\d+)',
-            case=False, na=False, regex=True
-        )]
-        
-        if not table_mic_matches.empty:
-            matches = table_mic_matches
-        
-        # EXCLUDE ceiling mics
-        matches = matches[~matches['name'].str.contains(
-            r'(ceiling|pendant|overhead|mxa9\d+|tcc[\s-]?2)',
+            r'(wired.*video|usb|table|boundary|vcm35)',
             case=False, na=False, regex=True
         )]
 
@@ -317,40 +256,14 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
             case=False, na=False, regex=True
         )]
 
-    # Table Connectivity: REQUIRE complete connectivity solutions
+    # Table Connectivity: Exclude wall plates
     if sub_category == 'Wall & Table Plate Module':
-        # PHASE 1: Exclude incomplete mounting hardware
-        matches = matches[~matches['name'].str.contains(
-            r'\b(mounting.*frame(?!.*hdmi|.*usb)|blank.*plate|frame.*only|housing.*only|bracket.*only|trim.*ring|bezel.*only|faceplate.*only)\b',
+        table_matches = matches[matches['name'].str.contains(
+            r'(table|tbus|floor|cubby|connectivity box|retractor|cable retractor)',
             case=False, na=False, regex=True
         )]
-        
-        # PHASE 2: REQUIRE actual connectivity features
-        connectivity_matches = matches[matches['name'].str.contains(
-            r'(hdmi|usb-c|usb\s*c|displayport|vga|audio.*jack|retractor|cable.*cubby|tbus.*(?!frame)|connectivity.*module|hydraport.*(?!frame)|av.*plate.*module|multimedia.*connection)',
-            case=False, na=False, regex=True
-        )]
-        
-        if not connectivity_matches.empty:
-            matches = connectivity_matches
-        else:
-            # PHASE 3: Prefer complete table boxes if no modular plates found
-            table_box_matches = matches[matches['name'].str.contains(
-                r'(table.*connectivity.*box|cable.*cubby(?!.*frame)|retractor.*box|floor.*connectivity|pop-?up.*connectivity)',
-                case=False, na=False, regex=True
-            )]
-            
-            if not table_box_matches.empty:
-                matches = table_box_matches
-            else:
-                st.warning(f"⚠️ No complete table connectivity solutions found - only mounting frames available")
-                return None
-        
-        # PHASE 4: Exclude AAP frames without populated modules
-        matches = matches[~matches['name'].str.contains(
-            r'\b(aap.*frame(?!.*hdmi|.*usb|.*module)|four-gang.*frame|mounting.*frame)\b',
-            case=False, na=False, regex=True
-        )]
+        if not table_matches.empty:
+            matches = table_matches
 
     if matches.empty:
         return None
@@ -716,18 +629,11 @@ def _get_prompt_for_room_type(room_type, equipment_reqs, required_components, pr
 1. Select ONLY products that EXACTLY match the component's sub-category
 2. NEVER select service contracts, warranties, or support agreements for hardware
 3. For displays: Match size requirement within ±3 inches
-4. For mounts: NEVER select projector mounts, cosmetic accessories, or finishing rings
-   - ONLY select structural wall/cart mounts capable of supporting display weight
-   - Verify product description includes "wall mount", "cart", or "display mount"
-5. For microphones: 
-   - Ceiling mics MUST have "ceiling" or "pendant" in description
-   - NEVER select table/boundary mics (VCM35) for ceiling requirements
-6. For table connectivity: NEVER select empty frames or mounting hardware
-   - MUST have actual connectors: HDMI, USB-C, DisplayPort, etc.
-7. For DSPs: Select ACTUAL processors with DSP capabilities, NEVER amplifiers
-8. For Amplifiers: Select POWER AMPLIFIERS only, NEVER DSPs or mixers
-9. For Touch Controllers: Select touch panels ONLY, NEVER room kits
-10. For PDUs: Select rackmount power distribution ONLY
+4. For DSPs: Select ACTUAL processors with DSP capabilities, NEVER amplifiers
+5. For Amplifiers: Select POWER AMPLIFIERS only, NEVER DSPs or mixers
+6. For Touch Controllers: Select touch panels ONLY, NEVER room kits
+7. For PDUs: Select rackmount power distribution ONLY
+8. Verify product name matches the requirement before selection
 
 # Room Configuration
 - **Room Type:** {room_type}
@@ -965,53 +871,6 @@ def validate_price_reasonableness(boq_items):
     return warnings
 
 
-def validate_product_subcategory_match(boq_items):
-    """
-    Validate that selected products actually match their required sub-category
-    Returns list of critical mismatches
-    """
-    critical_errors = []
-    
-    for item in boq_items:
-        name = item.get('name', '').lower()
-        sub_cat = item.get('sub_category', '')
-        justification = item.get('justification', '').lower()
-        
-        # Validate mounts
-        if sub_cat == 'Display Mount / Cart':
-            if any(keyword in name for keyword in ['projector', 'ceiling mount', 'mcm']):
-                if 'tv' not in name and 'display' not in name and 'monitor' not in name:
-                    critical_errors.append(
-                        f"CRITICAL: {item.get('model_number')} is a projector/ceiling mount, "
-                        f"not a display mount. System cannot be installed safely."
-                    )
-            
-            if any(keyword in name for keyword in ['finishing ring', 'trim ring', 'cosmetic']):
-                critical_errors.append(
-                    f"CRITICAL: {item.get('model_number')} is a cosmetic accessory, "
-                    f"not a structural mount. Cannot support display weight."
-                )
-        
-        # Validate microphones
-        if 'ceiling microphone' in justification:
-            if any(keyword in name for keyword in ['wired video', 'table', 'boundary', 'vcm35']):
-                critical_errors.append(
-                    f"CRITICAL: {item.get('model_number')} is a table/boundary mic, "
-                    f"not a ceiling microphone. Wrong installation location and coverage."
-                )
-        
-        # Validate table connectivity
-        if 'table connectivity' in justification or 'aap' in justification:
-            if any(keyword in name for keyword in ['mounting frame', 'frame only', 'blank']):
-                if not any(conn in name for conn in ['hdmi', 'usb', 'populated']):
-                    critical_errors.append(
-                        f"CRITICAL: {item.get('model_number')} is an empty mounting frame, "
-                        f"not a complete connectivity solution. Users cannot connect devices."
-                    )
-    
-    return critical_errors
-
-
 def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_type, required_components):
     """Post-process BOQ with validation and auto-fill missing components"""
     processed_boq = _correct_quantities(boq_items)
@@ -1019,11 +878,6 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     processed_boq = _validate_boq_selections(processed_boq, equipment_reqs)
     
     validation_results = {'issues': [], 'warnings': []}
-    
-    # NEW: Add critical product-subcategory validation
-    critical_mismatches = validate_product_subcategory_match(processed_boq)
-    if critical_mismatches:
-        validation_results['issues'].extend(critical_mismatches)
     
     missing_components = validate_boq_completeness(processed_boq, required_components)
     if missing_components:
@@ -1256,3 +1110,4 @@ def export_boq_to_excel(boq_df, filename="boq_export.xlsx"):
     
     output.seek(0)
     return output
+
