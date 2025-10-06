@@ -335,6 +335,12 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     if matches_any(['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby',
                     'tbus', 'hydraport', 'fliptop', 'mud ring', 'floor.*box', 'connectivity.*box',
                     'table.*box', 'grommet', 'aap', 'retractor.*box']):
+        
+        # ENHANCED: Separate complete connectivity solutions from mounting hardware
+        if matches_any(['mounting.*frame', 'blank.*plate', 'frame.*only', 'housing.*only', 
+                        'enclosure.*only', 'bracket.*only']):
+            return {'primary_category': 'Infrastructure', 'sub_category': 'Mounting Hardware', 'needs_review': False}
+        
         return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate Module', 'needs_review': False}
 
     if matches_any([r'\d+u.*rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter',
