@@ -5,7 +5,8 @@ import pandas as pd
 from datetime import datetime
 
 try:
-    from components.visualizer import ROOM_SPECS
+    # Corrected import to use ROOM_SPECS from room_profiles, not visualizer
+    from components.room_profiles import ROOM_SPECS
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
     from components.excel_generator import generate_company_excel
 except ImportError:
@@ -150,8 +151,13 @@ def update_boq_content_with_current_items():
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items generated yet."
         return
 
+    # --- CHANGE START ---
+    # Get the selected currency from the sidebar selection
+    currency = st.session_state.get('currency_select', 'INR')
+    
+    # Dynamically update the header to show the selected currency
     boq_content = "## Bill of Quantities\n\n"
-    boq_content += "| Category | Make | Model No. | Name | Qty | Unit Price (USD) | Remarks |\n"
+    boq_content += f"| Category | Make | Model No. | Name | Qty | Unit Price ({currency}) | Remarks |\n"
     boq_content += "|---|---|---|---|---|---|---|\n"
 
     for item in st.session_state.boq_items:
@@ -159,12 +165,18 @@ def update_boq_content_with_current_items():
         if not item.get('matched'):
             remarks = f"⚠️ **VERIFY MODEL**<br>{remarks}"
 
+        # Convert the base USD price to the selected currency for display
+        price_usd = item.get('price', 0)
+        display_price = convert_currency(price_usd, currency)
+        formatted_price = format_currency(display_price, currency)
+
         boq_content += (
             f"| {item.get('category', 'N/A')} | {item.get('brand', 'N/A')} "
             f"| {item.get('model_number', 'N/A')} | {item.get('name', 'N/A')} "
-            f"| {item.get('quantity', 1)} | ${item.get('price', 0):,.2f} "
+            f"| {item.get('quantity', 1)} | {formatted_price} " # Use the newly formatted price
             f"| {remarks} |\n"
         )
+    # --- CHANGE END ---
     st.session_state.boq_content = boq_content
 
 def display_boq_results(product_df, project_details):
@@ -191,9 +203,15 @@ def display_boq_results(product_df, project_details):
     if st.session_state.get('boq_items'):
         col1, col2 = st.columns([1, 1])
         with col1:
-            currency = st.session_state.get('currency', 'USD')
-            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-            display_total = convert_currency(total_cost * 1.30, currency)
+            # --- CHANGE START ---
+            # Read the currency from the correct session state key: 'currency_select'
+            currency = st.session_state.get('currency_select', 'INR') 
+            # --- CHANGE END ---
+            total_cost_usd = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            
+            # The 1.30 multiplier for services should be applied to the base currency cost
+            display_total = convert_currency(total_cost_usd * 1.30, currency)
+            
             st.metric("Estimated Project Total", format_currency(display_total, currency), help="Includes installation, warranty, and contingency")
         
         with col2:
@@ -227,17 +245,21 @@ def create_interactive_boq_editor(product_df):
     st.subheader("Interactive BOQ Editor")
     item_count = len(st.session_state.get('boq_items', []))
     col1, col2, col3 = st.columns(3)
+    
+    # --- CHANGE START ---
+    # Read currency from the correct session state key for all editor components
+    currency = st.session_state.get('currency_select', 'INR')
+    # --- CHANGE END ---
 
     with col1:
         st.metric("Items in BOQ", item_count)
     with col2:
         if st.session_state.get('boq_items'):
-            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-            currency = st.session_state.get('currency', 'USD')
-            display_total = convert_currency(total_cost, currency)
+            total_cost_usd = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            display_total = convert_currency(total_cost_usd, currency)
             st.metric("Hardware Subtotal", format_currency(display_total, currency))
         else:
-            st.metric("Subtotal", "₹0" if st.session_state.get('currency', 'USD') == 'INR' else "$0")
+            st.metric("Subtotal", format_currency(0, currency))
     with col3:
         if st.button("🔄 Refresh BOQ Display", help="Update the main BOQ display with current items"):
             update_boq_content_with_current_items()
@@ -247,7 +269,6 @@ def create_interactive_boq_editor(product_df):
         st.error("Cannot load product catalog for editing.")
         return
 
-    currency = st.session_state.get('currency', 'USD')
     tabs = st.tabs(["Edit Current BOQ", "Add Products", "Product Search"])
 
     with tabs[0]:
@@ -256,6 +277,9 @@ def create_interactive_boq_editor(product_df):
         add_products_interface(product_df, currency)
     with tabs[2]:
         product_search_interface(product_df, currency)
+
+# No changes are needed in the functions below as they already handle currency conversion correctly.
+# They receive the `currency` variable and properly convert to/from the base USD price when displaying or saving.
 
 def edit_current_boq(currency):
     """Interface for editing current BOQ items."""
@@ -285,6 +309,7 @@ def edit_current_boq(currency):
                 current_price_usd = float(item.get('price', 0))
                 display_price = convert_currency(current_price_usd, currency)
                 new_display_price = st.number_input(f"Unit Price ({currency})", min_value=0.0, value=display_price, key=f"price_{i}")
+                # This logic correctly converts the edited price back to USD for storage
                 item['price'] = new_display_price / get_usd_to_inr_rate() if currency == 'INR' else new_display_price
             with col4:
                 total_usd = item['price'] * item['quantity']
@@ -352,9 +377,9 @@ def add_products_interface(product_df, currency):
                 'brand': selected_product.get('brand'),
                 'model_number': selected_product.get('model_number'),
                 'quantity': quantity,
-                'price': base_price_usd,
+                'price': base_price_usd, # Always store the base USD price
                 'justification': 'Manually added component.',
-                'specifications': selected_product.get('features', ''),
+                'specifications': selected_product.get('specifications', ''), # Corrected from 'features'
                 'image_url': selected_product.get('image_url', ''),
                 'gst_rate': selected_product.get('gst_rate', 18),
                 'warranty': selected_product.get('warranty', 'Not Specified'),
@@ -369,12 +394,12 @@ def add_products_interface(product_df, currency):
 def product_search_interface(product_df, currency):
     """Advanced product search interface."""
     st.write("**Search Product Catalog:**")
-    search_term = st.text_input("Search products...", placeholder="Enter name, brand, or features", key="search_term_input")
+    search_term = st.text_input("Search products...", placeholder="Enter name, brand, or model", key="search_term_input")
 
     if search_term:
         mask = product_df.apply(lambda row: search_term.lower() in str(row['name']).lower() or
                                           search_term.lower() in str(row['brand']).lower() or
-                                          search_term.lower() in str(row['features']).lower(), axis=1)
+                                          search_term.lower() in str(row['model_number']).lower(), axis=1) # Corrected search logic
         search_results = product_df[mask]
         st.write(f"Found {len(search_results)} products:")
 
@@ -383,19 +408,20 @@ def product_search_interface(product_df, currency):
                 col_a, col_b, col_c = st.columns([2, 1, 1])
                 with col_a:
                     st.write(f"**Category:** {product.get('category', 'N/A')}")
-                    if pd.notna(product.get('features')):
-                        st.write(f"**Features:** {str(product['features'])[:100]}...")
+                    if pd.notna(product.get('specifications')):
+                        st.write(f"**Specs:** {str(product['specifications'])[:100]}...")
                 with col_b:
-                    price = float(product.get('price', 0))
-                    display_price = convert_currency(price, currency)
+                    price_usd = float(product.get('price', 0))
+                    display_price = convert_currency(price_usd, currency)
                     st.metric("Price", format_currency(display_price, currency))
                 with col_c:
                     add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{i}")
                     if st.button("Add", key=f"search_add_{i}"):
                         new_item = {
                             'category': product.get('category', 'General'), 'name': product.get('name', ''),
-                            'brand': product.get('brand', ''), 'quantity': add_qty, 'price': price,
-                            'justification': 'Added via search.', 'specifications': product.get('features', ''),
+                            'brand': product.get('brand', ''), 'model_number': product.get('model_number', ''),
+                            'quantity': add_qty, 'price': price_usd, # Always store base USD price
+                            'justification': 'Added via search.', 'specifications': product.get('specifications', ''),
                             'image_url': product.get('image_url', ''), 'gst_rate': product.get('gst_rate', 18), 'matched': True
                         }
                         st.session_state.boq_items.append(new_item)
