@@ -8,16 +8,14 @@ from pathlib import Path
 
 # --- Component Imports ---
 try:
-    # MODIFIED: Imported ROOM_SPECS from its own component file
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    from components.boq_generator import generate_boq_from_ai, post_process_boq
+    from components.boq_generator import generate_boq_from_ai
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
-    # MODIFIED: Removed ROOM_SPECS from this import
     from components.visualizer import create_3d_visualization
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
@@ -137,7 +135,6 @@ def main():
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
     if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
     
-    # ADDED: Initialize session state for dimensions if they don't exist
     if 'room_length_input' not in st.session_state:
         st.session_state.room_length_input = 28.0
     if 'room_width_input' not in st.session_state:
@@ -163,7 +160,6 @@ def main():
 
     st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
-    # ADDED: Callback function to update dimensions when room type changes
     def update_dimensions_from_room_type():
         room_type = st.session_state.room_type_select
         if room_type in ROOM_SPECS and 'typical_dims_ft' in ROOM_SPECS[room_type]:
@@ -212,7 +208,6 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
         
-        # MODIFIED: Added on_change callback to the selectbox
         room_type_key = st.selectbox(
             "Primary Space Type", 
             list(ROOM_SPECS.keys()), 
@@ -220,7 +215,6 @@ def main():
             on_change=update_dimensions_from_room_type
         )
         
-        # ADDED: Logic to set initial dimensions on the first run
         if 'initial_load' not in st.session_state:
             update_dimensions_from_room_type()
             st.session_state.initial_load = True
@@ -273,14 +267,10 @@ def main():
             else:
                 progress_bar = st.progress(0, text="Initializing generation pipeline...")
                 try:
-                    # MODIFIED: More direct calculation, assumes session_state keys exist
                     room_area = st.session_state.room_length_input * st.session_state.room_width_input
 
                     progress_bar.progress(25, text="🤖 Step 1: Querying AI, validating, and post-processing...")
                     
-                    # --- CORRECTED LOGIC ---
-                    # The generate_boq_from_ai function now handles all processing internally.
-                    # We just need to capture its final, validated output correctly.
                     processed_boq, avixa_calcs, equipment_reqs, validation_results = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
@@ -293,8 +283,6 @@ def main():
                     if processed_boq:
                         progress_bar.progress(90, text="✅ Finalizing results...")
                         
-                        # Directly update the session state with the final, processed results.
-                        # The redundant call to post_process_boq is now removed.
                         st.session_state.boq_items = processed_boq
                         st.session_state.validation_results = validation_results
                         update_boq_content_with_current_items()
