@@ -123,24 +123,41 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
         # CRITICAL: Only get Display Mounts, exclude Camera Mounts
-        if 'sub_category' in equipment_reqs.get('displays', {}):
-            # If explicitly requesting display mount
-            matches = matches[matches['sub_category'] == 'Display Mount / Cart']
-        else:
-            # Filter by sub_category to exclude camera/projector mounts
-            matches = matches[matches['sub_category'].isin(['Display Mount / Cart', 'Component / Rack Mount'])]
+        matches = matches[matches['sub_category'] == 'Display Mount / Cart']
+        
+        # ENHANCED: Exclude non-structural mounting accessories
+        MOUNT_ACCESSORY_BLACKLIST = [
+            'finishing ring', 'trim ring', 'bezel', 'cover plate', 
+            'cosmetic', 'decorator', 'adapter plate', 'interface bracket',
+            'extension column', 'spacer', 'cover', 'cable management'
+        ]
+        
+        for blacklisted in MOUNT_ACCESSORY_BLACKLIST:
+            matches = matches[~matches['name'].str.contains(blacklisted, case=False, na=False)]
         
         # Additional blacklist for known problematic mounts
-        MOUNT_BLACKLIST = ['X70 VESA', 'X50 VESA', 'X30 VESA', 'Rally Mount', 'Studio Mount']
-        for blacklisted in MOUNT_BLACKLIST:
+        MOUNT_MODEL_BLACKLIST = ['X70 VESA', 'X50 VESA', 'X30 VESA', 'Rally Mount', 
+                                 'Studio Mount', 'CMA-6', 'CMA-3', 'CMA-4']
+        for blacklisted in MOUNT_MODEL_BLACKLIST:
             matches = matches[~matches['model_number'].str.contains(blacklisted, case=False, na=False)]
+        
+        # REQUIRE structural mount keywords
+        structural_matches = matches[matches['name'].str.contains(
+            r'(wall.*mount|ceiling.*mount|cart|trolley|stand|bracket.*mount|articulating|tilting|fixed.*mount|swing.*arm)',
+            case=False, na=False, regex=True
+        )]
+        
+        if not structural_matches.empty:
+            matches = structural_matches
         
         # For 90"+ displays, require heavy-duty keywords
         if req_size >= 90:
-            matches = matches[matches['name'].str.contains(
-                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format)',
+            large_display_matches = matches[matches['name'].str.contains(
+                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large|large.*format|universal.*mount)',
                 case=False, na=False, regex=True
             )]
+            if not large_display_matches.empty:
+                matches = large_display_matches
 
     # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
@@ -256,14 +273,30 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
             case=False, na=False, regex=True
         )]
 
-    # Table Connectivity: Exclude wall plates
+    # Table Connectivity: Exclude incomplete mounting hardware
     if sub_category == 'Wall & Table Plate Module':
-        table_matches = matches[matches['name'].str.contains(
-            r'(table|tbus|floor|cubby|connectivity box|retractor|cable retractor)',
+        # EXCLUDE mounting frames without connectors
+        matches = matches[~matches['name'].str.contains(
+            r'\b(mounting.*frame|blank.*plate|frame.*only|housing.*only|bracket.*only|trim.*ring)\b',
             case=False, na=False, regex=True
         )]
-        if not table_matches.empty:
-            matches = table_matches
+        
+        # REQUIRE actual connectivity features
+        connectivity_matches = matches[matches['name'].str.contains(
+            r'(hdmi|usb-c|usb\s*c|displayport|vga|audio|retractor|cable.*cubby|tbus.*module|connectivity.*plate.*module|hydraport.*module)',
+            case=False, na=False, regex=True
+        )]
+        
+        if not connectivity_matches.empty:
+            matches = connectivity_matches
+        else:
+            # If no connectivity found, prefer table boxes over wall plates
+            table_matches = matches[matches['name'].str.contains(
+                r'(table|floor|cubby|retractor|tbus|cable.*caddy)',
+                case=False, na=False, regex=True
+            )]
+            if not table_matches.empty:
+                matches = table_matches
 
     if matches.empty:
         return None
