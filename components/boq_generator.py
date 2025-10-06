@@ -366,13 +366,24 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     # Control System
     if 'control_system' in equipment_reqs:
         control_reqs = equipment_reqs.get('control_system', {})
-        if control_reqs.get('type') == 'Touch Controller':
+        control_type = control_reqs.get('type', '')
+        
+        # Add touch controller for any control system requirement
+        if control_type and 'touch' in control_type.lower():
             blueprint['touch_control_panel'] = {
                 'category': 'Video Conferencing',
                 'sub_category': 'Touch Controller / Panel',
                 'quantity': 1,
                 'priority': 3,
                 'justification': 'Touch control panel for intuitive meeting control'
+            }
+        elif control_type:  # Generic control system
+            blueprint['control_processor'] = {
+                'category': 'Control Systems',
+                'sub_category': 'Control Processor',
+                'quantity': 1,
+                'priority': 3,
+                'justification': f'{control_type} for system control and automation'
             }
 
     # Audio System with validation
@@ -887,7 +898,33 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
                 else:
                     issue_text = f"Missing Component: '{missing['component'].replace('_', ' ')}' ({missing['category']}). No fallback product available."
                     validation_results['issues'].append(issue_text)
-                    
+    
+    # Explicit control system check
+    has_control = any('Control' in item.get('category', '') or 
+                      'Touch Controller' in item.get('sub_category', '') 
+                      for item in processed_boq)
+
+    if not has_control and equipment_reqs.get('control_system'):
+        validation_results['warnings'].append(
+            "Control system specified in requirements but not found in BOQ"
+        )
+        
+        # Auto-add control system
+        control_fallback = _get_fallback_product(
+            'Video Conferencing',
+            'Touch Controller / Panel',
+            product_df,
+            equipment_reqs,
+            'Standard'
+        )
+        if control_fallback:
+            control_fallback.update({
+                'quantity': 1,
+                'justification': 'Touch control panel (Auto-added missing component)',
+                'matched': False
+            })
+            processed_boq.append(control_fallback)
+            
     # Add dependency and price validation checks
     dependency_issues = validate_component_dependencies(processed_boq, required_components)
     if dependency_issues:
