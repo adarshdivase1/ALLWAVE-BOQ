@@ -19,9 +19,9 @@ FALLBACK_INR_TO_USD = 83.5
 
 # --- QUALITY THRESHOLDS ---
 MIN_DESCRIPTION_LENGTH = 10
-MAX_PRICE_USD = 200000 # Increased for high-end items like large LED walls
+MAX_PRICE_USD = 200000 
 MIN_PRICE_USD = 1.0
-REJECTION_SCORE_THRESHOLD = 30 # Lenient to accept more items for manual review
+REJECTION_SCORE_THRESHOLD = 30
 
 # --- HELPER FUNCTIONS ---
 
@@ -124,20 +124,20 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     category_rules = [
         # 1. Software & Services (Highest Priority)
         ('Software & Services', 'Support & Warranty', [r'\d\s*y(ea)?r.*poly\+', r'\d\s*y(ea)?r.*support', 'jumpstart', 'partner premier', 'onsite support', r'\bcon-snt\b', r'\bcon-ecdn\b']),
-        ('Software & Services', 'Software License', ['license', 'saas', 'software license', 'annual license']),
+        ('Software & Services', 'Software License', ['license', 'saas', 'software license', 'annual license', r'l-kit\w+-ms']),
         ('Software & Services', 'Cloud Service', ['cloud service', 'bsn.cloud', 'xiocloud']),
 
-        # 2. Furniture
+        # 2. Furniture & Large Structures
         ('Furniture', 'Podium / Lectern', ['podium', 'lectern']),
         ('Furniture', 'AV Credenza / Stand', ['credenza', 'logic pod']),
-
-        # 3. Infrastructure
+        
+        # 3. Infrastructure (Architectural, Racks, Power)
         ('Infrastructure', 'Architectural / In-Wall', ['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby', 'tbus', 'hydraport', 'fliptop', 'mud ring']),
         ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter']),
-        ('Infrastructure', 'Power Management', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply', 'poe injector', 'power pack', r'pw-\d+', r'qs-ps-']),
+        ('Infrastructure', 'Power Management', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply', 'poe injector', 'power pack', r'pw-\d+', r'qs-ps-', 'csa-pws']),
 
         # 4. Mounts
-        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak)', r'bt\d+', 'lpa\d+', 'steelcase.*mount', 'heckler.*cart']),
+        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak|.*proj)', r'bt\d+', 'lpa\d+', 'steelcase.*mount', 'heckler.*cart']),
         ('Mounts', 'Projector Mount', ['projector mount', 'projector ceiling mount']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
         ('Mounts', 'Component / Rack Mount', ['rack shelf', 'rackmount kit', 'component storage', 'mounting shelf', 'mounting kit(?!.*display|.*tv)']),
@@ -145,11 +145,12 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
 
         # 5. Peripherals & Accessories
         ('Peripherals & Accessories', 'Keyboard & Mouse', ['keyboard', 'mouse', r'mk\d+', 'mx master', 'combo touch']),
-        ('Peripherals & Accessories', 'Docking Station / Hub', ['docking station', 'usb hub', 'logidock', 'mic pod hub', 'usb-c.*hub']),
-        ('Peripherals & Accessories', 'Remote Control', ['remote control', r'\brc\d+', r'hr-\d+']),
+        ('Peripherals & Accessories', 'Docking Station / Hub', ['docking station', 'usb hub', 'logidock', 'mic pod hub', 'usb-c.*hub', 'thunderbolt.*dock']),
+        ('Peripherals & Accessories', 'Remote Control', ['remote control', r'\brc\d+', r'hr-\d+', r'rm-ip\d+']),
         ('Peripherals & Accessories', 'Stylus / Pen', ['stylus', 'pen', 'crayon digital pencil']),
         ('Peripherals & Accessories', 'Whiteboard Camera', ['scribe']),
         ('Peripherals & Accessories', 'IR Emitter/Receiver', ['ir emitter', 'ir receiver', 'ir sensor']),
+        ('Peripherals & Accessories', 'Card Reader', ['card reader']),
 
         # 6. Cables & Connectivity
         ('Cables & Connectivity', 'Cable Retractor / Management', ['retractor', 'cable caddy', 'cable ring', 'cable organizer', 'cable bag']),
@@ -163,14 +164,15 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Video Conferencing', 'Collaboration Display', ['meetingboard', 'collaboration display', 'deskvision', 'surface hub', 'dten d7', r'mb\d{2}-', 'smart collaboration whiteboard', 'all-in-one smart whiteboard', 'neat board']),
         ('Video Conferencing', 'Video Bar', ['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio', 'meetup', 'all-in-one.*video', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam', 'meetingbar', 'neat bar', 'panacast 50']),
         ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec(?!.*cable)', r'mvc\d+', 'mcorekit', 'teams rooms system', 'vc system', 'video conferencing system', r'mvcs\d+', 'g7500', 'thinksmart core', 'uc-engine', r'cs-kit\w+']),
-        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera', 'precision 60', 'huddly.*iq', 'inogeni']),
+        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera', 'precision 60', 'huddly', r'iv-cam-\w+', r'nc-12x80', r'nc-20x60']),
         ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c9\d{2}', 'personal video', 'usb camera', 'poly studio p15']),
         ('Video Conferencing', 'Touch Controller / Panel', ['touch controller', 'touch panel', 'tap ip', r'tc\d+\b', r'ctp\d+\b', 'collaboration touch', 'mtouch', 'gc8', 'neat pad', 'touch 10']),
         ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'scheduling panel', 'room panel', r'tss-\d+', 'tap scheduler']),
-        
+        ('Video Conferencing', 'VC Phone', ['trio c60', r'mp\d{2}', 'team phone']),
+
         # 8. Audio
         ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b', r'tcm-x\b', 'ceiling.*microphone']),
-        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', r'mxa3\d\d', 'rally mic pod', 'ip table microphone', r'vcm35', 'table array']),
+        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', r'mxa3\d\d', 'rally mic pod', 'ip table microphone', r'vcm35', 'table array', r'cs-mic-table']),
         ('Audio', 'Wireless Microphone System', ['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter', 'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd', 'mxwapt', 'blx\d+']),
         ('Audio', 'Gooseneck Microphone', ['gooseneck', r'meg \d+']),
         ('Audio', 'Headset / Wearable Mic', ['headset', 'earset', 'zone wireless', 'h\d{3}e', 'lavalier(?!.*system)', 'headworn']),
@@ -180,7 +182,9 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Audio', 'Loudspeaker / Speaker', ['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 'pendant speaker', 'in-ceiling speaker', 'ceiling speaker', 'surface mount speaker', r'ad-c\d+', r'ad-s\d+', 'saros', 'control \d+c', r'\bms speaker\b']),
         ('Audio', 'Audio Interface / Extender', ['dante interface', 'audio.*extender', 'audio interface', 'axi \d+', 'usb.*audio.*bridge']),
         ('Audio', 'Intercom System', ['intercom', 'freespeak']),
-
+        ('Audio', 'RF & Antenna', ['antenna', 'combiner', 'splitter(?!.*hdmi)', r'ua\d+']),
+        ('Audio', 'Charging Station', ['charging station', r'mxwncs\d', r'chg\d\w+']),
+        
         # 9. Displays
         ('Displays', 'Direct-View LED', ['led wall', 'dvled', 'direct.*view.*led', 'absen']),
         ('Displays', 'Video Wall Display', ['video wall(?!.*mount)', 'videowall display']),
@@ -192,6 +196,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'presentations.*switcher', 'dmps', 'crosspoint', r'vm\d{4}', r'vs\d{3}', 'dxp hd']),
         ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', r'hd-tx\d*', r'hd-rx\d*', 'dphd', 'tps-tx', 'tps-rx', 'dtp', 'tp-\d+r']),
         ('Signal Management', 'Video Wall Processor', ['video wall processor', 'multi screen controller']),
+        ('Signal Management', 'Digital Signage Player', ['brightsign', 'media player']),
         ('Signal Management', 'Scaler / Converter / Processor', ['scaler', 'converter', 'scan converter', r'dsc \d+', 'signal processor', 'edid', 'embedder', 'de-embedder', 'annotation processor', 'video capture']),
         ('Signal Management', 'Distribution Amplifier / Splitter', ['distribution amplifier', r'da\dhd', r'hd-da\d+', 'hdmi splitter', 'vs\d{3}a']),
         ('Signal Management', 'AV over IP (Encoder/Decoder)', ['av over ip', 'dm nvx', 'encoder', 'decoder', 'nav e \d+', 'nav sd \d+']),
@@ -200,6 +205,7 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Control Systems', 'Control Processor', ['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx', 'ipcp pro', r'nx-\d+']),
         ('Control Systems', 'Touch Panel', ['touch panel(?!.*collaboration)', 'touch screen(?!.*display)', 'modero', r'tsw-\d+', r'tst-\d+']),
         ('Control Systems', 'Keypad', ['keypad', r'c2n-\w+', r'hz-kp\w+', 'ebus button panel']),
+        ('Control Systems', 'I/O Interface / Gateway', ['interface', 'gateway', r'exb-io\d', r'cen-io', r'inet-ioex']),
         ('Control Systems', 'Sensor', ['sensor', 'occupancy', 'daylight', 'gls-']),
 
         # 12. Computers
@@ -218,30 +224,25 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     # Final fallback
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
 
+
 # --- DATA QUALITY SCORING ---
 
 def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
     score = 100
     issues = []
     if len(product.get('description', '')) < MIN_DESCRIPTION_LENGTH and product['primary_category'] not in ['Software & Services', 'Cables & Connectivity']:
-        score -= 20
-        issues.append(f"Description too short")
+        score -= 20; issues.append(f"Description too short")
     price = product.get('price_usd', 0)
     if price < MIN_PRICE_USD:
-        score -= 50
-        issues.append(f"Price is zero or too low")
+        score -= 50; issues.append(f"Price is zero or too low")
     elif price > MAX_PRICE_USD:
-        score -= 10
-        issues.append(f"Price unusually high")
+        score -= 10; issues.append(f"Price unusually high")
     if not product.get('name'):
-        score -= 40
-        issues.append("Missing generated product name")
+        score -= 40; issues.append("Missing generated product name")
     if not product.get('model_number') and product.get('primary_category') not in ['Software & Services', 'Cables & Connectivity']:
-        score -= 15
-        issues.append("Missing model number")
+        score -= 15; issues.append("Missing model number")
     if product.get('needs_review', False):
-        score -= 30
-        issues.append("Category could not be classified")
+        score -= 30; issues.append("Category could not be classified")
     return max(0, score), issues
 
 
@@ -253,8 +254,7 @@ def main():
     stats = {'files_processed': 0, 'products_found': 0, 'products_valid': 0, 'products_flagged': 0, 'products_rejected': 0}
 
     if not os.path.exists(DATA_FOLDER):
-        print(f"Error: The '{DATA_FOLDER}' directory was not found.")
-        return
+        print(f"Error: The '{DATA_FOLDER}' directory was not found."); return
 
     csv_files = [f for f in os.listdir(DATA_FOLDER) if f.lower().endswith('.csv')]
     print(f"Starting BOQ dataset generation...\nFound {len(csv_files)} CSV files to process.\n")
@@ -272,23 +272,18 @@ def main():
 
             model_col = next((c for c in df.columns if any(k in c for k in ['model no', 'part no', 'sku', 'model'])), None)
             desc_col = next((c for c in df.columns if any(k in c for k in ['description', 'desc', 'product name'])), None)
-            
             inr_price_col = next((c for c in df.columns if any(k in c for k in ['inr', 'buy price', 'mrp']) and 'usd' not in c), None)
             usd_price_col = next((c for c in df.columns if 'usd' in c), None)
 
-            if not desc_col:
-                print(f"  Warning: Could not map required Description column. Skipping.")
-                continue
+            if not desc_col: print(f"  Warning: Could not map required Description column. Skipping."); continue
             
             stats['files_processed'] += 1
 
             for _, row in df.iterrows():
                 stats['products_found'] += 1
                 raw_model = row.get(model_col, '')
-                
                 raw_description = str(row.get(desc_col, '')).strip()
-                if pd.isna(raw_description) or not raw_description:
-                    continue
+                if pd.isna(raw_description) or not raw_description: continue
 
                 model_clean = clean_model_number(raw_model) if model_col else ""
                 clean_desc = create_clean_description(raw_description, file_brand)
@@ -297,30 +292,18 @@ def main():
                 price_inr = clean_price(row.get(inr_price_col, 0)) if inr_price_col else 0
                 price_usd = clean_price(row.get(usd_price_col, 0)) if usd_price_col else 0
                 
-                if price_usd > 0:
-                    final_price_usd = price_usd
-                elif price_inr > 0:
-                    final_price_usd = price_inr / FALLBACK_INR_TO_USD
-                else:
-                    final_price_usd = 0
+                final_price_usd = price_usd if price_usd > 0 else (price_inr / FALLBACK_INR_TO_USD if price_inr > 0 else 0)
 
                 product = {
-                    'brand': file_brand,
-                    'name': generate_product_name(file_brand, model_clean, clean_desc),
-                    'model_number': model_clean,
-                    'primary_category': categories['primary_category'],
-                    'sub_category': categories['sub_category'],
-                    'price_inr': round(price_inr, 2),
-                    'price_usd': round(final_price_usd, 2),
-                    'warranty': extract_warranty(raw_description),
-                    'description': clean_desc,
-                    'full_specifications': raw_description,
+                    'brand': file_brand, 'name': generate_product_name(file_brand, model_clean, clean_desc),
+                    'model_number': model_clean, 'primary_category': categories['primary_category'],
+                    'sub_category': categories['sub_category'], 'price_inr': round(price_inr, 2),
+                    'price_usd': round(final_price_usd, 2), 'warranty': extract_warranty(raw_description),
+                    'description': clean_desc, 'full_specifications': raw_description,
                     'unit_of_measure': infer_unit_of_measure(raw_description, categories['primary_category']),
                     'min_order_quantity': 1,
                     'lead_time_days': estimate_lead_time(categories['primary_category'], categories['sub_category']),
-                    'gst_rate': DEFAULT_GST_RATE,
-                    'image_url': '',
-                    'needs_review': categories['needs_review'],
+                    'gst_rate': DEFAULT_GST_RATE, 'image_url': '', 'needs_review': categories['needs_review'],
                     'source_file': filename,
                 }
                 
@@ -328,8 +311,7 @@ def main():
                 product['data_quality_score'] = score
 
                 if score < REJECTION_SCORE_THRESHOLD:
-                    stats['products_rejected'] += 1
-                    continue
+                    stats['products_rejected'] += 1; continue
                 
                 if issues:
                     stats['products_flagged'] += 1
@@ -342,9 +324,7 @@ def main():
         except Exception as e:
             print(f"  Error processing {filename}: {e}")
 
-    if not all_products:
-        print("\nNo valid products could be processed. Exiting.")
-        return
+    if not all_products: print("\nNo valid products could be processed. Exiting."); return
 
     final_df = pd.DataFrame(all_products)
     initial_rows = len(final_df)
