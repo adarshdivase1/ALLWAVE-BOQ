@@ -48,15 +48,16 @@ def calculate_avixa_recommendations(length, width, ceiling_height, room_type):
 def determine_equipment_requirements(avixa_calcs, room_type, technical_reqs):
     profile = ROOM_SPECS.get(room_type, ROOM_SPECS["Standard Conference Room (6-8 People)"])
     equipment = {k: (v.copy() if isinstance(v, dict) else v) for k, v in profile.items()}
-
-    if 'displays' in equipment:
-        equipment['displays']['size_inches'] = avixa_calcs.get('recommended_display_size_inches', 65)
     
-    if 'audio_system' in equipment:
-        equipment['audio_system']['speaker_count'] = avixa_calcs.get('speakers_needed_for_coverage', 2)
+    # --- BUG FIX STARTS HERE ---
+    # Add the room_type and avixa_calcs to the dictionary so they can be used later
+    equipment['room_type'] = room_type
+    equipment['avixa_calcs'] = avixa_calcs
+    # --- BUG FIX ENDS HERE ---
 
+    # This part remains the same
     user_features = technical_reqs.get('features', '').lower()
-    if 'dual display' in user_features and 'displays' in equipment:
-        equipment['displays']['quantity'] = 2
+    if 'dual display' in user_features and 'components' in equipment and 'display' in equipment['components']:
+        equipment['components']['display']['quantity'] = 2
         
     return equipment
