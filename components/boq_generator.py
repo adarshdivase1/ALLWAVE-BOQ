@@ -120,35 +120,24 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
     if category == 'Mounts' and equipment_reqs and 'displays' in equipment_reqs:
         req_size = equipment_reqs['displays'].get('size_inches', 65)
         
-        # Exclude incompatible mounts
+        # CRITICAL: Remove ALL non-display mounts
         matches = matches[~matches['name'].str.contains(
-            r'\b(video bar|soundbar|Studio X30|Studio X50|Rally Bar|Meetup|for Poly|camera mount|tablet)\b',
+            r'\b(X30|X50|X70|Rally|Studio|video bar|soundbar|camera|tablet|for Poly|for Cisco|for Logitech)\b',
             case=False, na=False, regex=True
         )]
         
-        # Size-based mount selection with explicit filtering
+        # Also check model numbers
+        matches = matches[~matches['model_number'].str.contains(
+            r'(X\d{2}|VB-|CAM-)',
+            case=False, na=False, regex=True
+        )]
+        
+        # For 90"+ displays, require explicit large mount keywords
         if req_size >= 90:
-            # 90"+ displays need heavy-duty commercial mounts
-            large_mounts = matches[matches['name'].str.contains(
-                r'(98"|90"-98"|86"-98"|extra heavy|commercial|heavy-duty.*\d{2,3}"|articulating.*\d{2,3}")',
+            matches = matches[matches['name'].str.contains(
+                r'(90"|95"|98"|100"|86"-98"|heavy.*duty|commercial|extra.*large)',
                 case=False, na=False, regex=True
             )]
-            if not large_mounts.empty:
-                matches = large_mounts
-        elif req_size >= 75:
-            large_mounts = matches[matches['name'].str.contains(
-                r'(75"|80"|85"|86"|70"-90"|articulating|heavy-duty)',
-                case=False, na=False, regex=True
-            )]
-            if not large_mounts.empty:
-                matches = large_mounts
-        elif req_size >= 55:
-            medium_mounts = matches[matches['name'].str.contains(
-                r'(55"|60"|65"|70"|50"-80"|universal|standard)',
-                case=False, na=False, regex=True
-            )]
-            if not medium_mounts.empty:
-                matches = medium_mounts
 
     # Video Conferencing: Ecosystem-aware selection
     if category == 'Video Conferencing':
@@ -218,22 +207,35 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
 
     # Amplifiers: Strict power amplifier selection
     if sub_category == 'Amplifier':
-        # Exclude non-amplifier products
+        # Explicitly exclude non-power-amps
         matches = matches[~matches['name'].str.contains(
-            r'\b(processor|dsp|summing|mixer|matrix|line driver|distribution|extender)\b',
+            r'\b(summing|distribution|line.*driver|active.*summing|quad.*active)\b',
             case=False, na=False, regex=True
         )]
         
-        # Prioritize power amplifiers
+        # Require power amp keywords
         power_amp_matches = matches[matches['name'].str.contains(
-            r'(power amp|70v|100v|\d-channel|\dW|watt|amplifier)',
+            r'(power\s*amp|70v|100v|spa\d+|xpa\d+|\d+-channel.*amp|\d+w.*amp)',
             case=False, na=False, regex=True
         )]
         
         if not power_amp_matches.empty:
             matches = power_amp_matches
-        elif matches.empty:
-            return None  # Explicit failure if no valid amplifiers
+        else:
+            return None  # Force failure if no real power amps available
+            
+    # Microphone Type Validation
+    if sub_category == 'Ceiling Microphone':
+        matches = matches[matches['name'].str.contains(
+            r'(ceiling|pendant|overhead|array.*ceiling|mxa\d+|tcc\d|vcm3[0-9])',
+            case=False, na=False, regex=True
+        )]
+        
+        # Exclude table/USB mics
+        matches = matches[~matches['name'].str.contains(
+            r'(wired.*video|usb|table|boundary|vcm35)',
+            case=False, na=False, regex=True
+        )]
 
     # Ceiling Speakers: Proper speaker selection
     if sub_category == 'Ceiling Loudspeaker':
