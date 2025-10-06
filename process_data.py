@@ -19,9 +19,9 @@ FALLBACK_INR_TO_USD = 83.5
 
 # --- QUALITY THRESHOLDS ---
 MIN_DESCRIPTION_LENGTH = 10
-MAX_PRICE_USD = 150000 # Increased for high-end items like large LED walls
+MAX_PRICE_USD = 200000 # Increased for high-end items like large LED walls
 MIN_PRICE_USD = 1.0
-REJECTION_SCORE_THRESHOLD = 35 # Slightly more lenient to accept more items
+REJECTION_SCORE_THRESHOLD = 30 # Lenient to accept more items for manual review
 
 # --- HELPER FUNCTIONS ---
 
@@ -63,12 +63,9 @@ def clean_model_number(model_str: Any) -> str:
     if pd.isna(model_str): return ""
     model_str = str(model_str).strip().replace('\n', ' ')
     patterns = [
-        r'\b[A-Z0-9]{2,}-\d{2,}[A-Z0-9-]*\b',
-        r'\b\w{2,}\d{2,}[A-Z-]*\b',
-        r'\b[A-Z]{3,}\d{2,}[A-Z0-9-]*\b',
-        r'\b\d{3}-\d{5}\b',
-        r'[a-zA-Z]{1,4}[- ]?\d+[- ]?[a-zA-Z0-9-]*',
-        r'([a-zA-Z0-9]+(?:[-/.][a-zA-Z0-9]+)+)'
+        r'\b[A-Z0-9]{2,}-\d{2,}[A-Z0-9-]*\b', r'\b\w{2,}\d{2,}[A-Z-]*\b',
+        r'\b[A-Z]{3,}\d{2,}[A-Z0-9-]*\b', r'\b\d{3}-\d{5}\b',
+        r'[a-zA-Z]{1,4}[- ]?\d+[- ]?[a-zA-Z0-9-]*', r'([a-zA-Z0-9]+(?:[-/.][a-zA-Z0-9]+)+)'
     ]
     for pattern in patterns:
         potential_models = re.findall(pattern, model_str)
@@ -115,66 +112,66 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
     if 'Commissioning' in sub_category: return 45
     if any(k in sub_category for k in ['Video Wall', 'Direct-View LED']): return 30
     if category in ['Control Systems', 'Signal Management', 'Audio', 'Lighting']: return 21
-    if category in ['Video Conferencing', 'Displays', 'Furniture']: return 14
+    if category in ['Video Conferencing', 'Displays', 'Furniture', 'Computers']: return 14
     if category in ['Cables & Connectivity', 'Mounts', 'Infrastructure', 'Peripherals & Accessories']: return 7
     return 14
 
-# --- V4.0 ULTIMATE CATEGORIZATION ENGINE ---
+# --- V5.0 ULTIMATE CATEGORIZATION ENGINE ---
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
     
     category_rules = [
         # 1. Software & Services (Highest Priority)
-        ('Software & Services', 'Support & Warranty', [r'\d\s*y(ea)?r.*poly\+', r'\d\s*y(ea)?r.*support', 'jumpstart', 'partner premier', 'onsite support']),
+        ('Software & Services', 'Support & Warranty', [r'\d\s*y(ea)?r.*poly\+', r'\d\s*y(ea)?r.*support', 'jumpstart', 'partner premier', 'onsite support', r'\bcon-snt\b', r'\bcon-ecdn\b']),
         ('Software & Services', 'Software License', ['license', 'saas', 'software license', 'annual license']),
         ('Software & Services', 'Cloud Service', ['cloud service', 'bsn.cloud', 'xiocloud']),
 
         # 2. Furniture
         ('Furniture', 'Podium / Lectern', ['podium', 'lectern']),
-        ('Furniture', 'AV Credenza', ['credenza']),
+        ('Furniture', 'AV Credenza / Stand', ['credenza', 'logic pod']),
 
         # 3. Infrastructure
-        ('Infrastructure', 'Architectural / In-Wall', ['faceplate', 'button cap', 'bezel', 'cable cubby', 'tbus', 'hydraport', 'fliptop', 'wall box']),
+        ('Infrastructure', 'Architectural / In-Wall', ['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby', 'tbus', 'hydraport', 'fliptop', 'mud ring']),
         ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter']),
-        ('Infrastructure', 'Power Management', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply', 'poe injector', 'power pack']),
-        
+        ('Infrastructure', 'Power Management', ['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner', 'power supply', 'poe injector', 'power pack', r'pw-\d+', r'qs-ps-']),
+
         # 4. Mounts
-        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak)', r'bt\d+', 'lpa\d+']),
+        ('Mounts', 'Display Mount / Cart', ['tv mount', 'display mount', 'wall mount', 'trolley', 'av cart', 'floor stand', 'fusion mount', 'chief', 'vesa', 'videowall mount', 'ceiling mount(?!.*mic|.*speak)', r'bt\d+', 'lpa\d+', 'steelcase.*mount', 'heckler.*cart']),
         ('Mounts', 'Projector Mount', ['projector mount', 'projector ceiling mount']),
         ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
         ('Mounts', 'Component / Rack Mount', ['rack shelf', 'rackmount kit', 'component storage', 'mounting shelf', 'mounting kit(?!.*display|.*tv)']),
-        ('Mounts', 'Speaker/Mic Mount', ['speaker mount', 'mic mount', 'microphone suspension']),
+        ('Mounts', 'Speaker/Mic Mount', ['speaker mount', 'mic mount', 'microphone suspension', 'pendant mount']),
 
         # 5. Peripherals & Accessories
-        ('Peripherals & Accessories', 'Keyboard & Mouse', ['keyboard', 'mouse', 'mk\d+', 'mx master', 'combo touch']),
-        ('Peripherals & Accessories', 'Docking Station / Hub', ['docking station', 'usb hub', 'logidock', 'mic pod hub']),
-        ('Peripherals & Accessories', 'Remote Control', ['remote control', r'\brc\d+']),
+        ('Peripherals & Accessories', 'Keyboard & Mouse', ['keyboard', 'mouse', r'mk\d+', 'mx master', 'combo touch']),
+        ('Peripherals & Accessories', 'Docking Station / Hub', ['docking station', 'usb hub', 'logidock', 'mic pod hub', 'usb-c.*hub']),
+        ('Peripherals & Accessories', 'Remote Control', ['remote control', r'\brc\d+', r'hr-\d+']),
         ('Peripherals & Accessories', 'Stylus / Pen', ['stylus', 'pen', 'crayon digital pencil']),
         ('Peripherals & Accessories', 'Whiteboard Camera', ['scribe']),
         ('Peripherals & Accessories', 'IR Emitter/Receiver', ['ir emitter', 'ir receiver', 'ir sensor']),
 
         # 6. Cables & Connectivity
-        ('Cables & Connectivity', 'Cable Retractor / Management', ['retractor', 'cable caddy', 'cable ring']),
+        ('Cables & Connectivity', 'Cable Retractor / Management', ['retractor', 'cable caddy', 'cable ring', 'cable organizer', 'cable bag']),
         ('Cables & Connectivity', 'AV Cable', ['hdmi cable', 'usb-c cable', 'aoc', 'vga cable', 'audio cable', 'displayport cable', 'bnc cable', 'dvi cable', 'sdi cable']),
         ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cord', 'ethernet cable', 'rj45 cable']),
-        ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk cable', 'spool', 'reel', r'\d+ft', r'\d+m(?!.*hdmi)', 'speaker wire']),
-        ('Cables & Connectivity', 'Connectors, Adapters & Dongles', ['adapter', 'connector', 'dongle', 'gender changer', 'terminator', 'coupler', 'adapter ring', 'capture dongle']),
+        ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk cable', 'spool', 'reel', r'1000ft', r'305m', 'speaker wire', 'coax.*cable']),
+        ('Cables & Connectivity', 'Connectors, Adapters & Dongles', ['adapter', 'connector', 'dongle', 'gender changer', 'terminator', 'coupler', 'adapter ring', 'capture dongle', 'usb capture']),
         ('Cables & Connectivity', 'Fiber Optic', ['fiber optic', 'sfp', 'lc-lc', 'om4', 'singlemode']),
 
         # 7. Video Conferencing
         ('Video Conferencing', 'Collaboration Display', ['meetingboard', 'collaboration display', 'deskvision', 'surface hub', 'dten d7', r'mb\d{2}-', 'smart collaboration whiteboard', 'all-in-one smart whiteboard', 'neat board']),
-        ('Video Conferencing', 'Video Bar', ['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio', 'meetup', 'all-in-one.*video', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam', 'meetingbar', 'neat bar']),
-        ('Video Conferencing', 'Room Kit / Compute', ['room kit', 'codec(?!.*cable)', r'mvc\d+', 'mcorekit', 'teams rooms system', 'vc system', 'video conferencing system', r'mvcs\d+', 'g7500', 'mini pc', 'nuc', 'thinksmart core', 'uc-engine']),
-        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera', 'precision 60']),
-        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c9\d{2}', 'personal video', 'usb camera', 'poly studio p15', 'huddly']),
-        ('Video Conferencing', 'Touch Controller / Panel', ['touch controller', 'touch panel', 'tap ip', r'tc\d+\b', r'ctp\d+\b', 'collaboration touch', 'mtouch', 'gc8', 'neat pad']),
+        ('Video Conferencing', 'Video Bar', ['video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio', 'meetup', 'all-in-one.*video', r'a\d{2}-\d{3}', r'\buvc(34|40)\b', 'smartvision', 'conferencecam', 'meetingbar', 'neat bar', 'panacast 50']),
+        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec(?!.*cable)', r'mvc\d+', 'mcorekit', 'teams rooms system', 'vc system', 'video conferencing system', r'mvcs\d+', 'g7500', 'thinksmart core', 'uc-engine', r'cs-kit\w+']),
+        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'optical zoom camera', 'tracking camera', r'uvc8\d', r'mb-camera', 'eagleeye', 'ptz pro', 'e70 camera', 'e60 camera', 'precision 60', 'huddly.*iq', 'inogeni']),
+        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c9\d{2}', 'personal video', 'usb camera', 'poly studio p15']),
+        ('Video Conferencing', 'Touch Controller / Panel', ['touch controller', 'touch panel', 'tap ip', r'tc\d+\b', r'ctp\d+\b', 'collaboration touch', 'mtouch', 'gc8', 'neat pad', 'touch 10']),
         ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'scheduling panel', 'room panel', r'tss-\d+', 'tap scheduler']),
         
         # 8. Audio
-        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b', r'tcm-x\b(?!.*(hole|saw|driver|install|kit))', 'ceiling.*microphone.*array']),
-        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', 'conference phone', 'tabletop.*mic', 'mxa310', 'rally mic pod', 'ip table microphone', r'vcm35']),
-        ('Audio', 'Wireless Microphone System', ['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter', 'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd', 'mxwapt']),
+        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa9\d0', 'tcc-2', 'tcc2', r'vcm3\d', r'cm\d{2}\b', r'tcm-x\b', 'ceiling.*microphone']),
+        ('Audio', 'Table/Boundary Microphone', ['table mic', 'boundary mic', r'mxa3\d\d', 'rally mic pod', 'ip table microphone', r'vcm35', 'table array']),
+        ('Audio', 'Wireless Microphone System', ['wireless mic', 'wireless microphone', r'vcm\d+w', 'handheld transmitter', 'bodypack transmitter', 'lavalier system', 'sl mcr', 'ulxd', 'mxwapt', 'blx\d+']),
         ('Audio', 'Gooseneck Microphone', ['gooseneck', r'meg \d+']),
         ('Audio', 'Headset / Wearable Mic', ['headset', 'earset', 'zone wireless', 'h\d{3}e', 'lavalier(?!.*system)', 'headworn']),
         ('Audio', 'Speakerphone', ['speakerphone', 'poly sync', 'speak \d+', 'mobile speakerphone']),
@@ -195,19 +192,23 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
         ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher', 'presentations.*switcher', 'dmps', 'crosspoint', r'vm\d{4}', r'vs\d{3}', 'dxp hd']),
         ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', r'hd-tx\d*', r'hd-rx\d*', 'dphd', 'tps-tx', 'tps-rx', 'dtp', 'tp-\d+r']),
         ('Signal Management', 'Video Wall Processor', ['video wall processor', 'multi screen controller']),
-        ('Signal Management', 'Scaler / Converter / Processor', ['scaler', 'converter', 'scan converter', 'up/down/cross-converter', r'dsc \d+', 'signal processor', 'edid', 'audio embedder', 'de-embedder', 'annotation processor', 'video capture']),
+        ('Signal Management', 'Scaler / Converter / Processor', ['scaler', 'converter', 'scan converter', r'dsc \d+', 'signal processor', 'edid', 'embedder', 'de-embedder', 'annotation processor', 'video capture']),
         ('Signal Management', 'Distribution Amplifier / Splitter', ['distribution amplifier', r'da\dhd', r'hd-da\d+', 'hdmi splitter', 'vs\d{3}a']),
         ('Signal Management', 'AV over IP (Encoder/Decoder)', ['av over ip', 'dm nvx', 'encoder', 'decoder', 'nav e \d+', 'nav sd \d+']),
         
         # 11. Control Systems
-        ('Control Systems', 'Control Processor', ['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx', 'ipcp pro']),
+        ('Control Systems', 'Control Processor', ['control system', 'control processor', r'cp\d-r', r'rmc\d', 'netlinx', 'ipcp pro', r'nx-\d+']),
         ('Control Systems', 'Touch Panel', ['touch panel(?!.*collaboration)', 'touch screen(?!.*display)', 'modero', r'tsw-\d+', r'tst-\d+']),
         ('Control Systems', 'Keypad', ['keypad', r'c2n-\w+', r'hz-kp\w+', 'ebus button panel']),
         ('Control Systems', 'Sensor', ['sensor', 'occupancy', 'daylight', 'gls-']),
 
-        # 12. Lighting
+        # 12. Computers
+        ('Computers', 'Desktop / SFF PC', ['desktop', 'optiplex', 'mini conference pc', 'asus nuc']),
+        ('Computers', 'Tablet', ['ipad']),
+        ('Computers', 'OPS Module', [r'\bops\b', 'pc module']),
+        
+        # 13. Lighting
         ('Lighting', 'Lighting Control', ['dali', 'lutron', 'qsne', 'dimmer module']),
-
     ]
 
     for primary, sub, patterns in category_rules:
@@ -216,7 +217,6 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
 
     # Final fallback
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
-
 
 # --- DATA QUALITY SCORING ---
 
@@ -236,7 +236,7 @@ def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
     if not product.get('name'):
         score -= 40
         issues.append("Missing generated product name")
-    if not product.get('model_number') and product.get('primary_category') not in ['Software & Services']:
+    if not product.get('model_number') and product.get('primary_category') not in ['Software & Services', 'Cables & Connectivity']:
         score -= 15
         issues.append("Missing model number")
     if product.get('needs_review', False):
@@ -349,9 +349,9 @@ def main():
     final_df = pd.DataFrame(all_products)
     initial_rows = len(final_df)
     
-    # A more robust duplicate removal
-    final_df['model_number'] = final_df['model_number'].str.lower().str.strip()
-    final_df.drop_duplicates(subset=['brand', 'model_number'], keep='last', inplace=True)
+    final_df['model_number_lower'] = final_df['model_number'].str.lower().str.strip()
+    final_df.drop_duplicates(subset=['brand', 'model_number_lower'], keep='last', inplace=True)
+    final_df.drop(columns=['model_number_lower'], inplace=True)
     
     final_rows = len(final_df)
 
@@ -359,17 +359,17 @@ def main():
     print(f"Files processed: {stats['files_processed']}")
     print(f"Total Products Found: {stats['products_found']}")
     print(f"Products Accepted (Score >= {REJECTION_SCORE_THRESHOLD}): {initial_rows}")
-    print(f"  - Valid (Score 100): {stats['products_valid']}")
+    print(f"  - Valid (No Issues): {stats['products_valid']}")
     print(f"  - Flagged for Review: {stats['products_flagged']}")
     print(f"Products Rejected (Score < {REJECTION_SCORE_THRESHOLD}): {stats['products_rejected']}")
     print(f"Duplicates Removed: {initial_rows - final_rows}")
     
-    print(f"\nCategory Distribution (Top 12):")
+    print(f"\nCategory Distribution (Top 15):")
     category_counts = final_df['primary_category'].value_counts()
-    for cat, count in category_counts.head(12).items():
+    for cat, count in category_counts.head(15).items():
         print(f"  - {cat:<25}: {count} products")
 
-    final_df.to_csv(OUTPUT_FILENAME, index=False)
+    final_df.to_csv(OUTPUT_FILENAME, index=False, encoding='utf-8')
     print(f"\n✅ Created Master Catalog: '{OUTPUT_FILENAME}' with {final_rows} products")
 
     if validation_log:
