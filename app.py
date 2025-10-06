@@ -276,8 +276,12 @@ def main():
                     # MODIFIED: More direct calculation, assumes session_state keys exist
                     room_area = st.session_state.room_length_input * st.session_state.room_width_input
 
-                    progress_bar.progress(25, text="🤖 Step 1: Querying AI model for equipment list...")
-                    boq_items, avixa_calcs, equipment_reqs, required_components = generate_boq_from_ai(
+                    progress_bar.progress(25, text="🤖 Step 1: Querying AI, validating, and post-processing...")
+                    
+                    # --- CORRECTED LOGIC ---
+                    # The generate_boq_from_ai function now handles all processing internally.
+                    # We just need to capture its final, validated output correctly.
+                    processed_boq, avixa_calcs, equipment_reqs, validation_results = generate_boq_from_ai(
                         model, product_df, guidelines,
                         st.session_state.room_type_select,
                         st.session_state.budget_tier_slider,
@@ -286,19 +290,13 @@ def main():
                         room_area 
                     )
                     
-                    if boq_items:
-                        progress_bar.progress(65, text="⚙️ Step 2: Applying post-processing and validation rules...")
-                        processed_boq, avixa_validation = post_process_boq(
-                            boq_items,
-                            product_df,
-                            avixa_calcs,
-                            equipment_reqs,
-                            room_type_key,
-                            required_components
-                        )
+                    if processed_boq:
+                        progress_bar.progress(90, text="✅ Finalizing results...")
                         
+                        # Directly update the session state with the final, processed results.
+                        # The redundant call to post_process_boq is now removed.
                         st.session_state.boq_items = processed_boq
-                        st.session_state.validation_results = avixa_validation
+                        st.session_state.validation_results = validation_results
                         update_boq_content_with_current_items()
 
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
