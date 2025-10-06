@@ -110,51 +110,193 @@ def estimate_lead_time(category: str, sub_category: str) -> int:
 
 def categorize_product_comprehensively(description: str, model: str) -> Dict[str, Any]:
     text_to_search = (str(description) + ' ' + str(model)).lower()
-    accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 'chassis', 'faceplate', 'pendant']
+    
+    # Accessory detection (keep this first)
+    accessory_keywords = ['mount', 'bracket', 'adapter', 'plate', 'frame', 'stand', 'kit', 'housing', 
+                          'chassis', 'faceplate', 'pendant', 'cable', 'cord', 'wire']
     is_likely_accessory = any(re.search(r'\b' + keyword + r'\b', text_to_search) for keyword in accessory_keywords)
 
+    # Priority-ordered categorization rules (more specific first)
     category_rules = [
-        ('Mounts', 'Rack Accessory', ['rack shelf', 'blanking panel', 'rack rail']),
-        ('Mounts', 'Camera Mount', ['camera mount', 'cam-mount', 'camera bracket']),
-        ('Mounts', 'Display Mount / Cart', ['wall mount', 'display mount', 'trolley', 'cart', 'floor stand', 'fusion', 'chief']),
-        ('Cables & Connectivity', 'Wall & Table Plate Frame', ['mounting frame', 'aap frame']),
-        ('Cables & Connectivity', 'Wall & Table Plate Module', ['aap module', 'hdmi plate', 'usb plate', 'keystone']),
-        ('Audio', 'Microphone Accessory', ['mic stand', 'mic bracket', 'ceiling mic mount kit']),
-        ('Video Conferencing', 'Collaboration Display', ['dten', 'surface hub', 'collaboration display', 'meetingboard']),
-        ('Video Conferencing', 'Video Bar', ['video bar', 'rally bar', 'poly studio', 'meetup', 'cisco room bar']),
-        ('Video Conferencing', 'Room Kit / Codec', ['room kit', 'codec', 'g7500', 'cs-kit', 'plus kit', 'mvc']),
-        ('Video Conferencing', 'PTZ Camera', ['ptz camera', 'e-ptz', 'ptz4k', 'eagleeye', 'unicam', 'rally camera']),
-        ('Video Conferencing', 'Webcam / Personal Camera', ['webcam', 'brio', 'c930']),
-        ('Video Conferencing', 'Touch Controller', ['touch controller', 'tap ip', 'tc8', 'tc10', 'crestron mercury']),
-        ('Video Conferencing', 'Scheduling Panel', ['scheduler', 'room booking', 'tap scheduler', 'tss-770']),
-        ('Video Conferencing', 'Wireless Presentation', ['clickshare', 'airtame', 'via connect', 'wpp30']),
-        ('Audio', 'DSP / Processor', ['dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp', 'p300', 'audio mixer']),
-        ('Audio', 'Ceiling Microphone', ['ceiling mic', 'mxa910', 'mxa920', 'tcc2', r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))']),
-        ('Audio', 'Table Microphone', ['table mic', 'boundary mic', 'conference phone']),
-        ('Audio', 'Amplifier', ['amplifier', 'amp', 'poweramp', r'\d+\s*x\s*\d+w']),
-        ('Audio', 'Loudspeaker', ['speaker', 'soundbar', 'ceiling speaker', 'pendant speaker']),
-        ('Audio', 'Audio Interface / Expander', ['dante interface', 'ex-ubt', 'usb expander']),
-        ('Displays', 'Interactive Display', ['interactive', 'touch display', 'smart board']),
-        ('Displays', 'Professional Display', ['display', 'monitor', 'signage', 'bravia', 'commercial monitor']),
-        ('Displays', 'Video Wall Display', ['video wall']),
-        ('Displays', 'Direct-View LED', ['led wall', 'dvled']),
-        ('Displays', 'Projector', ['projector', 'dlp']),
-        ('Signal Management', 'Matrix Switcher', ['matrix', 'switcher']),
-        ('Signal Management', 'Extender (TX/RX)', ['extender', 'transmitter', 'receiver', 'hdbaset']),
-        ('Cables & Connectivity', 'Network Cable', ['cat6', 'cat5e', 'utp', 'patch cable', 'ethernet']),
-        ('Cables & Connectivity', 'Control Cable', ['rs-232', 'serial cable']),
-        ('Cables & Connectivity', 'AV Cable', ['hdmi', 'usb-c', 'aoc', 'vga', 'audio cable', 'displayport']),
-        ('Cables & Connectivity', 'Bulk Cable / Wire', ['bulk', 'spool', 'reel']),
-        ('Infrastructure', 'AV Rack', [r'\d+u rack', r'\d+u\s*enclosure']),
-        ('Infrastructure', 'Network Switch', ['switch', 'poe switch']),
-        ('Infrastructure', 'Power (PDU/UPS)', ['pdu', 'ups', 'power distribution']),
+        # VIDEO CONFERENCING - Most specific patterns first
+        ('Video Conferencing', 'Collaboration Display', [
+            'meetingboard', 'collaboration display', 'dten', 'surface hub', 
+            'interactive display', 'touch display.*collaboration', 'smart.*whiteboard'
+        ]),
+        
+        ('Video Conferencing', 'Video Bar', [
+            'video bar', 'meeting bar', 'collaboration bar', 'rally bar', 'poly studio',
+            'meetup', 'all-in-one.*video', 'aio.*video', r'\ba\d{2}-\d{3}\b', # Yealink A-series
+            'uvc\d{2}', 'smartvision', 'intelligent.*usb.*video'
+        ]),
+        
+        ('Video Conferencing', 'Room Kit / Codec', [
+            'room kit', 'codec', 'mvc\d+', 'mcore', 'mini-pc', 'teams rooms system',
+            'vc system', 'video conferencing system', 'mtouch', 'base bundle',
+            r'\bmvc[s]?\d+\b', 'avhub', 'audio.*video processor'
+        ]),
+        
+        ('Video Conferencing', 'PTZ Camera', [
+            'ptz camera', 'pan.*tilt.*zoom', 'optical zoom camera', 'tracking camera',
+            'uvc8[46]', r'\d+x.*optical.*zoom', 'dual-eye tracking', 'auto.*framing'
+        ]),
+        
+        ('Video Conferencing', 'Webcam / Personal Camera', [
+            'webcam', 'brio', 'c930', 'usb camera', 'desktop camera'
+        ]),
+        
+        ('Video Conferencing', 'Touch Controller', [
+            'touch controller', 'touch panel', 'tap ip', 'tc\d+', 'ctp\d+',
+            'collaboration touch', 'control panel', 'android.*touch'
+        ]),
+        
+        ('Video Conferencing', 'Scheduling Panel', [
+            'scheduler', 'room booking', 'scheduling panel', 'room panel',
+            'tss-', 'meeting room.*panel', 'room schduling'
+        ]),
+        
+        ('Video Conferencing', 'Wireless Presentation', [
+            'clickshare', 'airtame', 'via connect', 'wpp\d+', 'wireless presentation',
+            'screen sharing', 'presentation pod', 'room cast', 'byod.*extender',
+            'mshare', 'sharing box', 'vch\d+'
+        ]),
+        
+        # AUDIO - More specific patterns
+        ('Audio', 'Ceiling Microphone', [
+            'ceiling mic', 'mxa9[012]0', 'tcc2', 'vcm\d+', 'cm\d+',
+            r'\btcm-x\b(?!.*(hole|saw|driver|install|kit))', 
+            'ceiling.*microphone.*array', 'ceiling.*mic.*array'
+        ]),
+        
+        ('Audio', 'Table Microphone', [
+            'table mic', 'boundary mic', 'conference phone', 'speakerphone',
+            'tabletop.*mic', 'desktop.*mic', 'vcm\d+.*wireless', 'ms speaker'
+        ]),
+        
+        ('Audio', 'Ceiling Speaker', [
+            'ceiling speaker', 'in-ceiling', 'coaxial.*ceiling', 'cs\d+.*ceiling',
+            'skysound', 'network.*ceiling.*speaker'
+        ]),
+        
+        ('Audio', 'DSP / Processor', [
+            'dsp', 'digital signal processor', 'tesira', 'q-sys core', 'biamp',
+            'p300', 'audio mixer', 'audio processor', 'dante.*processor'
+        ]),
+        
+        ('Audio', 'Amplifier', [
+            'amplifier', r'\bamp\b', 'poweramp', r'\d+\s*x\s*\d+w', 'power.*amplifier'
+        ]),
+        
+        ('Audio', 'Loudspeaker', [
+            'speaker', 'soundbar', 'loudspeaker', 'pendant speaker',
+            '(?!ceiling).*speaker(?!phone)'
+        ]),
+        
+        ('Audio', 'Audio Kit', [
+            'cmkit', 'audio.*kit', 'microphone.*speaker.*kit'
+        ]),
+        
+        # DISPLAYS
+        ('Displays', 'Interactive Display', [
+            'interactive(?!.*whiteboard)', 'touch display(?!.*collaboration)', 
+            'smart board', 'interactive.*monitor'
+        ]),
+        
+        ('Displays', 'Professional Display', [
+            'display(?!.*mount)', 'monitor(?!.*mount)', 'signage', 'bravia', 
+            'commercial monitor', 'professional.*display', 'flat panel'
+        ]),
+        
+        ('Displays', 'Video Wall Display', [
+            'video wall'
+        ]),
+        
+        ('Displays', 'Direct-View LED', [
+            'led wall', 'dvled', 'direct.*view.*led'
+        ]),
+        
+        ('Displays', 'Projector', [
+            'projector', 'dlp', 'laser projector'
+        ]),
+        
+        # MOUNTS (check after identifying core products)
+        ('Mounts', 'Display Mount / Cart', [
+            'tv mount', 'display mount', 'wall mount', 'trolley', 'cart', 
+            'floor stand', 'fusion', 'chief', 'vcs-tvmount', 'floorstand'
+        ]),
+        
+        ('Mounts', 'Camera Mount', [
+            'camera mount', 'cam-mount', 'camera bracket'
+        ]),
+        
+        ('Mounts', 'Rack Accessory', [
+            'rack shelf', 'blanking panel', 'rack rail'
+        ]),
+        
+        # INFRASTRUCTURE
+        ('Infrastructure', 'Network Switch', [
+            'switch', 'poe switch', 'managed.*switch', 'rch\d+', 'ethernet switch',
+            r'\d+-port.*switch'
+        ]),
+        
+        ('Infrastructure', 'AV Rack', [
+            r'\d+u rack', r'\d+u\s*enclosure', 'equipment rack'
+        ]),
+        
+        ('Infrastructure', 'Power (PDU/UPS)', [
+            'pdu', 'ups', 'power distribution'
+        ]),
+        
+        # SIGNAL MANAGEMENT
+        ('Signal Management', 'Matrix Switcher', [
+            'matrix', 'switcher(?!.*network|.*poe)', 'video.*switcher'
+        ]),
+        
+        ('Signal Management', 'Extender (TX/RX)', [
+            'extender', 'transmitter', 'receiver', 'hdbaset', 'tx/rx', 'usb.*extender'
+        ]),
+        
+        # CABLES & CONNECTIVITY
+        ('Cables & Connectivity', 'Wall & Table Plate Frame', [
+            'mounting frame', 'aap frame', 'wall plate.*frame'
+        ]),
+        
+        ('Cables & Connectivity', 'Wall & Table Plate Module', [
+            'aap module', 'hdmi plate', 'usb plate', 'keystone', 'wall.*module'
+        ]),
+        
+        ('Cables & Connectivity', 'Network Cable', [
+            'cat6', 'cat5e', 'utp', 'patch cable', 'ethernet cable'
+        ]),
+        
+        ('Cables & Connectivity', 'Control Cable', [
+            'rs-232', 'serial cable', 'control.*cable'
+        ]),
+        
+        ('Cables & Connectivity', 'AV Cable', [
+            'hdmi(?!.*plate)', 'usb-c(?!.*plate)', 'aoc', 'vga', 'audio cable', 
+            'displayport', 'av.*cable'
+        ]),
+        
+        ('Cables & Connectivity', 'Bulk Cable / Wire', [
+            'bulk', 'spool', 'reel', r'\d+ft.*cable', r'\d+m.*cable'
+        ]),
     ]
 
+    # Apply rules in order
     for primary, sub, patterns in category_rules:
-        is_core_product_match = not is_likely_accessory or 'Accessory' not in sub
-        if any(re.search(r'\b' + pattern + r'\b', text_to_search, re.IGNORECASE) for pattern in patterns) and is_core_product_match:
-            return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
+        # Skip mount/accessory categories if this is a core product
+        if primary in ['Mounts', 'Cables & Connectivity'] and not is_likely_accessory:
+            # Unless the description is REALLY about mounts/cables
+            if not any(mount_word in text_to_search for mount_word in ['mount', 'cable', 'plate', 'bracket', 'stand']):
+                continue
+        
+        # Check if any pattern matches
+        for pattern in patterns:
+            if re.search(r'\b' + pattern + r'\b', text_to_search, re.IGNORECASE):
+                return {'primary_category': primary, 'sub_category': sub, 'needs_review': False}
 
+    # If nothing matched, flag for review
     return {'primary_category': 'General AV', 'sub_category': 'Needs Classification', 'needs_review': True}
 
 
