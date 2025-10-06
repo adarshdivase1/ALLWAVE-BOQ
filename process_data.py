@@ -132,8 +132,11 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     # PRIORITY 1: Software & Services (Must be caught first)
     if matches_any([r'\d+\s*y(ea)?r.*warranty', r'\d+\s*y(ea)?r.*support', 'poly\+', 'partner premier', 
                     'jumpstart', 'onsite support', r'\bcon-snt\b', r'\bcon-ecdn\b', 'smartcare',
-                    'maintenance', 'support contract', 'extended warranty']):
-        return {'primary_category': 'Software & Services', 'sub_category': 'Support & Warranty', 'needs_review': False}
+                    'maintenance contract', 'support contract', 'extended warranty']):
+        # Whitelist known hardware that has warranty in description
+        hardware_brands = ['extron', 'biamp', 'qsc', 'crestron', 'shure']
+        if not any(brand in text_to_search for brand in hardware_brands):
+            return {'primary_category': 'Software & Services', 'sub_category': 'Support & Warranty', 'needs_review': False}
     
     if matches_any(['license', 'licensing', 'saas', 'software license', 'subscription', 'annual license',
                     r'l-kit\w+-ms', 'cloud license']):
@@ -206,20 +209,29 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
     if matches_any(['speakerphone', 'poly sync', r'speak \d+', 'mobile speakerphone', 'usb.*speakerphone',
                     'bluetooth.*speaker.*phone', 'conference speaker']):
         return {'primary_category': 'Audio', 'sub_category': 'Speakerphone', 'needs_review': False}
-    
+
     if matches_any(['dsp(?!.*cable)', 'digital signal processor', 'audio processor', 'tesira',
                     'q-sys core', 'biamp', r'p300\b', 'intellimix', 'audio conferencing processor',
-                    r'dmp \d+', 'bss blu', 'avhub', 'audio mixer', 'sound processor', 'mixing console']):
+                    r'dmp \d+', 'bss blu', 'avhub', 'sound processor']):
+        return {'primary_category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
+
+    if matches_any(['audio mixer', 'mixing console', 'mixer(?!.*dsp)']) and not matches_any(['dsp', 'processor']):
         return {'primary_category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
     
     if matches_any([r'\bamplifier\b', r'\bamp-\b', r'revamp\d+', 'poweramp', r'\d+\s*x\s*\d+w',
                     'power amplifier', 'netpa', r'xpa \d+', r'ma\d{4}', 'multi.*channel.*amp']):
         return {'primary_category': 'Audio', 'sub_category': 'Amplifier', 'needs_review': False}
-    
-    if matches_any(['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 'pendant speaker',
-                    'in-ceiling speaker', 'ceiling speaker', 'surface mount speaker', r'ad-c\d+',
-                    r'ad-s\d+', 'saros', r'control \d+c', r'\bms speaker\b', 'wall.*speaker',
-                    'column speaker', 'line array']):
+
+    if matches_any(['ceiling speaker', 'in-ceiling speaker', 'pendant speaker', 'ceiling.*loudspeaker',
+                    r'ad-c\d+', r'control \d+c']):
+        return {'primary_category': 'Audio', 'sub_category': 'Ceiling Loudspeaker', 'needs_review': False}
+
+    if matches_any(['wall.*speaker', 'surface mount speaker', 'wall.*loudspeaker', 
+                    r'ad-s\d+', 'surface.*speaker']):
+        return {'primary_category': 'Audio', 'sub_category': 'Wall-mounted Loudspeaker', 'needs_review': False}
+
+    if matches_any(['speaker(?!.*phone)', 'soundbar(?!.*video)', 'loudspeaker', 
+                    'column speaker', 'line array', r'\bms speaker\b']):
         return {'primary_category': 'Audio', 'sub_category': 'Loudspeaker / Speaker', 'needs_review': False}
     
     if matches_any(['dante interface', 'audio.*extender', 'audio interface', r'axi \d+',
@@ -312,19 +324,21 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
                     'presence.*detect', 'ambient.*light.*sensor']):
         return {'primary_category': 'Control Systems', 'sub_category': 'Sensor', 'needs_review': False}
 
-    # PRIORITY 7: Infrastructure
+    # PRIORITY 7: Infrastructure & Connectivity
     if matches_any(['faceplate', 'button cap', 'bezel', 'wall plate', 'table plate', 'cable cubby',
                     'tbus', 'hydraport', 'fliptop', 'mud ring', 'floor.*box', 'connectivity.*box',
-                    'table.*box', 'grommet']):
-        return {'primary_category': 'Infrastructure', 'sub_category': 'Architectural / In-Wall', 'needs_review': False}
-    
+                    'table.*box', 'grommet', 'aap', 'retractor.*box']):
+        return {'primary_category': 'Cables & Connectivity', 'sub_category': 'Wall & Table Plate Module', 'needs_review': False}
+
     if matches_any([r'\d+u.*rack', r'\d+u\s*enclosure', 'equipment rack', 'valrack', 'netshelter',
                     'server.*rack', 'relay.*rack', 'cabinet.*rack']):
         return {'primary_category': 'Infrastructure', 'sub_category': 'AV Rack', 'needs_review': False}
-    
-    if matches_any(['pdu', 'ups', 'power distribution', 'power strip', 'power conditioner',
-                    'power supply(?!.*camera)', 'poe injector', 'power pack', r'pw-\d+',
-                    r'qs-ps-', 'csa-pws', 'battery.*backup', 'surge.*protect', 'power.*inject']):
+
+    if matches_any(['pdu', 'ups', 'power distribution', 'rackmount.*power', 'rack.*power.*distribution']):
+        return {'primary_category': 'Infrastructure', 'sub_category': 'Power (PDU/UPS)', 'needs_review': False}
+
+    if matches_any(['power strip', 'power conditioner', 'power supply(?!.*camera)', 'poe injector', 
+                    'power pack', r'pw-\d+', r'qs-ps-', 'csa-pws', 'battery.*backup', 'surge.*protect']):
         return {'primary_category': 'Infrastructure', 'sub_category': 'Power Management', 'needs_review': False}
 
     # PRIORITY 8: Mounts
