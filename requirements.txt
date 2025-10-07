@@ -6,3 +6,5 @@ openpyxl
 PyYAML
 Pillow
 scikit-learn
+firebase-admin
+google-cloud-firestore
