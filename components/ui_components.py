@@ -1,5 +1,5 @@
 # components/ui_components.py
-# COMPLETE ENHANCED VERSION - Aligned with boq_generator.py v2.0
+# COMPLETE ENHANCED VERSION - Aligned with boq_generator.py 
 
 import streamlit as st
 import pandas as pd
@@ -308,16 +308,36 @@ def display_boq_results(product_df, project_details):
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            currency = st.session_state.get('currency', 'USD')
-            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            currency = st.session_state.get('currency_select', 'USD') # Use currency_select from sidebar
+            total_cost_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
             
             # Add 30% for services (installation, warranty, PM)
-            display_total = convert_currency(total_cost * 1.30, currency)
-            st.metric(
-                "Estimated Project Total",
-                format_currency(display_total, currency),
-                help="Includes installation, warranty, and project management"
-            )
+            total_with_services = total_cost_hardware * 1.30
+            
+            # --- NEW: APPLY DISCOUNT FOR EXISTING CUSTOMERS ---
+            is_existing = st.session_state.get('is_existing_customer', False)
+            if is_existing:
+                discount_rate = 0.05  # 5% discount
+                discount_amount = total_with_services * discount_rate
+                final_total = total_with_services - discount_amount
+                
+                display_final_total = convert_currency(final_total, currency)
+                help_text = f"Includes services. A 5% existing customer discount has been applied (-{format_currency(convert_currency(discount_amount, currency), currency)})."
+                
+                st.metric(
+                    "Estimated Project Total (Discounted)",
+                    format_currency(display_final_total, currency),
+                    help=help_text
+                )
+            else:
+                final_total = total_with_services
+                display_final_total = convert_currency(final_total, currency)
+                st.metric(
+                    "Estimated Project Total",
+                    format_currency(display_final_total, currency),
+                    help="Includes installation, warranty, and project management. New customers may be eligible for discounts."
+                )
+            # --- END NEW BLOCK ---
         
         with col2:
             # Generate Excel for current room
@@ -364,11 +384,11 @@ def create_interactive_boq_editor(product_df):
     with col2:
         if st.session_state.get('boq_items'):
             total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-            currency = st.session_state.get('currency', 'USD')
+            currency = st.session_state.get('currency_select', 'USD')
             display_total = convert_currency(total_cost, currency)
             st.metric("Hardware Subtotal", format_currency(display_total, currency))
         else:
-            st.metric("Subtotal", "₹0" if st.session_state.get('currency', 'USD') == 'INR' else "$0")
+            st.metric("Subtotal", "₹0" if st.session_state.get('currency_select', 'USD') == 'INR' else "$0")
     
     with col3:
         if st.button("🔄 Refresh BOQ Display", help="Update main BOQ display with current items"):
@@ -379,7 +399,7 @@ def create_interactive_boq_editor(product_df):
         st.error("Cannot load product catalog for editing.")
         return
 
-    currency = st.session_state.get('currency', 'USD')
+    currency = st.session_state.get('currency_select', 'USD')
     tabs = st.tabs(["✏️ Edit Current BOQ", "➕ Add Products", "🔍 Product Search"])
 
     with tabs[0]:
@@ -574,9 +594,9 @@ def product_search_interface(product_df, currency):
     if search_term:
         mask = product_df.apply(
             lambda row: search_term.lower() in str(row['name']).lower() or
-                       search_term.lower() in str(row['brand']).lower() or
-                       search_term.lower() in str(row['model_number']).lower() or
-                       search_term.lower() in str(row['specifications']).lower(),
+                          search_term.lower() in str(row['brand']).lower() or
+                          search_term.lower() in str(row['model_number']).lower() or
+                          search_term.lower() in str(row['specifications']).lower(),
             axis=1
         )
         search_results = product_df[mask]
