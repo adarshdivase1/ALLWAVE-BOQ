@@ -1,5 +1,3 @@
-# NEW FILE: components/intelligent_product_selector.py
-
 import re
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -116,81 +114,81 @@ class IntelligentProductSelector:
             df = df[~df['name'].str.contains(pattern, case=False, na=False, regex=True)]
         
         # Additional heuristic: if "warranty" or "service" in name AND price < $100
-        df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) & 
+        df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) &
                   (df['price'] < 100))]
         
         return df
     
     def _apply_keyword_filters(self, df, req: ProductRequirement):
-    """Stage 3: Apply required and blacklist keywords - ENHANCED"""
-    
-    # Required keywords (product MUST contain at least one)
-    if req.required_keywords:
-        pattern = '|'.join([re.escape(kw) for kw in req.required_keywords])
-        df = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
+        """Stage 3: Apply required and blacklist keywords - ENHANCED"""
         
-        self.log(f"After required keywords filter: {len(df)} products")
-    
-    # Blacklist keywords (product MUST NOT contain any)
-    if req.blacklist_keywords:
-        for keyword in req.blacklist_keywords:
-            before_count = len(df)
-            df = df[~df['name'].str.contains(re.escape(keyword), case=False, na=False, regex=True)]
-            after_count = len(df)
-            if before_count != after_count:
-                self.log(f"Blacklist '{keyword}' removed {before_count - after_count} products")
-    
-    # CRITICAL ADDITIONAL FILTERS BY CATEGORY
-    if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
-        # MUST contain mount-specific terms
-        df = df[df['name'].str.contains(
-            r'(wall.*mount|ceiling.*mount|floor.*stand|display.*mount|tv.*mount|large.*format.*mount)',
-            case=False, na=False, regex=True
-        )]
-        # MUST NOT contain touch panel terms
-        df = df[~df['name'].str.contains(
-            r'(tlp|tswâ€|touch|panel|controller|ipad)',
-            case=False, na=False, regex=True
-        )]
-        self.log(f"Display mount specific filter: {len(df)} products")
-    
-    elif req.category == 'Cables & Connectivity' and 'AV Cable' in req.sub_category:
-        # MUST be network cables for modern systems
-        df = df[df['name'].str.contains(
-            r'(cat6|cat7|ethernet|network.*cable|patch.*cable)',
-            case=False, na=False, regex=True
-        )]
-        # EXCLUDE obsolete cables
-        df = df[~df['name'].str.contains(
-            r'(vga|svideo|composite|component)',
-            case=False, na=False, regex=True
-        )]
-        self.log(f"Network cable filter: {len(df)} products")
-    
-    elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
-        # EXCLUDE low-cost consumer PDUs
-        df = df[df['price'] > 100]
-        # REQUIRE rackmount
-        df = df[df['name'].str.contains(
-            r'(rack.*mount|1u|2u|metered|switched)',
-            case=False, na=False, regex=True
-        )]
-        self.log(f"Professional PDU filter: {len(df)} products")
-    
-    elif req.category == 'Audio' and req.sub_category == 'Amplifier':
-        # MUST be power amplifier
-        df = df[df['name'].str.contains(
-            r'(power.*amp|multi.*channel|spa\d+|xpa\d+|\d+w)',
-            case=False, na=False, regex=True
-        )]
-        # EXCLUDE conferencing amps
-        df = df[~df['name'].str.contains(
-            r'(conferenc|poe\+|dante.*amp|amp.*dante)',
-            case=False, na=False, regex=True
-        )]
-        self.log(f"Power amplifier filter: {len(df)} products")
-    
-    return df
+        # Required keywords (product MUST contain at least one)
+        if req.required_keywords:
+            pattern = '|'.join([re.escape(kw) for kw in req.required_keywords])
+            df = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
+            
+            self.log(f"After required keywords filter: {len(df)} products")
+        
+        # Blacklist keywords (product MUST NOT contain any)
+        if req.blacklist_keywords:
+            for keyword in req.blacklist_keywords:
+                before_count = len(df)
+                df = df[~df['name'].str.contains(re.escape(keyword), case=False, na=False, regex=True)]
+                after_count = len(df)
+                if before_count != after_count:
+                    self.log(f"Blacklist '{keyword}' removed {before_count - after_count} products")
+        
+        # CRITICAL ADDITIONAL FILTERS BY CATEGORY
+        if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
+            # MUST contain mount-specific terms
+            df = df[df['name'].str.contains(
+                r'(wall.*mount|ceiling.*mount|floor.*stand|display.*mount|tv.*mount|large.*format.*mount)',
+                case=False, na=False, regex=True
+            )]
+            # MUST NOT contain touch panel terms
+            df = df[~df['name'].str.contains(
+                r'(tlp|tswâ€|touch|panel|controller|ipad)',
+                case=False, na=False, regex=True
+            )]
+            self.log(f"Display mount specific filter: {len(df)} products")
+        
+        elif req.category == 'Cables & Connectivity' and 'AV Cable' in req.sub_category:
+            # MUST be network cables for modern systems
+            df = df[df['name'].str.contains(
+                r'(cat6|cat7|ethernet|network.*cable|patch.*cable)',
+                case=False, na=False, regex=True
+            )]
+            # EXCLUDE obsolete cables
+            df = df[~df['name'].str.contains(
+                r'(vga|svideo|composite|component)',
+                case=False, na=False, regex=True
+            )]
+            self.log(f"Network cable filter: {len(df)} products")
+        
+        elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
+            # EXCLUDE low-cost consumer PDUs
+            df = df[df['price'] > 100]
+            # REQUIRE rackmount
+            df = df[df['name'].str.contains(
+                r'(rack.*mount|1u|2u|metered|switched)',
+                case=False, na=False, regex=True
+            )]
+            self.log(f"Professional PDU filter: {len(df)} products")
+        
+        elif req.category == 'Audio' and req.sub_category == 'Amplifier':
+            # MUST be power amplifier
+            df = df[df['name'].str.contains(
+                r'(power.*amp|multi.*channel|spa\d+|xpa\d+|\d+w)',
+                case=False, na=False, regex=True
+            )]
+            # EXCLUDE conferencing amps
+            df = df[~df['name'].str.contains(
+                r'(conferenc|poe\+|dante.*amp|amp.*dante)',
+                case=False, na=False, regex=True
+            )]
+            self.log(f"Power amplifier filter: {len(df)} products")
+        
+        return df
     
     def _match_specifications(self, df, req: ProductRequirement):
         """Stage 4: Match technical specifications"""
