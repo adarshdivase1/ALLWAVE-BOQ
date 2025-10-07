@@ -5,24 +5,29 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 
-# Use st.cache_resource to initialize the connection only once per session.
 @st.cache_resource
 def initialize_firebase():
     """Initializes the Firebase connection using credentials from Streamlit secrets."""
     try:
-        # Check if the app is already initialized to prevent errors on rerun
         if not firebase_admin._apps:
-            # Get credentials from st.secrets
+            # --- THIS IS THE MODIFIED PART ---
+            # Streamlit secrets will provide the credentials as a dictionary
             creds_dict = st.secrets["firebase_credentials"]
+            
+            # The private key needs the newlines correctly formatted
+            creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
+            
             cred = credentials.Certificate(creds_dict)
+            # --- END OF MODIFICATION ---
+            
             firebase_admin.initialize_app(cred)
         
-        # Return the firestore client
         return firestore.client()
     except Exception as e:
         st.error(f"Failed to initialize Firebase. Please check your secrets.toml: {e}")
         return None
 
+# --- The rest of the file (save_project, load_projects, etc.) remains unchanged ---
 def save_project(db, user_email, project_data):
     """Saves or updates a project for a specific user in Firestore."""
     if not db or not user_email or not project_data.get('name'):
@@ -30,13 +35,11 @@ def save_project(db, user_email, project_data):
         return False
     
     try:
-        # Use the project name as the document ID for simplicity
         project_id = project_data['name']
         project_data['last_saved'] = datetime.now().isoformat()
         
-        # Define the path in Firestore: users/{user_email}/projects/{project_id}
         doc_ref = db.collection('users').document(user_email).collection('projects').document(project_id)
-        doc_ref.set(project_data, merge=True) # merge=True updates fields without overwriting the whole doc
+        doc_ref.set(project_data, merge=True)
         return True
     except Exception as e:
         st.error(f"Error saving project: {e}")
@@ -52,7 +55,6 @@ def load_projects(db, user_email):
         projects = projects_ref.stream()
         
         project_list = [doc.to_dict() for doc in projects]
-        # Sort by last saved date, newest first
         project_list.sort(key=lambda x: x.get('last_saved', ''), reverse=True)
         
         return project_list
