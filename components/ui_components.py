@@ -16,7 +16,7 @@ try:
     from components.gemini_handler import setup_gemini
     from components.boq_generator import generate_boq_from_ai
     from components.ui_components import (
-        create_project_header, create_room_calculator, create_advanced_requirements,
+        create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
@@ -479,3 +479,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
