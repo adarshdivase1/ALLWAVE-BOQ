@@ -10,15 +10,19 @@ def initialize_firebase():
     """Initializes the Firebase connection using credentials from Streamlit secrets."""
     try:
         if not firebase_admin._apps:
-            # --- THIS IS THE MODIFIED PART ---
-            # Streamlit secrets will provide the credentials as a dictionary
-            creds_dict = st.secrets["firebase_credentials"]
+            # --- THIS IS THE CORRECTED PART ---
+            # 1. Get the secrets object from Streamlit
+            secrets_object = st.secrets["firebase_credentials"]
             
-            # The private key needs the newlines correctly formatted
+            # 2. Convert the read-only secrets object into a regular, editable Python dictionary
+            creds_dict = dict(secrets_object)
+            
+            # 3. Now, modify the private key in our editable dictionary copy
             creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
             
+            # 4. Use the corrected dictionary to initialize Firebase
             cred = credentials.Certificate(creds_dict)
-            # --- END OF MODIFICATION ---
+            # --- END OF CORRECTION ---
             
             firebase_admin.initialize_app(cred)
         
