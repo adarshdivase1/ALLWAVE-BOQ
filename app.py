@@ -158,7 +158,7 @@ def main():
     # --- Initialize database connection ---
     db = initialize_firebase()
 
-    # --- NEW: LOGIC TO LOAD A PROJECT AT THE START OF THE SCRIPT RUN ---
+    # --- FIXED: LOGIC TO LOAD A PROJECT AT THE START OF THE SCRIPT RUN ---
     # This runs BEFORE any widgets are rendered, preventing the API error.
     if 'project_to_load' in st.session_state and st.session_state.project_to_load:
         project_name_to_load = st.session_state.project_to_load
@@ -172,6 +172,9 @@ def main():
                 st.session_state.client_name_input = project_data.get('client_name_input', '')
                 st.session_state.location_input = project_data.get('location_input', '')
                 st.session_state.design_engineer_input = project_data.get('design_engineer_input', '')
+                st.session_state.account_manager_input = project_data.get('account_manager_input', '')
+                st.session_state.client_personnel_input = project_data.get('client_personnel_input', '')
+                st.session_state.comments_input = project_data.get('comments_input', '')
                 st.session_state.project_rooms = project_data.get('rooms', [])
                 
                 # Reset the current room view to the first room of the loaded project
@@ -181,11 +184,12 @@ def main():
                 else:
                     st.session_state.boq_items = []
                 
-                show_success_message(f"Project '{project_name_to_load}' loaded.")
+                # Set success flag for displaying message
+                st.session_state.project_loaded_successfully = project_name_to_load
         
         # Important: Clear the trigger variable so this doesn't run again on the next rerun
         st.session_state.project_to_load = None
-    # --- END OF NEW LOGIC ---
+    # --- END OF FIXED LOGIC ---
 
     # --- Load user's projects from DB ONCE per session ---
     if 'projects_loaded' not in st.session_state:
@@ -328,36 +332,52 @@ def main():
     with tab1:
         st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
         
+        # Display success message if project was just loaded
+        if 'project_loaded_successfully' in st.session_state:
+            show_success_message(f"Project '{st.session_state.project_loaded_successfully}' loaded successfully!")
+            del st.session_state.project_loaded_successfully
+        
         project_name = st.session_state.get('project_name_input', '')
         
         col_save, col_load = st.columns(2)
         with col_save:
             if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
                 if db:
-                    # --- CRITICAL: Use consistent keys that match the widget keys ---
+                    # --- Save all relevant project data ---
                     project_data = {
-                        'name': project_name, # Also save the plain name for the dropdown
+                        'name': project_name,
                         'project_name_input': project_name,
                         'client_name_input': st.session_state.get('client_name_input', ''),
                         'location_input': st.session_state.get('location_input', ''),
                         'design_engineer_input': st.session_state.get('design_engineer_input', ''),
+                        'account_manager_input': st.session_state.get('account_manager_input', ''),
+                        'client_personnel_input': st.session_state.get('client_personnel_input', ''),
+                        'comments_input': st.session_state.get('comments_input', ''),
                         'rooms': st.session_state.get('project_rooms', [])
                     }
                     if save_project(db, st.session_state.user_email, project_data):
                         st.success(f"Project '{project_name}' saved successfully!")
                         # Refresh project list from the database
                         st.session_state.user_projects = load_projects(db, st.session_state.user_email)
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.error("Failed to save project.")
+                else:
+                    st.error("Database connection not available.")
         
         with col_load:
             if st.session_state.get('user_projects'):
-                project_names = ["--- Select a project to load ---"] + [p.get('name', 'Unnamed Project') for p in st.session_state.user_projects]
+                project_names = ["--- Select a project to load ---"] + [
+                    p.get('name', 'Unnamed Project') 
+                    for p in st.session_state.user_projects
+                ]
                 
+                # FIXED: Don't try to set the widget value after creation
                 selected_project_name = st.selectbox(
                     "Load Saved Project", 
-                    project_names, 
+                    project_names,
+                    index=0,  # Always start with the default option
                     key="project_loader"
                 )
 
@@ -365,11 +385,10 @@ def main():
                     # Set the name of the project we want to load in the next run
                     st.session_state.project_to_load = selected_project_name
                     
-                    # Reset the selectbox to its default state to allow re-selection
-                    st.session_state.project_loader = "--- Select a project to load ---"
-                    
                     # Rerun the script immediately to trigger the loading logic at the top
                     st.rerun()
+            else:
+                st.info("No saved projects found. Save your current project to see it here.")
 
         st.markdown("---")
         create_multi_room_interface()
@@ -450,7 +469,6 @@ def main():
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
                 'Region': st.session_state.get('user_location_type', 'Global')
             }
-            # --- THIS IS THE UPDATED LINE ---
             display_boq_results(product_df, project_details)
 
         else:
@@ -490,4 +508,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
