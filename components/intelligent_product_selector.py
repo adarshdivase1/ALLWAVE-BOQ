@@ -191,7 +191,7 @@ class IntelligentProductSelector:
         return df
     
     def _match_specifications(self, df, req: ProductRequirement):
-        """Stage 4: Match technical specifications"""
+        """Stage 4: Match technical specifications - ENHANCED"""
         
         # Display size matching
         if req.size_requirement:
@@ -201,10 +201,32 @@ class IntelligentProductSelector:
             if not size_matches.empty:
                 df = size_matches
         
-        # Mounting type matching
+        # CRITICAL: Mounting type matching with SIZE consideration
         if req.mounting_type:
             if 'wall' in req.mounting_type.lower():
                 df = df[df['name'].str.contains(r'\bwall\b', case=False, na=False, regex=True)]
+                
+                # CRITICAL: For large displays (85"+), require large/heavy-duty mounts
+                if req.size_requirement and req.size_requirement >= 85:
+                    self.log(f"Large display ({req.size_requirement}\") - filtering for heavy-duty mounts")
+                    
+                    # Require "large" or specific large mount indicators
+                    large_mount_df = df[df['name'].str.contains(
+                        r'(large|heavy.*duty|lsm|commercial|video.*wall|90|98|100)',
+                        case=False, na=False, regex=True
+                    )]
+                    
+                    if not large_mount_df.empty:
+                        df = large_mount_df
+                    else:
+                        self.log("⚠️ WARNING: No large-format mounts found!")
+                    
+                    # EXCLUDE small/medium mounts by model number
+                    df = df[~df['model_number'].str.contains(
+                        r'(mtm\d|msm\d|xsm\d)',  # Medium/Small mount codes
+                        case=False, na=False, regex=True
+                    )]
+                    
             elif 'ceiling' in req.mounting_type.lower():
                 df = df[df['name'].str.contains(r'\bceiling\b', case=False, na=False, regex=True)]
             elif 'floor' in req.mounting_type.lower():
@@ -215,7 +237,7 @@ class IntelligentProductSelector:
             df = df[df['name'].str.contains(re.escape(req.connectivity_type), case=False, na=False, regex=True)]
         
         return df
-    
+        
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """Stage 5: Weight products by client preferences"""
         
