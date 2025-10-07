@@ -157,9 +157,11 @@ def main():
     db = initialize_firebase()
 
     # ============= ENHANCED PROJECT LOADING LOGIC =============
-    # This runs BEFORE any widgets, preventing API errors
     if 'project_to_load' in st.session_state and st.session_state.project_to_load:
         project_name_to_load = st.session_state.project_to_load
+        
+        # IMPORTANT: Clear the trigger IMMEDIATELY to prevent loops
+        st.session_state.project_to_load = None
         
         if 'user_projects' in st.session_state:
             project_data = next(
@@ -168,16 +170,12 @@ def main():
             )
             
             if project_data:
-                # Use the new restore function to load EVERYTHING
+                # Use the restore function to load EVERYTHING
                 if restore_project_state(project_data):
-                    # Update BOQ content display
                     update_boq_content_with_current_items()
                     st.session_state.project_loaded_successfully = project_name_to_load
                 else:
                     st.session_state.project_load_failed = True
-        
-        # Clear trigger
-        st.session_state.project_to_load = None
     # ============= END ENHANCED LOADING LOGIC =============
 
     # Load user's projects from DB once per session
@@ -340,8 +338,8 @@ def main():
             st.markdown(f"""
             <div class="info-box">
                 <p><b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
-                   <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
-                   <b>🎯 Primary Use:</b> {primary_use}</p>
+                    <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
+                    <b>🎯 Primary Use:</b> {primary_use}</p>
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -399,23 +397,21 @@ def main():
         
         with col_load:
             if st.session_state.get('user_projects'):
-                project_names = ["--- Select a project to load ---"] + [
-                    p.get('name', 'Unnamed Project') 
-                    for p in st.session_state.user_projects
-                ]
+                project_names = [p.get('name', 'Unnamed Project') for p in st.session_state.user_projects]
                 
-                selected_project_name = st.selectbox(
-                    "Load Saved Project", 
-                    project_names,
-                    index=0,
-                    key="project_loader"
-                )
-
-                if selected_project_name != "--- Select a project to load ---":
-                    # Set the name of the project we want to load in the next run
-                    st.session_state.project_to_load = selected_project_name
-                    # Rerun the script immediately to trigger the loading logic at the top
-                    st.rerun()
+                if project_names:
+                    selected_project = st.selectbox(
+                        "Select Project to Load", 
+                        project_names,
+                        key="project_selector_dropdown"
+                    )
+                    
+                    # Use a button to trigger the load
+                    if st.button("📂 Load Selected Project", use_container_width=True, key="load_project_btn"):
+                        st.session_state.project_to_load = selected_project
+                        st.rerun()
+                else:
+                    st.info("No saved projects found.")
             else:
                 st.info("No saved projects found. Save your current project to see it here.")
 
