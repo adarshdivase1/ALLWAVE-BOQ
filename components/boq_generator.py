@@ -65,7 +65,7 @@ def _get_fallback_product_legacy(category, sub_category, product_df, equipment_r
         
         # Additional check: if "warranty" or "service" in name but price < $100, likely a service contract
         matches = matches[~((matches['name'].str.contains(r'\b(warranty|service)\b', case=False, regex=True)) & 
-                            (matches['price'] < 100))]
+                              (matches['price'] < 100))]
 
     if matches.empty:
         return None
@@ -262,7 +262,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                 'ring', 'bezel', 'trim', 'spacer', 'adapter plate',
                 'x70', 'x50', 'x30', 'rally', 'studio', 'camera',
                 'accessory', 'bracket kit', 'finishing',
-                'tlp', 'tsw', 'touch', 'panel', 'controller', 'ipad'  # NEW: Exclude touch panel mounts
+                'tlp', 'tsw', 'touch', 'panel', 'controller', 'ipad' # NEW: Exclude touch panel mounts
             ],
             compatibility_requirements=[f'{size}"'] if size >= 85 else []
         )
@@ -297,16 +297,23 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             
             camera_count = video_reqs.get('camera_count', 1)
             if camera_count > 0:
+                # =============================================================
+                # ========== THIS IS THE MODIFIED BLOCK OF CODE ==========
+                # =============================================================
                 blueprint['ptz_camera'] = ProductRequirement(
                     category='Video Conferencing',
                     sub_category='PTZ Camera',
                     quantity=camera_count,
                     priority=2.5,
                     justification=f'{camera_count}x PTZ camera(s) for comprehensive room coverage',
-                    required_keywords=['ptz', 'camera', 'zoom'],
-                    blacklist_keywords=['mount', 'bracket', 'accessory', 'webcam'],
-                    compatibility_requirements=[video_reqs.get('brand', '')]
+                    required_keywords=['ptz', 'camera', 'zoom', 'eagleeye'],
+                    blacklist_keywords=['mount', 'bracket', 'accessory', 'webcam', 'usb'],
+                    compatibility_requirements=[video_reqs.get('brand', '')],
+                    min_price=1000  # NEW - Professional PTZ minimum price
                 )
+                # =============================================================
+                # =============================================================
+                # =============================================================
 
     # === CONTROL SYSTEM (MANDATORY) ===
     blueprint['touch_control_panel'] = ProductRequirement(
@@ -330,7 +337,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         
         has_integrated_audio = 'integrated' in audio_type.lower() or 'video bar' in audio_type.lower()
         is_large_room_audio = any(x in audio_type.lower() for x in 
-                                  ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
+                                    ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
         if is_large_room_audio:
             has_integrated_audio = False
             needs_dsp = True
@@ -423,8 +430,8 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         quantity=cable_count,
         priority=10,
         justification='Network patch cables for equipment',
-        required_keywords=['cat6', 'cat7', 'ethernet', 'network'],  # More specific
-        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo']  # Exclude obsolete
+        required_keywords=['cat6', 'cat7', 'ethernet', 'network'], # More specific
+        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo'] # Exclude obsolete
     )
 
     # === INFRASTRUCTURE ===
@@ -446,7 +453,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             quantity=1,
             priority=11,
             justification='Rackmount PDU with surge protection and metering',
-            required_keywords=['pdu', 'rack', 'metered', 'switched'],  # More specific
+            required_keywords=['pdu', 'rack', 'metered', 'switched'], # More specific
             blacklist_keywords=['ups battery', 'replacement battery', 'consumer', 'home']
         )
 
