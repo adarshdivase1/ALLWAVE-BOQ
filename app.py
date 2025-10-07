@@ -450,6 +450,7 @@ def main():
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
                 'Region': st.session_state.get('user_location_type', 'Global')
             }
+            # --- THIS IS THE UPDATED LINE ---
             display_boq_results(product_df, project_details)
 
         else:
