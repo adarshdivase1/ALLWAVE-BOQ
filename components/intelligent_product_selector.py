@@ -149,7 +149,7 @@ class IntelligentProductSelector:
                 if before_count != after_count:
                     self.log(f"Blacklist '{keyword}' removed {before_count - after_count} products")
         
-        # CRITICAL ADDITIONAL FILTERS BY CATEGORY
+        # CRITICAL: Display Mount Filters
         if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
             # MUST contain mount-specific terms
             df = df[df['name'].str.contains(
@@ -158,11 +158,33 @@ class IntelligentProductSelector:
             )]
             # MUST NOT contain touch panel terms
             df = df[~df['name'].str.contains(
-                r'(tlp|tswâ€|touch|panel|controller|ipad)',
+                r'(tlp|tsw|touch|panel|controller|ipad)',
                 case=False, na=False, regex=True
             )]
+            
+            # NEW: For large displays, enforce minimum price
+            if req.size_requirement and req.size_requirement >= 85:
+                min_mount_price = 400  # Professional 85"+ mounts
+                df = df[df['price'] >= min_mount_price]
+                self.log(f"Large display mount price filter (>= ${min_mount_price}): {len(df)} products")
+                
+                # EXCLUDE budget brands for large displays
+                df = df[~df['brand'].str.contains(
+                    r'(lumi|generic|onn|inland|monoprice)',  # Budget mount brands
+                    case=False, na=False, regex=True
+                )]
+                
+                # PREFER commercial brands
+                commercial_brands = df[df['brand'].str.contains(
+                    r'(chief|peerless|premier|ergotron|crestron|extron)',
+                    case=False, na=False, regex=True
+                )]
+                if not commercial_brands.empty:
+                    df = commercial_brands
+                    self.log(f"Found {len(df)} commercial-grade mounts")
+            
             self.log(f"Display mount specific filter: {len(df)} products")
-        
+
         elif req.category == 'Cables & Connectivity' and 'AV Cable' in req.sub_category:
             # MUST be network cables for modern systems
             df = df[df['name'].str.contains(
@@ -199,7 +221,6 @@ class IntelligentProductSelector:
             )]
             self.log(f"Power amplifier filter: {len(df)} products")
         
-        # ADD: PTZ Camera specific filtering
         elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
             # MUST have PTZ indicators
             df = df[df['name'].str.contains(
