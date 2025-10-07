@@ -93,7 +93,7 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
         
         # Additional check: if "warranty" or "service" in name but price < $100, likely a service contract
         matches = matches[~((matches['name'].str.contains(r'\b(warranty|service)\b', case=False, regex=True)) & 
-                           (matches['price'] < 100))]
+                            (matches['price'] < 100))]
 
     if matches.empty:
         return None
@@ -255,6 +255,14 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     """
     Enhanced blueprint with strict product requirements
     """
+    # This function requires a ProductRequirement class/object to be defined elsewhere
+    # For this file to be self-contained, a placeholder is needed.
+    class ProductRequirement:
+        def __init__(self, **kwargs):
+            self.spec = kwargs
+        def __getitem__(self, key):
+            return self.spec.get(key)
+
     blueprint = {}
     
     room_length = technical_reqs.get('room_length', (room_area ** 0.5) * 1.2)
@@ -588,7 +596,7 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     # Validate display mounts
     display_count = sum(1 for item in boq_items if item.get('category') == 'Displays')
     mount_count = sum(1 for item in boq_items if item.get('category') == 'Mounts' and 
-                     'Display Mount' in item.get('sub_category', ''))
+                      'Display Mount' in item.get('sub_category', ''))
     
     if display_count > 0 and mount_count == 0:
         validation_results['issues'].append("🚨 CRITICAL: Display present but NO proper mount found")
@@ -650,4 +658,3 @@ def calculate_boq_summary(boq_df):
         }).to_dict('index')
     
     return summary
-
