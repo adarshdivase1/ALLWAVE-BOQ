@@ -257,11 +257,12 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             justification=f'Professional wall/floor mount for {size}" display',
             size_requirement=size,
             mounting_type='wall' if ceiling_height > 9 else 'floor',
-            required_keywords=['mount', 'wall', 'tv', 'display'] if ceiling_height > 9 else ['cart', 'stand', 'trolley', 'mobile'],
+            required_keywords=['wall', 'mount', 'display', 'large'] if ceiling_height > 9 else ['cart', 'stand', 'mobile'],
             blacklist_keywords=[
                 'ring', 'bezel', 'trim', 'spacer', 'adapter plate',
                 'x70', 'x50', 'x30', 'rally', 'studio', 'camera',
-                'accessory', 'bracket kit', 'finishing'
+                'accessory', 'bracket kit', 'finishing',
+                'tlp', 'tsw', 'touch', 'panel', 'controller', 'ipad'  # NEW: Exclude touch panel mounts
             ],
             compatibility_requirements=[f'{size}"'] if size >= 85 else []
         )
@@ -422,8 +423,8 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         quantity=cable_count,
         priority=10,
         justification='Network patch cables for equipment',
-        required_keywords=['cable', 'network', 'ethernet', 'cat'],
-        blacklist_keywords=['bulk', 'spool', 'reel']
+        required_keywords=['cat6', 'cat7', 'ethernet', 'network'],  # More specific
+        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo']  # Exclude obsolete
     )
 
     # === INFRASTRUCTURE ===
@@ -444,9 +445,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             sub_category='Power (PDU/UPS)',
             quantity=1,
             priority=11,
-            justification='Rackmount PDU with surge protection',
-            required_keywords=['pdu', 'power', 'distribution'],
-            blacklist_keywords=['ups battery', 'replacement battery']
+            justification='Rackmount PDU with surge protection and metering',
+            required_keywords=['pdu', 'rack', 'metered', 'switched'],  # More specific
+            blacklist_keywords=['ups battery', 'replacement battery', 'consumer', 'home']
         )
 
     return blueprint
