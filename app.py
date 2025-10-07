@@ -198,8 +198,13 @@ def main():
         st.session_state.project_rooms = []
     if 'current_room_index' not in st.session_state:
         st.session_state.current_room_index = 0
+    # --- CHANGE 2: MODIFIED GST INITIALIZATION ---
     if 'gst_rates' not in st.session_state:
         st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
+    else:
+        # Ensure GST rates are always integers
+        st.session_state.gst_rates['Electronics'] = int(st.session_state.gst_rates.get('Electronics', 18))
+        st.session_state.gst_rates['Services'] = int(st.session_state.gst_rates.get('Services', 18))
     
     # Set currency based on location
     if st.session_state.get('user_location_type') == 'Local (India)':
@@ -299,13 +304,18 @@ def main():
         
         st.text_input("Currency", value=st.session_state.currency_select, disabled=True)
         
+        # --- CHANGE 1: MODIFIED GST NUMBER INPUTS ---
         st.session_state.gst_rates['Electronics'] = st.number_input(
-            "Hardware GST (%)", value=st.session_state.gst_rates.get('Electronics', 18),
-            min_value=0, max_value=50
+            "Hardware GST (%)", 
+            value=int(st.session_state.gst_rates.get('Electronics', 18)),
+            min_value=0, 
+            max_value=50
         )
         st.session_state.gst_rates['Services'] = st.number_input(
-            "Services GST (%)", value=st.session_state.gst_rates.get('Services', 18),
-            min_value=0, max_value=50
+            "Services GST (%)", 
+            value=int(st.session_state.gst_rates.get('Services', 18)),
+            min_value=0, 
+            max_value=50
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
