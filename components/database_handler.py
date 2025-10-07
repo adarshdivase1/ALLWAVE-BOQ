@@ -1,11 +1,12 @@
 # components/database_handler.py
-# ENHANCED VERSION - Saves and restores COMPLETE project state
+# ENHANCED VERSION - Saves and restores COMPLETE project state with Firestore type safety
 
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
-import json
+import numpy as np
+import pandas as pd
 
 @st.cache_resource
 def initialize_firebase():
@@ -24,10 +25,46 @@ def initialize_firebase():
         return None
 
 
+def sanitize_for_firestore(data):
+    """
+    Recursively converts NumPy, pandas, and other non-serializable types 
+    to native Python types that Firestore can handle.
+    """
+    if isinstance(data, dict):
+        return {key: sanitize_for_firestore(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_for_firestore(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(sanitize_for_firestore(item) for item in data)
+    # Handle all numpy integer types
+    elif isinstance(data, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(data)
+    # Handle all numpy float types
+    elif isinstance(data, (np.floating, np.float64, np.float32, np.float16)):
+        return float(data)
+    # Handle numpy boolean
+    elif isinstance(data, np.bool_):
+        return bool(data)
+    # Handle numpy arrays
+    elif isinstance(data, np.ndarray):
+        return sanitize_for_firestore(data.tolist())
+    # Handle pandas NA/NaN values
+    elif pd.isna(data):
+        return None
+    # Handle pandas Series
+    elif isinstance(data, pd.Series):
+        return sanitize_for_firestore(data.to_dict())
+    # Handle pandas DataFrame
+    elif isinstance(data, pd.DataFrame):
+        return sanitize_for_firestore(data.to_dict('records'))
+    else:
+        return data
+
+
 def save_project(db, user_email, project_data):
     """
     Saves COMPLETE project state including all tabs and settings.
-    Now captures everything the user has configured.
+    Now captures everything the user has configured with proper type conversion.
     """
     if not db or not user_email or not project_data.get('name'):
         st.warning("Could not save project. A project name is required.")
@@ -53,18 +90,18 @@ def save_project(db, user_email, project_data):
             
             # Room Configuration (Tab 2)
             'room_type_select': st.session_state.get('room_type_select', 'Standard Conference Room'),
-            'room_length_input': st.session_state.get('room_length_input', 28.0),
-            'room_width_input': st.session_state.get('room_width_input', 20.0),
-            'ceiling_height_input': st.session_state.get('ceiling_height_input', 10.0),
+            'room_length_input': float(st.session_state.get('room_length_input', 28.0)),
+            'room_width_input': float(st.session_state.get('room_width_input', 20.0)),
+            'ceiling_height_input': float(st.session_state.get('ceiling_height_input', 10.0)),
             'budget_tier_slider': st.session_state.get('budget_tier_slider', 'Standard'),
             
             # Advanced Requirements (Tab 3)
             'features_text_area': st.session_state.get('features_text_area', ''),
-            'dedicated_circuit_checkbox': st.session_state.get('dedicated_circuit_checkbox', False),
+            'dedicated_circuit_checkbox': bool(st.session_state.get('dedicated_circuit_checkbox', False)),
             'network_capability_select': st.session_state.get('network_capability_select', 'Standard 1Gb'),
             'cable_management_select': st.session_state.get('cable_management_select', 'Exposed'),
-            'ada_compliance_checkbox': st.session_state.get('ada_compliance_checkbox', False),
-            'fire_code_compliance_checkbox': st.session_state.get('fire_code_compliance_checkbox', False),
+            'ada_compliance_checkbox': bool(st.session_state.get('ada_compliance_checkbox', False)),
+            'fire_code_compliance_checkbox': bool(st.session_state.get('fire_code_compliance_checkbox', False)),
             'security_clearance_select': st.session_state.get('security_clearance_select', 'Standard'),
             
             # Financial Settings
@@ -73,29 +110,34 @@ def save_project(db, user_email, project_data):
             
             # Multi-Room Data (includes BOQ for each room)
             'rooms': project_data.get('rooms', []),
-            'current_room_index': st.session_state.get('current_room_index', 0),
+            'current_room_index': int(st.session_state.get('current_room_index', 0)),
             
             # BOQ State (Tab 4)
             'boq_items': st.session_state.get('boq_items', []),
             'validation_results': st.session_state.get('validation_results', {}),
             
-            # 3D Visualization State (Tab 5) - if you have specific viz settings
-            'viz_generated': st.session_state.get('viz_generated', False),
+            # 3D Visualization State (Tab 5)
+            'viz_generated': bool(st.session_state.get('viz_generated', False)),
             
             # User Context
-            'is_psni_certified': st.session_state.get('is_psni_certified', False),
-            'is_existing_customer': st.session_state.get('is_existing_customer', False),
+            'is_psni_certified': bool(st.session_state.get('is_psni_certified', False)),
+            'is_existing_customer': bool(st.session_state.get('is_existing_customer', False)),
             'user_location_type': st.session_state.get('user_location_type', 'Global'),
         }
         
+        # CRITICAL: Sanitize all data before saving to Firestore
+        sanitized_data = sanitize_for_firestore(complete_project_data)
+        
         # Save to Firestore
         doc_ref = db.collection('users').document(user_email).collection('projects').document(project_id)
-        doc_ref.set(complete_project_data, merge=True)
+        doc_ref.set(sanitized_data, merge=True)
         
         return True
         
     except Exception as e:
         st.error(f"Error saving project: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 
@@ -127,37 +169,41 @@ def restore_project_state(project_data):
     
     try:
         # Project Header (Tab 1)
-        st.session_state.project_name_input = project_data.get('project_name_input', '')
-        st.session_state.client_name_input = project_data.get('client_name_input', '')
-        st.session_state.location_input = project_data.get('location_input', '')
-        st.session_state.design_engineer_input = project_data.get('design_engineer_input', '')
-        st.session_state.account_manager_input = project_data.get('account_manager_input', '')
-        st.session_state.client_personnel_input = project_data.get('client_personnel_input', '')
-        st.session_state.comments_input = project_data.get('comments_input', '')
+        st.session_state.project_name_input = str(project_data.get('project_name_input', ''))
+        st.session_state.client_name_input = str(project_data.get('client_name_input', ''))
+        st.session_state.location_input = str(project_data.get('location_input', ''))
+        st.session_state.design_engineer_input = str(project_data.get('design_engineer_input', ''))
+        st.session_state.account_manager_input = str(project_data.get('account_manager_input', ''))
+        st.session_state.client_personnel_input = str(project_data.get('client_personnel_input', ''))
+        st.session_state.comments_input = str(project_data.get('comments_input', ''))
         
         # Room Configuration (Tab 2)
-        st.session_state.room_type_select = project_data.get('room_type_select', 'Standard Conference Room')
-        st.session_state.room_length_input = project_data.get('room_length_input', 28.0)
-        st.session_state.room_width_input = project_data.get('room_width_input', 20.0)
-        st.session_state.ceiling_height_input = project_data.get('ceiling_height_input', 10.0)
-        st.session_state.budget_tier_slider = project_data.get('budget_tier_slider', 'Standard')
+        st.session_state.room_type_select = str(project_data.get('room_type_select', 'Standard Conference Room'))
+        st.session_state.room_length_input = float(project_data.get('room_length_input', 28.0))
+        st.session_state.room_width_input = float(project_data.get('room_width_input', 20.0))
+        st.session_state.ceiling_height_input = float(project_data.get('ceiling_height_input', 10.0))
+        st.session_state.budget_tier_slider = str(project_data.get('budget_tier_slider', 'Standard'))
         
         # Advanced Requirements (Tab 3)
-        st.session_state.features_text_area = project_data.get('features_text_area', '')
-        st.session_state.dedicated_circuit_checkbox = project_data.get('dedicated_circuit_checkbox', False)
-        st.session_state.network_capability_select = project_data.get('network_capability_select', 'Standard 1Gb')
-        st.session_state.cable_management_select = project_data.get('cable_management_select', 'Exposed')
-        st.session_state.ada_compliance_checkbox = project_data.get('ada_compliance_checkbox', False)
-        st.session_state.fire_code_compliance_checkbox = project_data.get('fire_code_compliance_checkbox', False)
-        st.session_state.security_clearance_select = project_data.get('security_clearance_select', 'Standard')
+        st.session_state.features_text_area = str(project_data.get('features_text_area', ''))
+        st.session_state.dedicated_circuit_checkbox = bool(project_data.get('dedicated_circuit_checkbox', False))
+        st.session_state.network_capability_select = str(project_data.get('network_capability_select', 'Standard 1Gb'))
+        st.session_state.cable_management_select = str(project_data.get('cable_management_select', 'Exposed'))
+        st.session_state.ada_compliance_checkbox = bool(project_data.get('ada_compliance_checkbox', False))
+        st.session_state.fire_code_compliance_checkbox = bool(project_data.get('fire_code_compliance_checkbox', False))
+        st.session_state.security_clearance_select = str(project_data.get('security_clearance_select', 'Standard'))
         
         # Financial Settings
-        st.session_state.currency_select = project_data.get('currency_select', 'USD')
-        st.session_state.gst_rates = project_data.get('gst_rates', {'Electronics': 18, 'Services': 18})
+        st.session_state.currency_select = str(project_data.get('currency_select', 'USD'))
+        gst_rates = project_data.get('gst_rates', {'Electronics': 18, 'Services': 18})
+        st.session_state.gst_rates = {
+            'Electronics': float(gst_rates.get('Electronics', 18)),
+            'Services': float(gst_rates.get('Services', 18))
+        }
         
         # Multi-Room Data
         st.session_state.project_rooms = project_data.get('rooms', [])
-        st.session_state.current_room_index = project_data.get('current_room_index', 0)
+        st.session_state.current_room_index = int(project_data.get('current_room_index', 0))
         
         # Load BOQ for current room
         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
@@ -170,17 +216,19 @@ def restore_project_state(project_data):
         st.session_state.validation_results = project_data.get('validation_results', {})
         
         # 3D Visualization State
-        st.session_state.viz_generated = project_data.get('viz_generated', False)
+        st.session_state.viz_generated = bool(project_data.get('viz_generated', False))
         
         # User Context
-        st.session_state.is_psni_certified = project_data.get('is_psni_certified', False)
-        st.session_state.is_existing_customer = project_data.get('is_existing_customer', False)
-        st.session_state.user_location_type = project_data.get('user_location_type', 'Global')
+        st.session_state.is_psni_certified = bool(project_data.get('is_psni_certified', False))
+        st.session_state.is_existing_customer = bool(project_data.get('is_existing_customer', False))
+        st.session_state.user_location_type = str(project_data.get('user_location_type', 'Global'))
         
         return True
         
     except Exception as e:
         st.error(f"Error restoring project state: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 
