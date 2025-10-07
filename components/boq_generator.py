@@ -249,9 +249,11 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
 
 
 # ==================== COMPONENT BLUEPRINT WITH CONTROL SYSTEM ====================
+# UPDATE: components/boq_generator.py
+
 def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Standard', room_area=300):
     """
-    Build component requirements - NOW INCLUDES MANDATORY CONTROL SYSTEMS
+    Enhanced blueprint with strict product requirements
     """
     blueprint = {}
     
@@ -259,114 +261,128 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     room_width = technical_reqs.get('room_width', room_area / room_length if room_length > 0 else 15)
     ceiling_height = technical_reqs.get('ceiling_height', 10)
 
-    # === DISPLAYS ===
+    # === DISPLAYS with STRICT REQUIREMENTS ===
     if 'displays' in equipment_reqs:
-        display_reqs = equipment_reqs.get('displays', {})
+        display_reqs = equipment_reqs['displays']
         qty = display_reqs.get('quantity', 1)
         size = display_reqs.get('size_inches', 65)
 
-        blueprint['primary_display'] = {
-            'category': 'Displays',
-            'sub_category': 'Professional Display',
-            'quantity': qty,
-            'priority': 1,
-            'justification': f'{size}" professional 4K display for primary viewing',
-            'size_requirement': size
-        }
+        blueprint['primary_display'] = ProductRequirement(
+            category='Displays',
+            sub_category='Professional Display',
+            quantity=qty,
+            priority=1,
+            justification=f'{size}" professional 4K display for primary viewing',
+            size_requirement=size,
+            required_keywords=['display', 'monitor', '4k', 'uhd'],
+            blacklist_keywords=['mount', 'bracket', 'stand', 'arm'],
+            client_preference_weight=0.8  # High importance for display brand
+        )
 
-        # FIXED: Proper display mount
-        blueprint['display_mount'] = {
-            'category': 'Mounts',
-            'sub_category': 'Display Mount / Cart',
-            'quantity': qty,
-            'priority': 8,
-            'justification': f'Professional wall/floor mount for {size}" display',
-            'size_requirement': size
-        }
+        # FIXED: Display Mount with STRICT requirements
+        blueprint['display_mount'] = ProductRequirement(
+            category='Mounts',
+            sub_category='Display Mount / Cart',
+            quantity=qty,
+            priority=8,
+            justification=f'Professional wall/floor mount for {size}" display',
+            size_requirement=size,
+            mounting_type='wall' if ceiling_height > 9 else 'floor',
+            required_keywords=['mount', 'wall', 'tv', 'display'] if ceiling_height > 9 else ['cart', 'stand', 'trolley', 'mobile'],
+            blacklist_keywords=[
+                'ring', 'bezel', 'trim', 'spacer', 'adapter plate',
+                'x70', 'x50', 'x30', 'rally', 'studio', 'camera',
+                'accessory', 'bracket kit', 'finishing'
+            ],
+            compatibility_requirements=[f'{size}"'] if size >= 85 else []
+        )
 
     # === VIDEO SYSTEM ===
     if 'video_system' in equipment_reqs:
-        video_reqs = equipment_reqs.get('video_system', {})
+        video_reqs = equipment_reqs['video_system']
         video_type = video_reqs.get('type', '')
 
         if video_type == 'All-in-one Video Bar':
-            blueprint['video_conferencing_system'] = {
-                'category': 'Video Conferencing',
-                'sub_category': 'Video Bar',
-                'quantity': 1,
-                'priority': 2,
-                'justification': 'All-in-one video bar with integrated camera, microphones, and speakers'
-            }
+            blueprint['video_conferencing_system'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Video Bar',
+                quantity=1,
+                priority=2,
+                justification='All-in-one video bar with integrated camera, microphones, and speakers',
+                required_keywords=['bar', 'video', 'all-in-one', 'camera'],
+                blacklist_keywords=['mount', 'accessory', 'bracket', 'replacement'],
+                client_preference_weight=0.9
+            )
         elif video_type == 'Modular Codec + PTZ Camera':
-            blueprint['video_codec'] = {
-                'category': 'Video Conferencing',
-                'sub_category': 'Room Kit / Codec',
-                'quantity': 1,
-                'priority': 2,
-                'justification': 'Video conferencing codec/room system'
-            }
+            blueprint['video_codec'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Room Kit / Codec',
+                quantity=1,
+                priority=2,
+                justification='Video conferencing codec/room system',
+                required_keywords=['codec', 'room kit', 'system'],
+                blacklist_keywords=['camera only', 'accessory', 'mount', 'license'],
+                client_preference_weight=0.9
+            )
+            
             camera_count = video_reqs.get('camera_count', 1)
             if camera_count > 0:
-                blueprint['ptz_camera'] = {
-                    'category': 'Video Conferencing',
-                    'sub_category': 'PTZ Camera',
-                    'quantity': camera_count,
-                    'priority': 2.5,
-                    'justification': f'{camera_count}x PTZ camera(s) for comprehensive room coverage'
-                }
+                blueprint['ptz_camera'] = ProductRequirement(
+                    category='Video Conferencing',
+                    sub_category='PTZ Camera',
+                    quantity=camera_count,
+                    priority=2.5,
+                    justification=f'{camera_count}x PTZ camera(s) for comprehensive room coverage',
+                    required_keywords=['ptz', 'camera', 'zoom'],
+                    blacklist_keywords=['mount', 'bracket', 'accessory', 'webcam'],
+                    compatibility_requirements=[video_reqs.get('brand', '')]
+                )
 
-    # === MANDATORY CONTROL SYSTEM ===
-    # EVERY professional AV system needs control
-    if 'control_system' in equipment_reqs or room_area >= 150:
-        control_reqs = equipment_reqs.get('control_system', {})
-        control_type = control_reqs.get('type', 'Touch Controller')
-        
-        blueprint['touch_control_panel'] = {
-            'category': 'Video Conferencing',
-            'sub_category': 'Touch Controller / Panel',
-            'quantity': 1,
-            'priority': 3,
-            'justification': 'Touch control panel for system control and meeting management'
-        }
+    # === CONTROL SYSTEM (MANDATORY) ===
+    blueprint['touch_control_panel'] = ProductRequirement(
+        category='Video Conferencing',
+        sub_category='Touch Controller / Panel',
+        quantity=1,
+        priority=3,
+        justification='Touch control panel for system control and meeting management',
+        required_keywords=['touch', 'controller', 'panel', 'control'],
+        blacklist_keywords=[
+            'room kit', 'codec', 'bar', 'camera', 'display',
+            'monitor', 'ess', 'system', 'video bar'
+        ]
+    )
 
-    # === AUDIO SYSTEM ===
+    # === AUDIO SYSTEM with STRICT RULES ===
     if 'audio_system' in equipment_reqs:
-        audio_reqs = equipment_reqs.get('audio_system', {})
+        audio_reqs = equipment_reqs['audio_system']
         audio_type = audio_reqs.get('type', '')
         needs_dsp = audio_reqs.get('dsp_required', False)
+        
+        # Check if audio is integrated (video bar)
         has_integrated_audio = 'integrated' in audio_type.lower() or 'video bar' in audio_type.lower()
 
+        # For large room audio systems
         is_large_room_audio = any(x in audio_type.lower() for x in 
                                   ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
         if is_large_room_audio:
             has_integrated_audio = False
             needs_dsp = True
         
-        if 'voice reinforcement' in audio_type.lower():
-            blueprint['audio_dsp'] = {
-                'category': 'Audio',
-                'sub_category': 'DSP / Audio Processor / Mixer',
-                'quantity': 1,
-                'priority': 4,
-                'justification': 'Digital signal processor for voice reinforcement'
-            }
-            blueprint['wireless_presenter_mic'] = {
-                'category': 'Audio',
-                'sub_category': 'Wireless Microphone System',
-                'quantity': 1,
-                'priority': 4.5,
-                'justification': 'Wireless microphone for presenter mobility'
-            }
-            needs_dsp = False
-
-        elif needs_dsp and not has_integrated_audio:
-            blueprint['audio_dsp'] = {
-                'category': 'Audio',
-                'sub_category': 'DSP / Audio Processor / Mixer',
-                'quantity': 1,
-                'priority': 4,
-                'justification': 'Digital signal processor for audio management'
-            }
+        # DSP (if needed)
+        if needs_dsp and not has_integrated_audio:
+            blueprint['audio_dsp'] = ProductRequirement(
+                category='Audio',
+                sub_category='DSP / Audio Processor / Mixer',
+                quantity=1,
+                priority=4,
+                justification='Digital signal processor for audio management',
+                required_keywords=['dsp', 'processor', 'audio', 'digital'],
+                blacklist_keywords=[
+                    'amplifier', 'amp-', 'power amp', 'summing',
+                    '60-552', '60-553', 'line driver'
+                ],
+                client_preference_weight=0.7
+            )
 
         # Microphones
         mic_type = audio_reqs.get('microphone_type', '')
@@ -374,21 +390,25 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             mic_count = audio_reqs.get('microphone_count', 2)
 
             if 'ceiling' in mic_type.lower():
-                blueprint['ceiling_microphones'] = {
-                    'category': 'Audio',
-                    'sub_category': 'Ceiling Microphone',
-                    'quantity': mic_count,
-                    'priority': 5,
-                    'justification': f'{mic_count}x ceiling microphones for audio pickup'
-                }
+                blueprint['ceiling_microphones'] = ProductRequirement(
+                    category='Audio',
+                    sub_category='Ceiling Microphone',
+                    quantity=mic_count,
+                    priority=5,
+                    justification=f'{mic_count}x ceiling microphones for audio pickup',
+                    required_keywords=['ceiling', 'microphone', 'mic'],
+                    blacklist_keywords=['mount', 'bracket', 'accessory', 'table']
+                )
             elif 'table' in mic_type.lower():
-                blueprint['table_microphones'] = {
-                    'category': 'Audio',
-                    'sub_category': 'Table/Boundary Microphone',
-                    'quantity': mic_count,
-                    'priority': 5,
-                    'justification': f'{mic_count}x table microphones'
-                }
+                blueprint['table_microphones'] = ProductRequirement(
+                    category='Audio',
+                    sub_category='Table/Boundary Microphone',
+                    quantity=mic_count,
+                    priority=5,
+                    justification=f'{mic_count}x table microphones',
+                    required_keywords=['table', 'boundary', 'microphone'],
+                    blacklist_keywords=['ceiling', 'wireless', 'mount']
+                )
 
         # Speakers
         speaker_type = audio_reqs.get('speaker_type', '')
@@ -396,70 +416,79 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             speaker_count = audio_reqs.get('speaker_count', 2)
 
             if 'ceiling' in speaker_type.lower():
-                blueprint['ceiling_speakers'] = {
-                    'category': 'Audio',
-                    'sub_category': 'Ceiling Loudspeaker',
-                    'quantity': speaker_count,
-                    'priority': 6,
-                    'justification': f'{speaker_count}x ceiling speakers'
-                }
-            elif 'wall' in speaker_type.lower():
-                blueprint['wall_speakers'] = {
-                    'category': 'Audio',
-                    'sub_category': 'Wall-mounted Loudspeaker',
-                    'quantity': speaker_count,
-                    'priority': 6,
-                    'justification': f'{speaker_count}x wall speakers'
-                }
+                blueprint['ceiling_speakers'] = ProductRequirement(
+                    category='Audio',
+                    sub_category='Ceiling Loudspeaker',
+                    quantity=speaker_count,
+                    priority=6,
+                    justification=f'{speaker_count}x ceiling speakers',
+                    required_keywords=['ceiling', 'speaker', 'loudspeaker'],
+                    blacklist_keywords=['mount', 'bracket', 'wall', 'portable']
+                )
 
-            # Amplifier for passive speakers
+            # CRITICAL: Amplifier for passive speakers
             if speaker_count > 0:
-                blueprint['power_amplifier'] = {
-                    'category': 'Audio',
-                    'sub_category': 'Amplifier',
-                    'quantity': 1,
-                    'priority': 7,
-                    'justification': f'Power amplifier for {speaker_count} passive speakers'
-                }
+                blueprint['power_amplifier'] = ProductRequirement(
+                    category='Audio',
+                    sub_category='Amplifier',
+                    quantity=1,
+                    priority=7,
+                    justification=f'Power amplifier for {speaker_count} passive speakers',
+                    power_requirement=speaker_count * 100,  # Rough estimate
+                    required_keywords=['amplifier', 'power', 'channel', 'watts'],
+                    blacklist_keywords=[
+                        'summing', 'quad active', 'line driver',
+                        '60-552', '60-553', 'dsp', 'processor',
+                        'mixer', 'interface'
+                    ]
+                )
 
     # === CONNECTIVITY ===
     if equipment_reqs.get('content_sharing') or 'wireless presentation' in technical_reqs.get('features', '').lower():
-        blueprint['table_connectivity'] = {
-            'category': 'Cables & Connectivity',
-            'sub_category': 'Wall & Table Plate Module',
-            'quantity': 1,
-            'priority': 9,
-            'justification': 'Table connectivity with HDMI, USB-C, and network'
-        }
+        blueprint['table_connectivity'] = ProductRequirement(
+            category='Cables & Connectivity',
+            sub_category='Wall & Table Plate Module',
+            quantity=1,
+            priority=9,
+            justification='Table connectivity with HDMI, USB-C, and network',
+            required_keywords=['table', 'plate', 'connectivity', 'hdmi'],
+            blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring']
+        )
 
     # Network Cables
     cable_count = 5 if room_area < 400 else 8
-    blueprint['network_cables'] = {
-        'category': 'Cables & Connectivity',
-        'sub_category': 'AV Cable',
-        'quantity': cable_count,
-        'priority': 10,
-        'justification': 'Network patch cables for equipment'
-    }
+    blueprint['network_cables'] = ProductRequirement(
+        category='Cables & Connectivity',
+        sub_category='AV Cable',
+        quantity=cable_count,
+        priority=10,
+        justification='Network patch cables for equipment',
+        required_keywords=['cable', 'network', 'ethernet', 'cat'],
+        blacklist_keywords=['bulk', 'spool', 'reel']
+    )
 
     # Infrastructure
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
-        blueprint['equipment_rack'] = {
-            'category': 'Infrastructure',
-            'sub_category': 'AV Rack',
-            'quantity': 1,
-            'priority': 12,
-            'justification': 'Equipment rack for AV components'
-        }
+        blueprint['equipment_rack'] = ProductRequirement(
+            category='Infrastructure',
+            sub_category='AV Rack',
+            quantity=1,
+            priority=12,
+            justification='Equipment rack for AV components',
+            required_keywords=['rack', 'enclosure', 'cabinet'],
+            blacklist_keywords=['shelf', 'mount kit', 'accessory']
+        )
 
     if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
-        blueprint['power_distribution'] = {
-            'category': 'Infrastructure',
-            'sub_category': 'Power (PDU/UPS)',
-            'quantity': 1,
-            'priority': 11,
-            'justification': 'Rackmount PDU with surge protection'
-        }
+        blueprint['power_distribution'] = ProductRequirement(
+            category='Infrastructure',
+            sub_category='Power (PDU/UPS)',
+            quantity=1,
+            priority=11,
+            justification='Rackmount PDU with surge protection',
+            required_keywords=['pdu', 'power', 'distribution'],
+            blacklist_keywords=['ups battery', 'replacement battery']
+        )
 
     return blueprint
 
@@ -621,3 +650,4 @@ def calculate_boq_summary(boq_df):
         }).to_dict('index')
     
     return summary
+
