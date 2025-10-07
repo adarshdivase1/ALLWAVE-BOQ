@@ -93,14 +93,13 @@ def show_login_page(logo_b64, page_icon_path):
         </div>
     </div>
     """, unsafe_allow_html=True)
-    with st.form(key="login_form", clear_on_submit=False): # Changed to False to capture inputs
+    with st.form(key="login_form", clear_on_submit=False):
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
         password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
         
         st.markdown("<hr style='border-color: var(--border-color); margin: 1rem 0;'>", unsafe_allow_html=True)
         
-        # --- NEW QUESTIONS START HERE ---
         is_psni = st.radio(
             "Are you part of a PSNI Global Alliance certified company?",
             ("Yes", "No"), horizontal=True, key="is_psni_radio"
@@ -113,7 +112,6 @@ def show_login_page(logo_b64, page_icon_path):
             "Have you worked with AllWave AV before?",
             ("Yes", "No"), horizontal=True, key="existing_customer_radio"
         )
-        # --- NEW QUESTIONS END HERE ---
         submitted = st.form_submit_button("Engage", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -123,7 +121,6 @@ def show_login_page(logo_b64, page_icon_path):
             st.session_state.authenticated = True
             st.session_state.user_email = email
             
-            # --- STORE ANSWERS IN SESSION STATE ---
             st.session_state.is_psni_certified = (is_psni == "Yes")
             st.session_state.user_location_type = location_type
             st.session_state.is_existing_customer = (existing_customer == "Yes")
@@ -157,12 +154,10 @@ def main():
     if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
     if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
     
-    # --- NEW: AUTOMATICALLY SET CURRENCY BASED ON LOGIN INFO ---
     if st.session_state.get('user_location_type') == 'Local (India)':
         st.session_state.currency_select = "INR"
     else:
         st.session_state.currency_select = "USD"
-    # --- END NEW BLOCK ---
     
     if 'room_length_input' not in st.session_state:
         st.session_state.room_length_input = 28.0
@@ -204,12 +199,10 @@ def main():
         </div>
         ''', unsafe_allow_html=True)
         
-        # --- NEW: DISPLAY PSNI STATUS ---
         if st.session_state.get('is_psni_certified', False):
             st.success("✅ PSNI Global Alliance Member")
         else:
             st.info("ℹ️ Not a PSNI Member")
-        # --- END NEW BLOCK ---
         
         if st.button("🚪 Logout", use_container_width=True):
             show_animated_loader("De-authorizing...", 1)
@@ -224,6 +217,14 @@ def main():
         
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+
+        # --- NEW VISUAL INDICATOR ADDED HERE ---
+        if st.session_state.get('is_existing_customer', False):
+            st.success("✅ Existing Customer (Discount Applied)")
+        else:
+            st.info("ℹ️ New Customer")
+        # --- END OF NEW CODE ---
+
         st.text_input("Location", key="location_input", placeholder="e.g., Navi Mumbai, India")
         st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
@@ -235,7 +236,6 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
         
-        # --- CHANGE: REMOVE CURRENCY SELECTOR, DISPLAY AUTOMATIC SETTING ---
         st.text_input("Currency", value=st.session_state.currency_select, disabled=True)
         
         st.session_state.gst_rates['Electronics'] = st.number_input(
@@ -354,11 +354,9 @@ def main():
                 'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {}),
                 
-                # --- NEW: ADD CUSTOMER INFO TO PROJECT DETAILS ---
                 'PSNI Certified': "Yes" if st.session_state.get('is_psni_certified') else "No",
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
                 'Region': st.session_state.get('user_location_type', 'Global')
-                # --- END NEW BLOCK ---
             }
             display_boq_results(product_df, project_details)
 
