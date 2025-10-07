@@ -1,482 +1,650 @@
-# app.py
+# components/ui_components.py
+# COMPLETE ENHANCED VERSION - Aligned with boq_generator.py v2.0
 
 import streamlit as st
-import time
+import pandas as pd
 from datetime import datetime
-import base64
-from pathlib import Path
 
-# --- Component Imports ---
 try:
-    # --- NEW IMPORT FOR DATABASE HANDLING ---
-    from components.database_handler import initialize_firebase, save_project, load_projects
-    
     from components.room_profiles import ROOM_SPECS
-    from components.data_handler import load_and_validate_data
-    from components.gemini_handler import setup_gemini
-    from components.boq_generator import generate_boq_from_ai
-    from components.ui_components import (
-        create_room_calculator, create_advanced_requirements,
-        create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
-    )
-    from components.visualizer import create_3d_visualization
-except ImportError as e:
-    st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
-    st.stop()
-
-
-def load_css():
-    """Reads the style.css file and injects it into the Streamlit app."""
-    css_file_path = "assets/style.css"
-    try:
-        with open(css_file_path, "r") as f:
-            css = f.read()
-        st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
-
-
-def show_animated_loader(text="Processing...", duration=2):
-    """Displays a custom animated loading spinner."""
-    placeholder = st.empty()
-    with placeholder.container():
-        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
-    time.sleep(duration)
-    placeholder.empty()
-
-def show_success_message(message):
-    """Displays a custom success message."""
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-def show_error_message(message):
-    """Displays a custom error message."""
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
-
-@st.cache_data
-def image_to_base64(img_path):
-    """Converts an image file to a base64 string for embedding in HTML."""
-    try:
-        with open(img_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except FileNotFoundError:
+    from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
+    from components.excel_generator import generate_company_excel
+except ImportError:
+    ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
+    def get_usd_to_inr_rate(): return 83.5
+    def convert_currency(amount, to_currency="INR"): return amount * (83.5 if to_currency == "INR" else 1)
+    def format_currency(amount, currency="INR"): return f"₹{amount:,.0f}" if currency == "INR" else f"${amount:,.2f}"
+    def generate_company_excel(*args, **kwargs):
+        st.error("Excel component unavailable.")
         return None
 
-def create_header(main_logo, partner_logos):
-    """Creates the header section with main and partner logos."""
-    main_logo_b64 = image_to_base64(main_logo)
-    partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
-    
-    partner_html = ""
-    for name, b64 in partner_logos_b64.items():
-        if b64:
-            partner_html += f'<img src="data:image/png;base64,{b64}" alt="{name} Logo" title="{name}">'
+# ==================== MAIN UI SECTION BUILDERS ====================
 
-    if main_logo_b64:
-        st.markdown(f"""
-        <div class="logo-container">
-            <div class="main-logo">
-                <img src="data:image/png;base64,{main_logo_b64}" alt="AllWave AV Logo">
-            </div>
-            <div class="partner-logos">
-                {partner_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
+def create_project_header():
+    """Create professional project header with branding."""
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.title("🎯 AllWave AV BOQ Generator")
+        st.caption("AVIXA Standards-Compliant Design & Validation Engine")
+    with col2:
+        project_id = st.text_input(
+            "Project ID",
+            value=f"AVP-{datetime.now().strftime('%Y%m%d')}",
+            key="project_id_input"
+        )
+    with col3:
+        quote_valid_days = st.number_input(
+            "Quote Valid (Days)",
+            min_value=15,
+            max_value=90,
+            value=30,
+            key="quote_days_input"
+        )
+    return project_id, quote_valid_days
 
-def show_login_page(logo_b64, page_icon_path):
-    """Displays the login page for user authentication."""
-    st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
-    load_css()
-    
-    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="login-main-logo" alt="AllWave AV Logo">' if logo_b64 else '<div style="font-size: 3rem; margin-bottom: 2rem;">🚀</div>'
-    st.markdown(f"""
-    <div class="login-container">
-        <div class="glass-container interactive-card has-corners">
-            {logo_html}
-            <div class="login-title">
-                <h1 class="animated-header" style="font-size: 2.5rem;">AllWave AV & GS</h1>
-                <p style="text-align: center; color: var(--text-secondary);">Design & Estimation Portal</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    with st.form(key="login_form", clear_on_submit=False):
-        st.markdown('<div class="login-form">', unsafe_allow_html=True)
-        email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
-        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input", label_visibility="collapsed")
-        
-        st.markdown("<hr style='border-color: var(--border-color); margin: 1rem 0;'>", unsafe_allow_html=True)
-        
-        is_psni = st.radio(
-            "Are you part of a PSNI Global Alliance certified company?",
-            ("Yes", "No"), horizontal=True, key="is_psni_radio"
+
+def create_room_calculator():
+    """Room size calculator with AVIXA recommendations."""
+    st.subheader("📐 Room Analysis & Specifications")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        room_length = st.number_input(
+            "Room Length (ft)",
+            min_value=10.0,
+            max_value=80.0,
+            value=28.0,
+            key="room_length_input"
         )
-        location_type = st.radio(
-            "What is your operational region?",
-            ("Local (India)", "Global"), horizontal=True, key="location_type_radio"
+        room_width = st.number_input(
+            "Room Width (ft)",
+            min_value=8.0,
+            max_value=50.0,
+            value=20.0,
+            key="room_width_input"
         )
-        existing_customer = st.radio(
-            "Have you worked with AllWave AV before?",
-            ("Yes", "No"), horizontal=True, key="existing_customer_radio"
+        ceiling_height = st.number_input(
+            "Ceiling Height (ft)",
+            min_value=8.0,
+            max_value=20.0,
+            value=10.0,
+            key="ceiling_height_input"
         )
-        submitted = st.form_submit_button("Engage", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    if submitted:
-        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
-            show_animated_loader("Authenticating...", 1.5)
-            st.session_state.authenticated = True
-            st.session_state.user_email = email
-            
-            st.session_state.is_psni_certified = (is_psni == "Yes")
-            st.session_state.user_location_type = location_type
-            st.session_state.is_existing_customer = (existing_customer == "Yes")
-            
-            show_success_message("Authentication Successful. Welcome.")
-            time.sleep(1)
-            st.rerun()
+
+    with col2:
+        room_area = room_length * room_width
+        st.metric("Room Area", f"{room_area:.0f} sq ft")
+
+        # Find recommended room type
+        recommended_type = None
+        for rt, specs in ROOM_SPECS.items():
+            area_range = specs.get("area_sqft", (0, 0))
+            if area_range[0] <= room_area <= area_range[1]:
+                recommended_type = rt
+                break
+
+        if recommended_type:
+            st.success(f"✅ Recommended: {recommended_type}")
         else:
-            show_error_message("Access Denied. Use official AllWave credentials.")
+            st.warning("⚠️ Room size outside typical ranges")
+
+        # Calculate viewer distance recommendation
+        farthest_viewer = room_length * 0.9
+        recommended_display = farthest_viewer / 4 * 12 * 2.22  # AVIXA formula
+        st.info(f"💡 Suggested Display: {recommended_display:.0f}\" (based on viewing distance)")
+
+    return room_area, ceiling_height
 
 
-def main():
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
+def create_advanced_requirements():
+    """Advanced technical requirements input."""
+    st.subheader("⚙️ Technical Requirements")
 
-    main_logo_path = Path("assets/company_logo.png")
-    
-    if not st.session_state.authenticated:
-        main_logo_b64 = image_to_base64(main_logo_path)
-        show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
-        return
+    col1, col2 = st.columns(2)
 
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
-    load_css()
-    
-    db = initialize_firebase()
+    with col1:
+        st.write("**🔌 Infrastructure**")
+        has_dedicated_circuit = st.checkbox(
+            "Dedicated 20A Circuit Available",
+            key="dedicated_circuit_checkbox"
+        )
+        network_capability = st.selectbox(
+            "Network Infrastructure",
+            ["Standard 1Gb", "10Gb Capable", "Fiber Available"],
+            key="network_capability_select"
+        )
+        cable_management = st.selectbox(
+            "Cable Management",
+            ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"],
+            key="cable_management_select"
+        )
 
-    # --- NEW: LOGIC TO LOAD A PROJECT AT THE START OF THE SCRIPT RUN ---
-    if 'project_to_load' in st.session_state and st.session_state.project_to_load:
-        project_name_to_load = st.session_state.project_to_load
-        
-        if 'user_projects' in st.session_state:
-            project_data = next((p for p in st.session_state.user_projects if p.get('name') == project_name_to_load), None)
-            
-            if project_data:
-                # Update all relevant session state keys from the loaded data
-                st.session_state.project_name_input = project_data.get('project_name_input', '')
-                st.session_state.client_name_input = project_data.get('client_name_input', '')
-                st.session_state.location_input = project_data.get('location_input', '')
-                st.session_state.design_engineer_input = project_data.get('design_engineer_input', '')
-                st.session_state.project_rooms = project_data.get('rooms', [])
-                
-                st.session_state.current_room_index = 0
-                if st.session_state.project_rooms:
-                    st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
-                else:
-                    st.session_state.boq_items = []
-                
-                show_success_message(f"Project '{project_name_to_load}' loaded.")
-        
-        st.session_state.project_to_load = None
-    # --- END OF NEW LOGIC ---
+    with col2:
+        st.write("**📋 Compliance & Standards**")
+        ada_compliance = st.checkbox(
+            "ADA Compliance Required",
+            key="ada_compliance_checkbox"
+        )
+        fire_code_compliance = st.checkbox(
+            "Fire Code Compliance Required",
+            key="fire_code_compliance_checkbox"
+        )
+        security_clearance = st.selectbox(
+            "Security Level",
+            ["Standard", "Restricted", "Classified"],
+            key="security_clearance_select"
+        )
 
-    if 'projects_loaded' not in st.session_state:
-        if db:
-            user_email = st.session_state.get("user_email")
-            st.session_state.user_projects = load_projects(db, user_email)
-            st.session_state.projects_loaded = True
-        else:
-            st.session_state.user_projects = []
-
-    # --- Session State Initializations ---
-    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
-    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
-    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
-    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
-    
-    if st.session_state.get('user_location_type') == 'Local (India)':
-        st.session_state.currency_select = "INR"
-    else:
-        st.session_state.currency_select = "USD"
-    
-    if 'room_length_input' not in st.session_state:
-        st.session_state.room_length_input = 28.0
-    if 'room_width_input' not in st.session_state:
-        st.session_state.room_width_input = 20.0
-
-    with st.spinner("Initializing system modules..."):
-        product_df, guidelines, data_issues = load_and_validate_data()
-        st.session_state.product_df = product_df
-    if data_issues:
-        with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
-            for issue in data_issues: st.warning(issue)
-    if product_df is None:
-        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
-    model = setup_gemini()
-
-    partner_logos_paths = {
-        "Crestron": Path("assets/crestron_logo.png"),
-        "AVIXA": Path("assets/avixa_logo.png"),
-        "PSNI Global Alliance": Path("assets/iso_logo.png")
+    return {
+        "dedicated_circuit": has_dedicated_circuit,
+        "network_capability": network_capability,
+        "cable_management": cable_management,
+        "ada_compliance": ada_compliance,
+        "fire_code_compliance": fire_code_compliance,
+        "security_clearance": security_clearance
     }
-    create_header(main_logo_path, partner_logos_paths)
 
-    st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
 
-    def update_dimensions_from_room_type():
-        room_type = st.session_state.room_type_select
-        if room_type in ROOM_SPECS and 'typical_dims_ft' in ROOM_SPECS[room_type]:
-            length, width = ROOM_SPECS[room_type]['typical_dims_ft']
-            st.session_state.room_length_input = float(length)
-            st.session_state.room_width_input = float(width)
+def create_multi_room_interface():
+    """Interface for managing multiple rooms in a project."""
+    st.markdown("---")
+    st.subheader("🏢 Multi-Room Project Management")
 
-    with st.sidebar:
-        st.markdown(f'''
-        <div class="user-info">
-            <h3>👤 Welcome</h3>
-            <p>{st.session_state.get("user_email", "Unknown User")}</p>
-        </div>
-        ''', unsafe_allow_html=True)
-        
-        if st.session_state.get('is_psni_certified', False):
-            st.success("✅ PSNI Global Alliance Member")
-        else:
-            st.info("ℹ️ Not a PSNI Member")
-        
-        if st.button("🚪 Logout", use_container_width=True):
-            show_animated_loader("De-authorizing...", 1)
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
-        
-        st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
-        
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>🚀 Mission Parameters</h3>', unsafe_allow_html=True)
-        
-        st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
-        st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
+    col1, col2, col3 = st.columns([2, 1, 1])
 
-        if st.session_state.get('is_existing_customer', False):
-            st.success("✅ Existing Customer (Discount Applied)")
-        else:
-            st.info("ℹ️ New Customer")
-
-        st.text_input("Location", key="location_input", placeholder="e.g., Navi Mumbai, India")
-        st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
-        st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
-        st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
-        st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
-        
-        st.text_input("Currency", value=st.session_state.currency_select, disabled=True)
-        
-        st.session_state.gst_rates['Electronics'] = st.number_input(
-            "Hardware GST (%)", value=18, min_value=0, max_value=50)
-        st.session_state.gst_rates['Services'] = st.number_input(
-            "Services GST (%)", value=18, min_value=0, max_value=50)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
-        
-        room_type_key = st.selectbox(
-            "Primary Space Type", 
-            list(ROOM_SPECS.keys()), 
-            key="room_type_select",
-            on_change=update_dimensions_from_room_type
+    with col1:
+        room_name = st.text_input(
+            "New Room Name",
+            value=f"Room {len(st.session_state.project_rooms) + 1}",
+            key="new_room_name_input"
         )
-        
-        if 'initial_load' not in st.session_state:
-            update_dimensions_from_room_type()
-            st.session_state.initial_load = True
 
-        st.select_slider(
-            "Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], 
-            value="Standard", key="budget_tier_slider")
-        
-        if room_type_key in ROOM_SPECS:
-            spec = ROOM_SPECS[room_type_key]
-            area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
-            cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
-            primary_use = spec.get('primary_use', 'N/A')
-            st.markdown(f"""
-            <div class="info-box">
-                <p><b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
-                   <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
-                   <b>🎯 Primary Use:</b> {primary_use}</p>
-            </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("➕ Add Room to Project", type="primary", use_container_width=True):
+            new_room = {
+                'name': room_name,
+                'type': st.session_state.get('room_type_select', list(ROOM_SPECS.keys())[0]),
+                'area': st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
+                'boq_items': [],
+                'features': st.session_state.get('features_text_area', ''),
+                'technical_reqs': {}
+            }
+            st.session_state.project_rooms.append(new_room)
+            st.success(f"✅ Added '{room_name}' to project")
+            st.rerun()
 
-    tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+    with col3:
+        st.write("")
+        st.write("")
+        if st.session_state.project_rooms:
+            project_details = {
+                'Project Name': st.session_state.get('project_name_input', 'Multi_Room_Project'),
+                'Client Name': st.session_state.get('client_name_input', 'Valued Client'),
+                'Location': st.session_state.get('location_input', ''),
+                'Design Engineer': st.session_state.get('design_engineer_input', ''),
+                'Account Manager': st.session_state.get('account_manager_input', ''),
+                'Key Client Personnel': st.session_state.get('client_personnel_input', ''),
+                'Key Comments': st.session_state.get('comments_input', ''),
+                'gst_rates': st.session_state.get('gst_rates', {})
+            }
 
-    with tab1:
-        st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
-        
-        project_name = st.session_state.get('project_name_input', '')
-        
-        col_save, col_load = st.columns(2)
-        with col_save:
-            if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
-                if db:
-                    project_data = {
-                        'name': project_name,
-                        'project_name_input': project_name,
-                        'client_name_input': st.session_state.get('client_name_input', ''),
-                        'location_input': st.session_state.get('location_input', ''),
-                        'design_engineer_input': st.session_state.get('design_engineer_input', ''),
-                        'rooms': st.session_state.get('project_rooms', [])
-                    }
-                    if save_project(db, st.session_state.user_email, project_data):
-                        st.success(f"Project '{project_name}' saved successfully!")
-                        st.session_state.user_projects = load_projects(db, st.session_state.user_email)
-                        st.rerun()
-                    else:
-                        st.error("Failed to save project.")
-        
-        with col_load:
-            if st.session_state.get('user_projects'):
-                project_names = ["--- Select a project to load ---"] + [p.get('name', 'Unnamed Project') for p in st.session_state.user_projects]
+            excel_data = generate_company_excel(
+                project_details=project_details,
+                rooms_data=st.session_state.project_rooms,
+                usd_to_inr_rate=get_usd_to_inr_rate()
+            )
 
-                # --- CORRECTED: Use on_change callback to prevent API errors ---
-                def handle_project_selection():
-                    selected_name = st.session_state.project_loader
-                    if selected_name != "--- Select a project to load ---":
-                        st.session_state.project_to_load = selected_name
-                
-                st.selectbox(
-                    "Load Saved Project",
-                    project_names,
-                    key="project_loader",
-                    on_change=handle_project_selection
+            if excel_data:
+                filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                st.download_button(
+                    label="📊 Download Full Project BOQ",
+                    data=excel_data,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary"
                 )
 
+    # Room selection and management
+    if st.session_state.project_rooms:
         st.markdown("---")
-        create_multi_room_interface()
+        st.write("**Current Project Rooms:**")
 
-    with tab2:
-        st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
-        create_room_calculator()
-        
-    with tab3:
-        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
-        technical_reqs = {}
-        st.text_area(
-            "🎯 Specific Client Needs & Features:",
-            key="features_text_area",
-            placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'",
-            height=100)
-        technical_reqs.update(create_advanced_requirements())
-        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        
-    with tab4:
-        st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-        
-        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
-            if not model:
-                show_error_message("AI Model is not available. Please check API key.")
+        # Save current room's BOQ items before switching
+        previous_room_index = st.session_state.current_room_index
+        if previous_room_index < len(st.session_state.project_rooms):
+            st.session_state.project_rooms[previous_room_index]['boq_items'] = st.session_state.boq_items
+
+        room_options = [room['name'] for room in st.session_state.project_rooms]
+        current_index = st.session_state.current_room_index if st.session_state.current_room_index < len(room_options) else 0
+
+        selected_room_name = st.selectbox(
+            "Select room to view/edit:",
+            options=room_options,
+            index=current_index,
+            key="room_selector"
+        )
+
+        new_index = room_options.index(selected_room_name)
+        if new_index != st.session_state.current_room_index:
+            st.session_state.current_room_index = new_index
+            st.session_state.boq_items = st.session_state.project_rooms[new_index].get('boq_items', [])
+            update_boq_content_with_current_items()
+            st.rerun()
+
+        selected_room = st.session_state.project_rooms[st.session_state.current_room_index]
+        st.info(f"📍 Currently editing: **{selected_room['name']}**")
+
+        if st.button(f"🗑️ Remove '{selected_room['name']}'", type="secondary"):
+            st.session_state.project_rooms.pop(st.session_state.current_room_index)
+            st.session_state.current_room_index = 0
+            st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', []) if st.session_state.project_rooms else []
+            st.rerun()
+
+
+# ==================== BOQ DISPLAY AND EDITING ====================
+
+def update_boq_content_with_current_items():
+    """Update BOQ content in session state to reflect current items."""
+    if not st.session_state.get('boq_items'):
+        st.session_state.boq_content = "## Bill of Quantities\n\nNo items generated yet."
+        return
+
+    boq_content = "## Bill of Quantities\n\n"
+    boq_content += "| Category | Sub-Category | Brand | Model | Name | Qty | Unit Price (USD) | Remarks |\n"
+    boq_content += "|---|---|---|---|---|---|---|---|\n"
+
+    for item in st.session_state.boq_items:
+        remarks = item.get('justification', '')
+        if not item.get('matched'):
+            remarks = f"⚠️ **VERIFY**<br>{remarks}"
+
+        boq_content += (
+            f"| {item.get('category', 'N/A')} "
+            f"| {item.get('sub_category', 'N/A')} "
+            f"| {item.get('brand', 'N/A')} "
+            f"| {item.get('model_number', 'N/A')} "
+            f"| {item.get('name', 'N/A')} "
+            f"| {item.get('quantity', 1)} "
+            f"| ${item.get('price', 0):,.2f} "
+            f"| {remarks} |\n"
+        )
+
+    st.session_state.boq_content = boq_content
+
+
+def display_boq_results(product_df, project_details):
+    """Display BOQ results with interactive editing and validation feedback."""
+    boq_content = st.session_state.get('boq_content')
+    validation_results = st.session_state.get('validation_results', {})
+    item_count = len(st.session_state.get('boq_items', []))
+
+    st.subheader(f"📋 Generated Bill of Quantities ({item_count} items)")
+
+    # Display validation results prominently
+    if validation_results.get('issues') or validation_results.get('warnings'):
+        with st.container(border=True):
+            if validation_results.get('issues'):
+                st.error("🚨 **Critical System Gaps Identified**")
+                for issue in validation_results['issues']:
+                    st.write(f"- {issue}")
+
+            if validation_results.get('warnings'):
+                st.warning("💡 **Design Recommendations**")
+                for warning in validation_results['warnings']:
+                    st.write(f"- {warning}")
+
+    # Display BOQ content
+    if boq_content:
+        st.markdown(boq_content, unsafe_allow_html=True)
+    else:
+        st.info("No BOQ content generated yet. Use the editor below to build your BOQ.")
+
+    # Summary metrics and download
+    if st.session_state.get('boq_items'):
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            currency = st.session_state.get('currency_select', 'USD') # Use currency_select from sidebar
+            total_cost_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+
+            # Add 30% for services (installation, warranty, PM)
+            total_with_services = total_cost_hardware * 1.30
+
+            # --- NEW: APPLY DISCOUNT FOR EXISTING CUSTOMERS ---
+            is_existing = st.session_state.get('is_existing_customer', False)
+            if is_existing:
+                discount_rate = 0.05  # 5% discount
+                discount_amount = total_with_services * discount_rate
+                final_total = total_with_services - discount_amount
+
+                display_final_total = convert_currency(final_total, currency)
+                help_text = f"Includes services. A 5% existing customer discount has been applied (-{format_currency(convert_currency(discount_amount, currency), currency)})."
+
+                st.metric(
+                    "Estimated Project Total (Discounted)",
+                    format_currency(display_final_total, currency),
+                    help=help_text
+                )
             else:
-                progress_bar = st.progress(0, text="Initializing generation pipeline...")
-                try:
-                    room_area = st.session_state.room_length_input * st.session_state.room_width_input
+                final_total = total_with_services
+                display_final_total = convert_currency(final_total, currency)
+                st.metric(
+                    "Estimated Project Total",
+                    format_currency(display_final_total, currency),
+                    help="Includes installation, warranty, and project management. New customers may be eligible for discounts."
+                )
+            # --- END NEW BLOCK ---
 
-                    progress_bar.progress(25, text="🤖 Step 1: Querying AI, validating, and post-processing...")
-                    
-                    processed_boq, avixa_calcs, equipment_reqs, validation_results = generate_boq_from_ai(
-                        model, product_df, guidelines,
-                        st.session_state.room_type_select,
-                        st.session_state.budget_tier_slider,
-                        st.session_state.get('features_text_area', ''),
-                        technical_reqs,
-                        room_area 
-                    )
-                    
-                    if processed_boq:
-                        progress_bar.progress(90, text="✅ Finalizing results...")
-                        
-                        st.session_state.boq_items = processed_boq
-                        st.session_state.validation_results = validation_results
-                        update_boq_content_with_current_items()
+        with col2:
+            # Generate Excel for current room
+            if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
+                current_room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
+            else:
+                current_room_name = "Current_Room"
 
-                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = processed_boq
-                        
-                        progress_bar.progress(100, text="✅ BOQ generation complete!")
-                        time.sleep(0.5)
-                        progress_bar.empty()
-                        show_success_message("BOQ Generated Successfully with AVIXA Compliance Check")
-                    else:
-                        progress_bar.empty()
-                        show_error_message("Failed to generate BOQ. Please check your inputs and try again.")
-                except Exception as e:
-                    progress_bar.empty()
-                    show_error_message(f"Error during BOQ generation: {str(e)}")
-                    st.exception(e)
-        
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
+            single_room_data = [{'name': current_room_name, 'boq_items': st.session_state.boq_items}]
+
+            excel_data_current = generate_company_excel(
+                project_details=project_details,
+                rooms_data=single_room_data,
+                usd_to_inr_rate=get_usd_to_inr_rate()
+            )
+
+            if excel_data_current:
+                filename = f"{project_details.get('Project Name', 'Project')}_{current_room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                st.write("")
+                st.write("")
+                st.download_button(
+                    label="📄 Download Current Room BOQ",
+                    data=excel_data_current,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+    st.markdown("---")
+    create_interactive_boq_editor(product_df)
+
+
+def create_interactive_boq_editor(product_df):
+    """Create interactive BOQ editing interface with add/edit/search capabilities."""
+    st.subheader("🛠️ Interactive BOQ Editor")
+
+    item_count = len(st.session_state.get('boq_items', []))
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Items in BOQ", item_count)
+
+    with col2:
         if st.session_state.get('boq_items'):
-            project_details = {
-                'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
-                'Client Name': st.session_state.get('client_name_input', 'N/A'),
-                'Location': st.session_state.get('location_input', 'N/A'),
-                'Design Engineer': st.session_state.get('design_engineer_input', 'N/A'),
-                'Account Manager': st.session_state.get('account_manager_input', 'N/A'),
-                'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
-                'Key Comments': st.session_state.get('comments_input', ''),
-                'gst_rates': st.session_state.get('gst_rates', {}),
-                
-                'PSNI Certified': "Yes" if st.session_state.get('is_psni_certified') else "No",
-                'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
-                'Region': st.session_state.get('user_location_type', 'Global')
-            }
-            display_boq_results(product_df, project_details)
-
+            total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
+            currency = st.session_state.get('currency_select', 'USD')
+            display_total = convert_currency(total_cost, currency)
+            st.metric("Hardware Subtotal", format_currency(display_total, currency))
         else:
-            st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
-    
-    with tab5:
-        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
-        
-        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
-            with st.spinner("Rendering 3D environment..."):
-                viz_html = create_3d_visualization()
-                
-                if viz_html:
-                    st.components.v1.html(viz_html, height=700, scrolling=False)
-                    show_success_message("3D Visualization rendered successfully")
-                else:
-                    show_error_message("Failed to generate 3D visualization")
-        
-        st.markdown("""
-        <div class="info-box" style="margin-top: 1.5rem;">
-            <p>
-                <b>💡 Visualization Controls:</b><br>
-                • <b>Rotate:</b> Left-click and drag<br>
-                • <b>Zoom:</b> Scroll wheel<br>
-                • <b>Pan:</b> Right-click and drag<br>
-                • Equipment placement is based on AVIXA standards and room acoustics
-            </p>
-        </div>""", unsafe_allow_html=True)
+            st.metric("Subtotal", "₹0" if st.session_state.get('currency_select', 'USD') == 'INR' else "$0")
 
-    # --- Footer ---
-    st.markdown(f"""
-    <div class="custom-footer">
-        <p>© {datetime.now().year} AllWave Audio Visual & General Services | Powered by AI-driven Design Engine</p>
-        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Built with Streamlit • Gemini AI • AVIXA Standards Compliance</p>
-    </div>""", unsafe_allow_html=True)
+    with col3:
+        if st.button("🔄 Refresh BOQ Display", help="Update main BOQ display with current items"):
+            update_boq_content_with_current_items()
+            st.rerun()
+
+    if product_df is None:
+        st.error("Cannot load product catalog for editing.")
+        return
+
+    currency = st.session_state.get('currency_select', 'USD')
+    tabs = st.tabs(["✏️ Edit Current BOQ", "➕ Add Products", "🔍 Product Search"])
+
+    with tabs[0]:
+        # --- CHANGE: Pass product_df down to the editing function ---
+        edit_current_boq(product_df, currency)
+
+    with tabs[1]:
+        add_products_interface(product_df, currency)
+
+    with tabs[2]:
+        product_search_interface(product_df, currency)
 
 
-if __name__ == "__main__":
-    main()
+def edit_current_boq(product_df, currency):
+    """Interface for editing current BOQ items."""
+    if not st.session_state.get('boq_items'):
+        st.info("No BOQ items loaded. Generate a BOQ or add products manually.")
+        return
 
+    st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
+
+    items_to_remove = []
+
+    for i, item in enumerate(st.session_state.boq_items):
+        with st.expander(f"{item.get('category', 'General')} - {item.get('brand', '')} {item.get('model_number', '')}"):
+            col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+
+            with col1:
+                item['name'] = st.text_input("Product Name", value=item.get('name', ''), key=f"name_{i}")
+                item['brand'] = st.text_input("Brand", value=item.get('brand', ''), key=f"brand_{i}")
+                item['model_number'] = st.text_input("Model No.", value=item.get('model_number', ''), key=f"model_{i}")
+
+            with col2:
+                # --- CRITICAL CHANGE: Use the passed product_df ---
+                category_list = sorted(list(product_df['category'].unique()))
+                current_category = item.get('category', 'General AV')
+                try:
+                    cat_index = category_list.index(current_category)
+                except ValueError:
+                    cat_index = 0
+                item['category'] = st.selectbox("Category", category_list, index=cat_index, key=f"category_{i}")
+
+                # Sub-category selection
+                # --- CRITICAL CHANGE: Use the passed product_df ---
+                sub_cats = sorted(list(product_df[
+                    product_df['category'] == item['category']
+                ]['sub_category'].unique()))
+                current_sub = item.get('sub_category', '')
+                try:
+                    sub_index = sub_cats.index(current_sub) if current_sub in sub_cats else 0
+                except:
+                    sub_index = 0
+                item['sub_category'] = st.selectbox("Sub-Category", sub_cats, index=sub_index, key=f"subcat_{i}")
+
+            with col3:
+                item['quantity'] = st.number_input("Quantity", min_value=1, value=int(item.get('quantity', 1)), key=f"qty_{i}")
+
+                current_price_usd = float(item.get('price', 0))
+                display_price = convert_currency(current_price_usd, currency)
+                new_display_price = st.number_input(
+                    f"Unit Price ({currency})",
+                    min_value=0.0,
+                    value=display_price,
+                    key=f"price_{i}"
+                )
+                item['price'] = new_display_price / get_usd_to_inr_rate() if currency == 'INR' else new_display_price
+
+            with col4:
+                total_usd = item['price'] * item['quantity']
+                st.metric("Total", format_currency(convert_currency(total_usd, currency), currency))
+
+                if st.button("Remove", key=f"remove_{i}", type="secondary"):
+                    items_to_remove.append(i)
+
+            # Justification
+            item['justification'] = st.text_area(
+                "Justification",
+                value=item.get('justification', ''),
+                height=60,
+                key=f"just_{i}"
+            )
+
+    if items_to_remove:
+        for index in sorted(items_to_remove, reverse=True):
+            st.session_state.boq_items.pop(index)
+        st.rerun()
+
+
+def add_products_interface(product_df, currency):
+    """Interface for adding new products to BOQ with cascading filters."""
+    st.write("**Add Products to BOQ:**")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        primary_categories = ['All'] + sorted(list(product_df['category'].unique()))
+        selected_primary = st.selectbox(
+            "Filter by Primary Category",
+            primary_categories,
+            key="add_primary_cat_filter"
+        )
+
+    with col2:
+        if selected_primary != 'All':
+            sub_categories = ['All'] + sorted(list(
+                product_df[product_df['category'] == selected_primary]['sub_category'].unique()
+            ))
+            selected_sub = st.selectbox(
+                "Filter by Sub-Category",
+                sub_categories,
+                key="add_sub_cat_filter"
+            )
+        else:
+            selected_sub = 'All'
+
+    # Apply filters
+    if selected_primary != 'All':
+        filtered_df = product_df[product_df['category'] == selected_primary]
+        if selected_sub != 'All':
+            filtered_df = filtered_df[filtered_df['sub_category'] == selected_sub]
+    else:
+        filtered_df = product_df
+
+    col_prod, col_details = st.columns([2, 1])
+
+    with col_prod:
+        product_options = [
+            f"{row['brand']} - {row['name']} ({row['model_number']})"
+            for _, row in filtered_df.iterrows()
+        ]
+
+        if not product_options:
+            st.warning("No products found for the selected filters.")
+            return
+
+        selected_product_str = st.selectbox(
+            "Select Product",
+            product_options,
+            key="add_product_select"
+        )
+
+        selected_product_series = filtered_df[filtered_df.apply(
+            lambda row: f"{row['brand']} - {row['name']} ({row['model_number']})" == selected_product_str,
+            axis=1
+        )]
+
+        if selected_product_series.empty:
+            st.error("Selected product not found in dataframe.")
+            return
+
+        selected_product = selected_product_series.iloc[0]
+
+    with col_details:
+        quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
+
+        base_price_usd = float(selected_product.get('price', 0))
+        display_price = convert_currency(base_price_usd, currency)
+
+        st.metric("Unit Price", format_currency(display_price, currency))
+        st.metric("Total", format_currency(display_price * quantity, currency))
+
+        if st.button("Add to BOQ", type="primary"):
+            new_item = {
+                'category': selected_product.get('category'),
+                'sub_category': selected_product.get('sub_category'),
+                'name': selected_product.get('name'),
+                'brand': selected_product.get('brand'),
+                'model_number': selected_product.get('model_number'),
+                'quantity': quantity,
+                'price': base_price_usd,
+                'justification': 'Manually added component',
+                'specifications': selected_product.get('specifications', ''),
+                'image_url': selected_product.get('image_url', ''),
+                'gst_rate': selected_product.get('gst_rate', 18),
+                'warranty': selected_product.get('warranty', 'Not Specified'),
+                'lead_time_days': selected_product.get('lead_time_days', 14),
+                'matched': True
+            }
+            st.session_state.boq_items.append(new_item)
+            update_boq_content_with_current_items()
+            st.success(f"✅ Added {quantity}x {selected_product['name']}!")
+            st.rerun()
+
+
+def product_search_interface(product_df, currency):
+    """Advanced product search interface."""
+    st.write("**Search Product Catalog:**")
+
+    search_term = st.text_input(
+        "Search products...",
+        placeholder="Enter name, brand, model, or features",
+        key="search_term_input"
+    )
+
+    if search_term:
+        mask = product_df.apply(
+            lambda row: search_term.lower() in str(row['name']).lower() or
+                          search_term.lower() in str(row['brand']).lower() or
+                          search_term.lower() in str(row['model_number']).lower() or
+                          search_term.lower() in str(row['specifications']).lower(),
+            axis=1
+        )
+        search_results = product_df[mask]
+
+        st.write(f"Found {len(search_results)} products:")
+
+        for i, (idx, product) in enumerate(search_results.head(10).iterrows()):
+            with st.expander(f"{product.get('brand', '')} - {product.get('name', '')[:60]}..."):
+                col_a, col_b, col_c = st.columns([2, 1, 1])
+
+                with col_a:
+                    st.write(f"**Category:** {product.get('category', 'N/A')}")
+                    st.write(f"**Sub-Category:** {product.get('sub_category', 'N/A')}")
+                    st.write(f"**Model:** {product.get('model_number', 'N/A')}")
+
+                    if pd.notna(product.get('specifications')):
+                        st.write(f"**Specs:** {str(product['specifications'])[:150]}...")
+
+                with col_b:
+                    price = float(product.get('price', 0))
+                    display_price = convert_currency(price, currency)
+                    st.metric("Price", format_currency(display_price, currency))
+                    st.write(f"**Warranty:** {product.get('warranty', 'N/A')}")
+
+                with col_c:
+                    add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{idx}")
+
+                    if st.button("Add", key=f"search_add_{idx}"):
+                        new_item = {
+                            'category': product.get('category', 'General'),
+                            'sub_category': product.get('sub_category', ''),
+                            'name': product.get('name', ''),
+                            'brand': product.get('brand', ''),
+                            'model_number': product.get('model_number', ''),
+                            'quantity': add_qty,
+                            'price': price,
+                            'justification': 'Added via search',
+                            'specifications': product.get('specifications', ''),
+                            'image_url': product.get('image_url', ''),
+                            'gst_rate': product.get('gst_rate', 18),
+                            'warranty': product.get('warranty', 'Not Specified'),
+                            'lead_time_days': product.get('lead_time_days', 14),
+                            'matched': True
+                        }
+                        st.session_state.boq_items.append(new_item)
+                        update_boq_content_with_current_items()
+                        st.success(f"✅ Added {add_qty}x {product['name']}!")
+                        st.rerun()
