@@ -619,7 +619,7 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     
     # Validate display mounts
     display_count = sum(1 for item in boq_items if item.get('category') == 'Displays')
-    mount_count = sum(1 for item in bo_items if item.get('category') == 'Mounts' and 
+    mount_count = sum(1 for item in boq_items if item.get('category') == 'Mounts' and 
                       'Display Mount' in item.get('sub_category', ''))
     
     if display_count > 0 and mount_count == 0:
@@ -682,3 +682,4 @@ def calculate_boq_summary(boq_df):
         }).to_dict('index')
     
     return summary
+
