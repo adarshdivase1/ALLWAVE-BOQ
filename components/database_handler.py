@@ -197,8 +197,8 @@ def restore_project_state(project_data):
         st.session_state.currency_select = str(project_data.get('currency_select', 'USD'))
         gst_rates = project_data.get('gst_rates', {'Electronics': 18, 'Services': 18})
         st.session_state.gst_rates = {
-            'Electronics': float(gst_rates.get('Electronics', 18)),
-            'Services': float(gst_rates.get('Services', 18))
+            'Electronics': int(gst_rates.get('Electronics', 18)),
+            'Services': int(gst_rates.get('Services', 18))
         }
         
         # Multi-Room Data
