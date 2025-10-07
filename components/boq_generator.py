@@ -297,9 +297,6 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             
             camera_count = video_reqs.get('camera_count', 1)
             if camera_count > 0:
-                # =============================================================
-                # ========== THIS IS THE MODIFIED BLOCK OF CODE ==========
-                # =============================================================
                 blueprint['ptz_camera'] = ProductRequirement(
                     category='Video Conferencing',
                     sub_category='PTZ Camera',
@@ -311,9 +308,6 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     compatibility_requirements=[video_reqs.get('brand', '')],
                     min_price=1000  # NEW - Professional PTZ minimum price
                 )
-                # =============================================================
-                # =============================================================
-                # =============================================================
 
     # === CONTROL SYSTEM (MANDATORY) ===
     blueprint['touch_control_panel'] = ProductRequirement(
@@ -413,15 +407,22 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
 
     # === CONNECTIVITY ===
     if equipment_reqs.get('content_sharing') or 'wireless presentation' in technical_reqs.get('features', '').lower():
+        # =============================================================
+        # ========== THIS IS THE MODIFIED BLOCK OF CODE ==========
+        # =============================================================
         blueprint['table_connectivity'] = ProductRequirement(
             category='Cables & Connectivity',
             sub_category='Wall & Table Plate Module',
             quantity=1,
             priority=9,
-            justification='Table connectivity with HDMI, USB-C, and network',
-            required_keywords=['table', 'plate', 'connectivity', 'hdmi'],
-            blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring']
+            justification='Table connectivity hub with HDMI, USB-C, network, and power',
+            required_keywords=['table', 'connectivity', 'multi', 'aap', 'retractor'], # Better keywords
+            blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring', 'single space'], # Exclude single-port
+            min_price=150 # Multi-service plates cost more
         )
+        # =============================================================
+        # =============================================================
+        # =============================================================
 
     cable_count = 5 if room_area < 400 else 8
     blueprint['network_cables'] = ProductRequirement(
@@ -618,7 +619,7 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     
     # Validate display mounts
     display_count = sum(1 for item in boq_items if item.get('category') == 'Displays')
-    mount_count = sum(1 for item in boq_items if item.get('category') == 'Mounts' and 
+    mount_count = sum(1 for item in bo_items if item.get('category') == 'Mounts' and 
                       'Display Mount' in item.get('sub_category', ''))
     
     if display_count > 0 and mount_count == 0:
