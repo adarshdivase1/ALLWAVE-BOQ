@@ -1,5 +1,5 @@
 # components/ui_components.py
-# COMPLETE ENHANCED VERSION - Aligned with boq_generator.py 
+# COMPLETE ENHANCED VERSION - Aligned with boq_generator.py v2.0
 
 import streamlit as st
 import pandas as pd
@@ -28,16 +28,16 @@ def create_project_header():
         st.caption("AVIXA Standards-Compliant Design & Validation Engine")
     with col2:
         project_id = st.text_input(
-            "Project ID", 
-            value=f"AVP-{datetime.now().strftime('%Y%m%d')}", 
+            "Project ID",
+            value=f"AVP-{datetime.now().strftime('%Y%m%d')}",
             key="project_id_input"
         )
     with col3:
         quote_valid_days = st.number_input(
-            "Quote Valid (Days)", 
-            min_value=15, 
-            max_value=90, 
-            value=30, 
+            "Quote Valid (Days)",
+            min_value=15,
+            max_value=90,
+            value=30,
             key="quote_days_input"
         )
     return project_id, quote_valid_days
@@ -46,36 +46,36 @@ def create_project_header():
 def create_room_calculator():
     """Room size calculator with AVIXA recommendations."""
     st.subheader("📐 Room Analysis & Specifications")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         room_length = st.number_input(
-            "Room Length (ft)", 
-            min_value=10.0, 
-            max_value=80.0, 
-            value=28.0, 
+            "Room Length (ft)",
+            min_value=10.0,
+            max_value=80.0,
+            value=28.0,
             key="room_length_input"
         )
         room_width = st.number_input(
-            "Room Width (ft)", 
-            min_value=8.0, 
-            max_value=50.0, 
-            value=20.0, 
+            "Room Width (ft)",
+            min_value=8.0,
+            max_value=50.0,
+            value=20.0,
             key="room_width_input"
         )
         ceiling_height = st.number_input(
-            "Ceiling Height (ft)", 
-            min_value=8.0, 
-            max_value=20.0, 
-            value=10.0, 
+            "Ceiling Height (ft)",
+            min_value=8.0,
+            max_value=20.0,
+            value=10.0,
             key="ceiling_height_input"
         )
-    
+
     with col2:
         room_area = room_length * room_width
         st.metric("Room Area", f"{room_area:.0f} sq ft")
-        
+
         # Find recommended room type
         recommended_type = None
         for rt, specs in ROOM_SPECS.items():
@@ -83,59 +83,59 @@ def create_room_calculator():
             if area_range[0] <= room_area <= area_range[1]:
                 recommended_type = rt
                 break
-        
+
         if recommended_type:
             st.success(f"✅ Recommended: {recommended_type}")
         else:
             st.warning("⚠️ Room size outside typical ranges")
-        
+
         # Calculate viewer distance recommendation
         farthest_viewer = room_length * 0.9
         recommended_display = farthest_viewer / 4 * 12 * 2.22  # AVIXA formula
         st.info(f"💡 Suggested Display: {recommended_display:.0f}\" (based on viewing distance)")
-    
+
     return room_area, ceiling_height
 
 
 def create_advanced_requirements():
     """Advanced technical requirements input."""
     st.subheader("⚙️ Technical Requirements")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.write("**🔌 Infrastructure**")
         has_dedicated_circuit = st.checkbox(
-            "Dedicated 20A Circuit Available", 
+            "Dedicated 20A Circuit Available",
             key="dedicated_circuit_checkbox"
         )
         network_capability = st.selectbox(
-            "Network Infrastructure", 
-            ["Standard 1Gb", "10Gb Capable", "Fiber Available"], 
+            "Network Infrastructure",
+            ["Standard 1Gb", "10Gb Capable", "Fiber Available"],
             key="network_capability_select"
         )
         cable_management = st.selectbox(
-            "Cable Management", 
-            ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"], 
+            "Cable Management",
+            ["Exposed", "Conduit", "Raised Floor", "Drop Ceiling"],
             key="cable_management_select"
         )
-    
+
     with col2:
         st.write("**📋 Compliance & Standards**")
         ada_compliance = st.checkbox(
-            "ADA Compliance Required", 
+            "ADA Compliance Required",
             key="ada_compliance_checkbox"
         )
         fire_code_compliance = st.checkbox(
-            "Fire Code Compliance Required", 
+            "Fire Code Compliance Required",
             key="fire_code_compliance_checkbox"
         )
         security_clearance = st.selectbox(
-            "Security Level", 
-            ["Standard", "Restricted", "Classified"], 
+            "Security Level",
+            ["Standard", "Restricted", "Classified"],
             key="security_clearance_select"
         )
-    
+
     return {
         "dedicated_circuit": has_dedicated_circuit,
         "network_capability": network_capability,
@@ -150,16 +150,16 @@ def create_multi_room_interface():
     """Interface for managing multiple rooms in a project."""
     st.markdown("---")
     st.subheader("🏢 Multi-Room Project Management")
-    
+
     col1, col2, col3 = st.columns([2, 1, 1])
 
     with col1:
         room_name = st.text_input(
-            "New Room Name", 
+            "New Room Name",
             value=f"Room {len(st.session_state.project_rooms) + 1}",
             key="new_room_name_input"
         )
-    
+
     with col2:
         st.write("")
         st.write("")
@@ -175,7 +175,7 @@ def create_multi_room_interface():
             st.session_state.project_rooms.append(new_room)
             st.success(f"✅ Added '{room_name}' to project")
             st.rerun()
-    
+
     with col3:
         st.write("")
         st.write("")
@@ -190,13 +190,13 @@ def create_multi_room_interface():
                 'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
-            
+
             excel_data = generate_company_excel(
                 project_details=project_details,
                 rooms_data=st.session_state.project_rooms,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
-            
+
             if excel_data:
                 filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
                 st.download_button(
@@ -272,7 +272,7 @@ def update_boq_content_with_current_items():
             f"| ${item.get('price', 0):,.2f} "
             f"| {remarks} |\n"
         )
-    
+
     st.session_state.boq_content = boq_content
 
 
@@ -281,7 +281,7 @@ def display_boq_results(product_df, project_details):
     boq_content = st.session_state.get('boq_content')
     validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
-    
+
     st.subheader(f"📋 Generated Bill of Quantities ({item_count} items)")
 
     # Display validation results prominently
@@ -291,7 +291,7 @@ def display_boq_results(product_df, project_details):
                 st.error("🚨 **Critical System Gaps Identified**")
                 for issue in validation_results['issues']:
                     st.write(f"- {issue}")
-            
+
             if validation_results.get('warnings'):
                 st.warning("💡 **Design Recommendations**")
                 for warning in validation_results['warnings']:
@@ -306,24 +306,24 @@ def display_boq_results(product_df, project_details):
     # Summary metrics and download
     if st.session_state.get('boq_items'):
         col1, col2 = st.columns([1, 1])
-        
+
         with col1:
             currency = st.session_state.get('currency_select', 'USD') # Use currency_select from sidebar
             total_cost_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
-            
+
             # Add 30% for services (installation, warranty, PM)
             total_with_services = total_cost_hardware * 1.30
-            
+
             # --- NEW: APPLY DISCOUNT FOR EXISTING CUSTOMERS ---
             is_existing = st.session_state.get('is_existing_customer', False)
             if is_existing:
                 discount_rate = 0.05  # 5% discount
                 discount_amount = total_with_services * discount_rate
                 final_total = total_with_services - discount_amount
-                
+
                 display_final_total = convert_currency(final_total, currency)
                 help_text = f"Includes services. A 5% existing customer discount has been applied (-{format_currency(convert_currency(discount_amount, currency), currency)})."
-                
+
                 st.metric(
                     "Estimated Project Total (Discounted)",
                     format_currency(display_final_total, currency),
@@ -338,14 +338,14 @@ def display_boq_results(product_df, project_details):
                     help="Includes installation, warranty, and project management. New customers may be eligible for discounts."
                 )
             # --- END NEW BLOCK ---
-        
+
         with col2:
             # Generate Excel for current room
             if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                 current_room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
             else:
                 current_room_name = "Current_Room"
-            
+
             single_room_data = [{'name': current_room_name, 'boq_items': st.session_state.boq_items}]
 
             excel_data_current = generate_company_excel(
@@ -353,7 +353,7 @@ def display_boq_results(product_df, project_details):
                 rooms_data=single_room_data,
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
-            
+
             if excel_data_current:
                 filename = f"{project_details.get('Project Name', 'Project')}_{current_room_name}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
                 st.write("")
@@ -365,7 +365,7 @@ def display_boq_results(product_df, project_details):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
-    
+
     st.markdown("---")
     create_interactive_boq_editor(product_df)
 
@@ -373,14 +373,14 @@ def display_boq_results(product_df, project_details):
 def create_interactive_boq_editor(product_df):
     """Create interactive BOQ editing interface with add/edit/search capabilities."""
     st.subheader("🛠️ Interactive BOQ Editor")
-    
+
     item_count = len(st.session_state.get('boq_items', []))
-    
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric("Items in BOQ", item_count)
-    
+
     with col2:
         if st.session_state.get('boq_items'):
             total_cost = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
@@ -389,7 +389,7 @@ def create_interactive_boq_editor(product_df):
             st.metric("Hardware Subtotal", format_currency(display_total, currency))
         else:
             st.metric("Subtotal", "₹0" if st.session_state.get('currency_select', 'USD') == 'INR' else "$0")
-    
+
     with col3:
         if st.button("🔄 Refresh BOQ Display", help="Update main BOQ display with current items"):
             update_boq_content_with_current_items()
@@ -404,10 +404,10 @@ def create_interactive_boq_editor(product_df):
 
     with tabs[0]:
         edit_current_boq(currency)
-    
+
     with tabs[1]:
         add_products_interface(product_df, currency)
-    
+
     with tabs[2]:
         product_search_interface(product_df, currency)
 
@@ -419,18 +419,18 @@ def edit_current_boq(currency):
         return
 
     st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
-    
+
     items_to_remove = []
-    
+
     for i, item in enumerate(st.session_state.boq_items):
         with st.expander(f"{item.get('category', 'General')} - {item.get('brand', '')} {item.get('model_number', '')}"):
             col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
-            
+
             with col1:
                 item['name'] = st.text_input("Product Name", value=item.get('name', ''), key=f"name_{i}")
                 item['brand'] = st.text_input("Brand", value=item.get('brand', ''), key=f"brand_{i}")
                 item['model_number'] = st.text_input("Model No.", value=item.get('model_number', ''), key=f"model_{i}")
-            
+
             with col2:
                 category_list = sorted(list(st.session_state.product_df['category'].unique()))
                 current_category = item.get('category', 'General AV')
@@ -439,7 +439,7 @@ def edit_current_boq(currency):
                 except ValueError:
                     cat_index = 0
                 item['category'] = st.selectbox("Category", category_list, index=cat_index, key=f"category_{i}")
-                
+
                 # Sub-category selection
                 sub_cats = sorted(list(st.session_state.product_df[
                     st.session_state.product_df['category'] == item['category']
@@ -450,10 +450,10 @@ def edit_current_boq(currency):
                 except:
                     sub_index = 0
                 item['sub_category'] = st.selectbox("Sub-Category", sub_cats, index=sub_index, key=f"subcat_{i}")
-            
+
             with col3:
                 item['quantity'] = st.number_input("Quantity", min_value=1, value=int(item.get('quantity', 1)), key=f"qty_{i}")
-                
+
                 current_price_usd = float(item.get('price', 0))
                 display_price = convert_currency(current_price_usd, currency)
                 new_display_price = st.number_input(
@@ -463,14 +463,14 @@ def edit_current_boq(currency):
                     key=f"price_{i}"
                 )
                 item['price'] = new_display_price / get_usd_to_inr_rate() if currency == 'INR' else new_display_price
-            
+
             with col4:
                 total_usd = item['price'] * item['quantity']
                 st.metric("Total", format_currency(convert_currency(total_usd, currency), currency))
-                
+
                 if st.button("Remove", key=f"remove_{i}", type="secondary"):
                     items_to_remove.append(i)
-            
+
             # Justification
             item['justification'] = st.text_area(
                 "Justification",
@@ -488,9 +488,9 @@ def edit_current_boq(currency):
 def add_products_interface(product_df, currency):
     """Interface for adding new products to BOQ with cascading filters."""
     st.write("**Add Products to BOQ:**")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         primary_categories = ['All'] + sorted(list(product_df['category'].unique()))
         selected_primary = st.selectbox(
@@ -521,43 +521,43 @@ def add_products_interface(product_df, currency):
         filtered_df = product_df
 
     col_prod, col_details = st.columns([2, 1])
-    
+
     with col_prod:
         product_options = [
             f"{row['brand']} - {row['name']} ({row['model_number']})"
             for _, row in filtered_df.iterrows()
         ]
-        
+
         if not product_options:
             st.warning("No products found for the selected filters.")
             return
-        
+
         selected_product_str = st.selectbox(
             "Select Product",
             product_options,
             key="add_product_select"
         )
-        
+
         selected_product_series = filtered_df[filtered_df.apply(
             lambda row: f"{row['brand']} - {row['name']} ({row['model_number']})" == selected_product_str,
             axis=1
         )]
-        
+
         if selected_product_series.empty:
             st.error("Selected product not found in dataframe.")
             return
-        
+
         selected_product = selected_product_series.iloc[0]
 
     with col_details:
         quantity = st.number_input("Quantity", min_value=1, value=1, key="add_product_qty")
-        
+
         base_price_usd = float(selected_product.get('price', 0))
         display_price = convert_currency(base_price_usd, currency)
-        
+
         st.metric("Unit Price", format_currency(display_price, currency))
         st.metric("Total", format_currency(display_price * quantity, currency))
-        
+
         if st.button("Add to BOQ", type="primary"):
             new_item = {
                 'category': selected_product.get('category'),
@@ -584,7 +584,7 @@ def add_products_interface(product_df, currency):
 def product_search_interface(product_df, currency):
     """Advanced product search interface."""
     st.write("**Search Product Catalog:**")
-    
+
     search_term = st.text_input(
         "Search products...",
         placeholder="Enter name, brand, model, or features",
@@ -600,30 +600,30 @@ def product_search_interface(product_df, currency):
             axis=1
         )
         search_results = product_df[mask]
-        
+
         st.write(f"Found {len(search_results)} products:")
 
         for i, (idx, product) in enumerate(search_results.head(10).iterrows()):
             with st.expander(f"{product.get('brand', '')} - {product.get('name', '')[:60]}..."):
                 col_a, col_b, col_c = st.columns([2, 1, 1])
-                
+
                 with col_a:
                     st.write(f"**Category:** {product.get('category', 'N/A')}")
                     st.write(f"**Sub-Category:** {product.get('sub_category', 'N/A')}")
                     st.write(f"**Model:** {product.get('model_number', 'N/A')}")
-                    
+
                     if pd.notna(product.get('specifications')):
                         st.write(f"**Specs:** {str(product['specifications'])[:150]}...")
-                
+
                 with col_b:
                     price = float(product.get('price', 0))
                     display_price = convert_currency(price, currency)
                     st.metric("Price", format_currency(display_price, currency))
                     st.write(f"**Warranty:** {product.get('warranty', 'N/A')}")
-                
+
                 with col_c:
                     add_qty = st.number_input("Qty", min_value=1, value=1, key=f"search_qty_{idx}")
-                    
+
                     if st.button("Add", key=f"search_add_{idx}"):
                         new_item = {
                             'category': product.get('category', 'General'),
