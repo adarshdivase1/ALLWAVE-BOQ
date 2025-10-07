@@ -12,20 +12,23 @@ class ProductRequirement:
     priority: int
     justification: str
     
-    # NEW: Detailed specifications
+    # Detailed specifications
     size_requirement: Optional[float] = None
     power_requirement: Optional[int] = None
     connectivity_type: Optional[str] = None
     mounting_type: Optional[str] = None
     compatibility_requirements: List[str] = None
     
-    # NEW: Must-have keywords (product MUST contain these)
+    # Must-have keywords (product MUST contain these)
     required_keywords: List[str] = None
-    # NEW: Blacklist keywords (product MUST NOT contain these)
+    # Blacklist keywords (product MUST NOT contain these)
     blacklist_keywords: List[str] = None
     
-    # NEW: Client preference weight (0-1, higher = more important)
+    # Client preference weight (0-1, higher = more important)
     client_preference_weight: float = 0.5
+    
+    # Minimum price for initial filtering
+    min_price: Optional[float] = None
 
 
 class IntelligentProductSelector:
@@ -89,11 +92,19 @@ class IntelligentProductSelector:
     def _filter_by_category(self, req: ProductRequirement):
         """Stage 1: Filter by category"""
         if req.sub_category:
-            return self.product_df[
+            df = self.product_df[
                 (self.product_df['category'] == req.category) &
                 (self.product_df['sub_category'] == req.sub_category)
             ].copy()
-        return self.product_df[self.product_df['category'] == req.category].copy()
+        else:
+            df = self.product_df[self.product_df['category'] == req.category].copy()
+        
+        # ADD: Apply minimum price if specified
+        if hasattr(req, 'min_price') and req.min_price:
+            df = df[df['price'] >= req.min_price]
+            self.log(f"Applied minimum price filter (${req.min_price}): {len(df)} products")
+        
+        return df
     
     def _filter_service_contracts(self, df, req: ProductRequirement):
         """Stage 2: AGGRESSIVE service contract filter"""
@@ -187,6 +198,25 @@ class IntelligentProductSelector:
                 case=False, na=False, regex=True
             )]
             self.log(f"Power amplifier filter: {len(df)} products")
+        
+        # ADD: PTZ Camera specific filtering
+        elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
+            # MUST have PTZ indicators
+            df = df[df['name'].str.contains(
+                r'(ptz|pan.*tilt.*zoom|eagleeye.*iv|eagleeye.*director|eptz)',
+                case=False, na=False, regex=True
+            )]
+            
+            # EXCLUDE USB webcams and consumer cameras
+            df = df[~df['name'].str.contains(
+                r'(webcam|usb.*camera|c920|c930|brio)',
+                case=False, na=False, regex=True
+            )]
+            
+            # MINIMUM PRICE for professional PTZ
+            df = df[df['price'] > 1000]  # Professional PTZ cameras cost $1000+
+            
+            self.log(f"Professional PTZ camera filter: {len(df)} products")
         
         return df
     
