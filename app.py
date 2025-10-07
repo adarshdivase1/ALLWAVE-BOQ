@@ -1,4 +1,4 @@
-# app.py
+# app.py - ENHANCED VERSION with complete state save/load
 
 import streamlit as st
 import time
@@ -8,9 +8,9 @@ from pathlib import Path
 
 # --- Component Imports ---
 try:
-    # --- NEW IMPORT FOR DATABASE HANDLING ---
-    from components.database_handler import initialize_firebase, save_project, load_projects
-    
+    from components.database_handler import (
+        initialize_firebase, save_project, load_projects, restore_project_state
+    )
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
@@ -21,7 +21,7 @@ try:
     )
     from components.visualizer import create_3d_visualization
 except ImportError as e:
-    st.error(f"Failed to import a necessary component: {e}. Please ensure all component files are in the 'components' directory and are complete.")
+    st.error(f"Failed to import a necessary component: {e}")
     st.stop()
 
 
@@ -33,7 +33,7 @@ def load_css():
             css = f.read()
         st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"Could not find style.css. Please ensure it is in the '{css_file_path}' directory.")
+        st.warning(f"Could not find style.css at '{css_file_path}'")
 
 
 def show_animated_loader(text="Processing...", duration=2):
@@ -44,13 +44,16 @@ def show_animated_loader(text="Processing...", duration=2):
     time.sleep(duration)
     placeholder.empty()
 
+
 def show_success_message(message):
     """Displays a custom success message."""
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
+
 def show_error_message(message):
     """Displays a custom error message."""
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
+
 
 @st.cache_data
 def image_to_base64(img_path):
@@ -60,6 +63,7 @@ def image_to_base64(img_path):
             return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
         return None
+
 
 def create_header(main_logo, partner_logos):
     """Creates the header section with main and partner logos."""
@@ -82,8 +86,7 @@ def create_header(main_logo, partner_logos):
             </div>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
+
 
 def show_login_page(logo_b64, page_icon_path):
     """Displays the login page for user authentication."""
@@ -102,6 +105,7 @@ def show_login_page(logo_b64, page_icon_path):
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
     with st.form(key="login_form", clear_on_submit=False):
         st.markdown('<div class="login-form">', unsafe_allow_html=True)
         email = st.text_input("📧 Email ID", placeholder="yourname@allwaveav.com", key="email_input", label_visibility="collapsed")
@@ -109,31 +113,20 @@ def show_login_page(logo_b64, page_icon_path):
         
         st.markdown("<hr style='border-color: var(--border-color); margin: 1rem 0;'>", unsafe_allow_html=True)
         
-        is_psni = st.radio(
-            "Are you part of a PSNI Global Alliance certified company?",
-            ("Yes", "No"), horizontal=True, key="is_psni_radio"
-        )
-        location_type = st.radio(
-            "What is your operational region?",
-            ("Local (India)", "Global"), horizontal=True, key="location_type_radio"
-        )
-        existing_customer = st.radio(
-            "Have you worked with AllWave AV before?",
-            ("Yes", "No"), horizontal=True, key="existing_customer_radio"
-        )
+        is_psni = st.radio("Are you part of a PSNI Global Alliance certified company?", ("Yes", "No"), horizontal=True, key="is_psni_radio")
+        location_type = st.radio("What is your operational region?", ("Local (India)", "Global"), horizontal=True, key="location_type_radio")
+        existing_customer = st.radio("Have you worked with AllWave AV before?", ("Yes", "No"), horizontal=True, key="existing_customer_radio")
         submitted = st.form_submit_button("Engage", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
     if submitted:
-        if (email.endswith(("@allwaveav.com", "@allwavegs.com"))) and len(password) > 3:
+        if email.endswith(("@allwaveav.com", "@allwavegs.com")) and len(password) > 3:
             show_animated_loader("Authenticating...", 1.5)
             st.session_state.authenticated = True
             st.session_state.user_email = email
-            
             st.session_state.is_psni_certified = (is_psni == "Yes")
             st.session_state.user_location_type = location_type
             st.session_state.is_existing_customer = (existing_customer == "Yes")
-            
             show_success_message("Authentication Successful. Welcome.")
             time.sleep(1)
             st.rerun()
@@ -152,46 +145,42 @@ def main():
         show_login_page(main_logo_b64, str(main_logo_path) if main_logo_path.exists() else "🚀")
         return
 
-    st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(
+        page_title="AllWave AV - BOQ Generator",
+        page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     load_css()
     
-    # --- Initialize database connection ---
+    # Initialize database connection
     db = initialize_firebase()
 
-    # --- FIXED: LOGIC TO LOAD A PROJECT AT THE START OF THE SCRIPT RUN ---
-    # This runs BEFORE any widgets are rendered, preventing the API error.
+    # ============= ENHANCED PROJECT LOADING LOGIC =============
+    # This runs BEFORE any widgets, preventing API errors
     if 'project_to_load' in st.session_state and st.session_state.project_to_load:
         project_name_to_load = st.session_state.project_to_load
         
         if 'user_projects' in st.session_state:
-            project_data = next((p for p in st.session_state.user_projects if p.get('name') == project_name_to_load), None)
+            project_data = next(
+                (p for p in st.session_state.user_projects if p.get('name') == project_name_to_load),
+                None
+            )
             
             if project_data:
-                # Update all relevant session state keys from the loaded data
-                st.session_state.project_name_input = project_data.get('project_name_input', '')
-                st.session_state.client_name_input = project_data.get('client_name_input', '')
-                st.session_state.location_input = project_data.get('location_input', '')
-                st.session_state.design_engineer_input = project_data.get('design_engineer_input', '')
-                st.session_state.account_manager_input = project_data.get('account_manager_input', '')
-                st.session_state.client_personnel_input = project_data.get('client_personnel_input', '')
-                st.session_state.comments_input = project_data.get('comments_input', '')
-                st.session_state.project_rooms = project_data.get('rooms', [])
-                
-                # Reset the current room view to the first room of the loaded project
-                st.session_state.current_room_index = 0
-                if st.session_state.project_rooms:
-                    st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
+                # Use the new restore function to load EVERYTHING
+                if restore_project_state(project_data):
+                    # Update BOQ content display
+                    update_boq_content_with_current_items()
+                    st.session_state.project_loaded_successfully = project_name_to_load
                 else:
-                    st.session_state.boq_items = []
-                
-                # Set success flag for displaying message
-                st.session_state.project_loaded_successfully = project_name_to_load
+                    st.session_state.project_load_failed = True
         
-        # Important: Clear the trigger variable so this doesn't run again on the next rerun
+        # Clear trigger
         st.session_state.project_to_load = None
-    # --- END OF FIXED LOGIC ---
+    # ============= END ENHANCED LOADING LOGIC =============
 
-    # --- Load user's projects from DB ONCE per session ---
+    # Load user's projects from DB once per session
     if 'projects_loaded' not in st.session_state:
         if db:
             user_email = st.session_state.get("user_email")
@@ -200,34 +189,51 @@ def main():
         else:
             st.session_state.user_projects = []
 
-    # --- Session State Initializations ---
-    if 'boq_items' not in st.session_state: st.session_state.boq_items = []
-    if 'boq_content' not in st.session_state: st.session_state.boq_content = None
-    if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
-    if 'project_rooms' not in st.session_state: st.session_state.project_rooms = []
-    if 'current_room_index' not in st.session_state: st.session_state.current_room_index = 0
-    if 'gst_rates' not in st.session_state: st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
+    # Session State Initializations
+    if 'boq_items' not in st.session_state:
+        st.session_state.boq_items = []
+    if 'boq_content' not in st.session_state:
+        st.session_state.boq_content = None
+    if 'validation_results' not in st.session_state:
+        st.session_state.validation_results = {}
+    if 'project_rooms' not in st.session_state:
+        st.session_state.project_rooms = []
+    if 'current_room_index' not in st.session_state:
+        st.session_state.current_room_index = 0
+    if 'gst_rates' not in st.session_state:
+        st.session_state.gst_rates = {'Electronics': 18, 'Services': 18}
     
+    # Set currency based on location
     if st.session_state.get('user_location_type') == 'Local (India)':
-        st.session_state.currency_select = "INR"
+        if 'currency_select' not in st.session_state:
+            st.session_state.currency_select = "INR"
     else:
-        st.session_state.currency_select = "USD"
+        if 'currency_select' not in st.session_state:
+            st.session_state.currency_select = "USD"
     
+    # Room dimensions
     if 'room_length_input' not in st.session_state:
         st.session_state.room_length_input = 28.0
     if 'room_width_input' not in st.session_state:
         st.session_state.room_width_input = 20.0
 
+    # Load product data
     with st.spinner("Initializing system modules..."):
         product_df, guidelines, data_issues = load_and_validate_data()
         st.session_state.product_df = product_df
+    
     if data_issues:
         with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
-            for issue in data_issues: st.warning(issue)
+            for issue in data_issues:
+                st.warning(issue)
+    
     if product_df is None:
-        show_error_message("Fatal Error: Product catalog could not be loaded."); st.stop()
+        show_error_message("Fatal Error: Product catalog could not be loaded.")
+        st.stop()
+    
     model = setup_gemini()
 
+    # Create header
     partner_logos_paths = {
         "Crestron": Path("assets/crestron_logo.png"),
         "AVIXA": Path("assets/avixa_logo.png"),
@@ -235,8 +241,13 @@ def main():
     }
     create_header(main_logo_path, partner_logos_paths)
 
-    st.markdown('<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1><p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="glass-container"><h1 class="animated-header">AllWave AV & GS Portal</h1>'
+        '<p style="text-align: center; color: var(--text-secondary);">Professional AV System Design & BOQ Generation Platform</p></div>',
+        unsafe_allow_html=True
+    )
 
+    # Sidebar function
     def update_dimensions_from_room_type():
         room_type = st.session_state.room_type_select
         if room_type in ROOM_SPECS and 'typical_dims_ft' in ROOM_SPECS[room_type]:
@@ -244,6 +255,7 @@ def main():
             st.session_state.room_length_input = float(length)
             st.session_state.room_width_input = float(width)
 
+    # ============= SIDEBAR =============
     with st.sidebar:
         st.markdown(f'''
         <div class="user-info">
@@ -290,17 +302,21 @@ def main():
         st.text_input("Currency", value=st.session_state.currency_select, disabled=True)
         
         st.session_state.gst_rates['Electronics'] = st.number_input(
-            "Hardware GST (%)", value=18, min_value=0, max_value=50)
+            "Hardware GST (%)", value=st.session_state.gst_rates.get('Electronics', 18),
+            min_value=0, max_value=50
+        )
         st.session_state.gst_rates['Services'] = st.number_input(
-            "Services GST (%)", value=18, min_value=0, max_value=50)
+            "Services GST (%)", value=st.session_state.gst_rates.get('Services', 18),
+            min_value=0, max_value=50
+        )
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
+        st.markdown('<h3>🌍 Environment Design</h3>', unsafe_allow_html=True)
         
         room_type_key = st.selectbox(
-            "Primary Space Type", 
-            list(ROOM_SPECS.keys()), 
+            "Primary Space Type",
+            list(ROOM_SPECS.keys()),
             key="room_type_select",
             on_change=update_dimensions_from_room_type
         )
@@ -310,8 +326,11 @@ def main():
             st.session_state.initial_load = True
 
         st.select_slider(
-            "Budget Tier", options=["Economy", "Standard", "Premium", "Enterprise"], 
-            value="Standard", key="budget_tier_slider")
+            "Budget Tier",
+            options=["Economy", "Standard", "Premium", "Enterprise"],
+            value=st.session_state.get('budget_tier_slider', 'Standard'),
+            key="budget_tier_slider"
+        )
         
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
@@ -326,16 +345,21 @@ def main():
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ============= MAIN TABS =============
     tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
         st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
         
-        # Display success message if project was just loaded
+        # Display messages
         if 'project_loaded_successfully' in st.session_state:
             show_success_message(f"Project '{st.session_state.project_loaded_successfully}' loaded successfully!")
             del st.session_state.project_loaded_successfully
+        
+        if 'project_load_failed' in st.session_state:
+            show_error_message("Failed to load project. Please try again.")
+            del st.session_state.project_load_failed
         
         project_name = st.session_state.get('project_name_input', '')
         
@@ -343,7 +367,7 @@ def main():
         with col_save:
             if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
                 if db:
-                    # --- Save all relevant project data ---
+                    # Save all relevant project data
                     project_data = {
                         'name': project_name,
                         'project_name_input': project_name,
@@ -353,18 +377,25 @@ def main():
                         'account_manager_input': st.session_state.get('account_manager_input', ''),
                         'client_personnel_input': st.session_state.get('client_personnel_input', ''),
                         'comments_input': st.session_state.get('comments_input', ''),
-                        'rooms': st.session_state.get('project_rooms', [])
+                        'rooms': st.session_state.get('project_rooms', []),
+                        'gst_rates': st.session_state.get('gst_rates', {}),
+                        'currency': st.session_state.get('currency_select', 'USD'),
+                        'room_type': st.session_state.get('room_type_select', ''),
+                        'budget_tier': st.session_state.get('budget_tier_slider', 'Standard'),
+                        'room_length': st.session_state.get('room_length_input', 28.0),
+                        'room_width': st.session_state.get('room_width_input', 20.0),
+                        'features': st.session_state.get('features_text_area', '')
                     }
                     if save_project(db, st.session_state.user_email, project_data):
-                        st.success(f"Project '{project_name}' saved successfully!")
+                        show_success_message(f"Project '{project_name}' saved successfully!")
                         # Refresh project list from the database
                         st.session_state.user_projects = load_projects(db, st.session_state.user_email)
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Failed to save project.")
+                        show_error_message("Failed to save project.")
                 else:
-                    st.error("Database connection not available.")
+                    show_error_message("Database connection not available.")
         
         with col_load:
             if st.session_state.get('user_projects'):
@@ -373,18 +404,16 @@ def main():
                     for p in st.session_state.user_projects
                 ]
                 
-                # FIXED: Don't try to set the widget value after creation
                 selected_project_name = st.selectbox(
                     "Load Saved Project", 
                     project_names,
-                    index=0,  # Always start with the default option
+                    index=0,
                     key="project_loader"
                 )
 
                 if selected_project_name != "--- Select a project to load ---":
                     # Set the name of the project we want to load in the next run
                     st.session_state.project_to_load = selected_project_name
-                    
                     # Rerun the script immediately to trigger the loading logic at the top
                     st.rerun()
             else:
@@ -464,13 +493,11 @@ def main():
                 'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
                 'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {}),
-                
                 'PSNI Certified': "Yes" if st.session_state.get('is_psni_certified') else "No",
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
                 'Region': st.session_state.get('user_location_type', 'Global')
             }
             display_boq_results(product_df, project_details)
-
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
