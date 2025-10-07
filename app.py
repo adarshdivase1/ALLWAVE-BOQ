@@ -8,6 +8,9 @@ from pathlib import Path
 
 # --- Component Imports ---
 try:
+    # --- NEW IMPORT FOR DATABASE HANDLING ---
+    from components.database_handler import initialize_firebase, save_project, load_projects
+    
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
@@ -34,6 +37,7 @@ def load_css():
 
 
 def show_animated_loader(text="Processing...", duration=2):
+    """Displays a custom animated loading spinner."""
     placeholder = st.empty()
     with placeholder.container():
         st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;"><div style="position: relative; width: 80px; height: 80px;"><div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--glow-primary); animation: spin 1.2s linear infinite;"></div><div style="position: absolute; width: 80%; height: 80%; top: 10%; left: 10%; border-radius: 50%; border: 4px solid transparent; border-bottom-color: var(--glow-secondary); animation: spin-reverse 1.2s linear infinite;"></div></div><div style="text-align: center; margin-top: 1.5rem; font-weight: 500; color: var(--glow-primary); text-shadow: 0 0 5px var(--glow-primary);">{text}</div></div>', unsafe_allow_html=True)
@@ -41,13 +45,16 @@ def show_animated_loader(text="Processing...", duration=2):
     placeholder.empty()
 
 def show_success_message(message):
+    """Displays a custom success message."""
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.5) 100%); border: 1px solid rgba(16, 185, 129, 0.8);"> <div style="font-size: 2rem;">✅</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
 def show_error_message(message):
+    """Displays a custom error message."""
     st.markdown(f'<div style="display: flex; align-items: center; gap: 1rem; color: var(--text-primary); border-radius: var(--border-radius-md); padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(220, 38, 38, 0.3) 0%, rgba(220, 38, 38, 0.5) 100%); border: 1px solid rgba(220, 38, 38, 0.8);"> <div style="font-size: 2rem;">❌</div> <div style="font-weight: 600; font-size: 1.1rem;">{message}</div></div>', unsafe_allow_html=True)
 
 @st.cache_data
 def image_to_base64(img_path):
+    """Converts an image file to a base64 string for embedding in HTML."""
     try:
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
@@ -55,6 +62,7 @@ def image_to_base64(img_path):
         return None
 
 def create_header(main_logo, partner_logos):
+    """Creates the header section with main and partner logos."""
     main_logo_b64 = image_to_base64(main_logo)
     partner_logos_b64 = {name: image_to_base64(path) for name, path in partner_logos.items()}
     
@@ -78,6 +86,7 @@ def create_header(main_logo, partner_logos):
         st.warning("Main company logo not found. Please check the path in the 'assets' folder.")
 
 def show_login_page(logo_b64, page_icon_path):
+    """Displays the login page for user authentication."""
     st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
     load_css()
     
@@ -146,6 +155,16 @@ def main():
     st.set_page_config(page_title="AllWave AV - BOQ Generator", page_icon=str(main_logo_path) if main_logo_path.exists() else "🚀", layout="wide", initial_sidebar_state="expanded")
     load_css()
 
+    # --- NEW: INITIALIZE DATABASE and LOAD PROJECTS on first run after login ---
+    db = initialize_firebase()
+    if 'projects_loaded' not in st.session_state:
+        if db:
+            user_email = st.session_state.get("user_email")
+            st.session_state.user_projects = load_projects(db, user_email)
+            st.session_state.projects_loaded = True
+        else:
+            st.session_state.user_projects = []
+
     # --- Session State Initializations ---
     if 'boq_items' not in st.session_state: st.session_state.boq_items = []
     if 'boq_content' not in st.session_state: st.session_state.boq_content = None
@@ -163,7 +182,6 @@ def main():
         st.session_state.room_length_input = 28.0
     if 'room_width_input' not in st.session_state:
         st.session_state.room_width_input = 20.0
-
 
     with st.spinner("Initializing system modules..."):
         product_df, guidelines, data_issues = load_and_validate_data()
@@ -218,12 +236,10 @@ def main():
         st.text_input("Project Name", key="project_name_input", placeholder="Enter project name")
         st.text_input("Client Name", key="client_name_input", placeholder="Enter client name")
 
-        # --- NEW VISUAL INDICATOR ADDED HERE ---
         if st.session_state.get('is_existing_customer', False):
             st.success("✅ Existing Customer (Discount Applied)")
         else:
             st.info("ℹ️ New Customer")
-        # --- END OF NEW CODE ---
 
         st.text_input("Location", key="location_input", placeholder="e.g., Navi Mumbai, India")
         st.text_input("Design Engineer", key="design_engineer_input", placeholder="Enter engineer's name")
@@ -270,8 +286,8 @@ def main():
             st.markdown(f"""
             <div class="info-box">
                 <p><b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
-                   <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
-                   <b>🎯 Primary Use:</b> {primary_use}</p>
+                    <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
+                    <b>🎯 Primary Use:</b> {primary_use}</p>
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -279,9 +295,59 @@ def main():
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
 
     with tab1:
-        st.markdown('<h2 class="section-header section-header-project">Multi-Room Project Management</h2>', unsafe_allow_html=True)
-        create_multi_room_interface()
+        st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
         
+        # --- NEW UI FOR SAVING AND LOADING PROJECTS ---
+        project_name = st.session_state.get('project_name_input', '')
+        
+        col_save, col_load = st.columns(2)
+        with col_save:
+            if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
+                if db:
+                    project_data = {
+                        'name': project_name,
+                        'client': st.session_state.get('client_name_input', ''),
+                        'location': st.session_state.get('location_input', ''),
+                        'engineer': st.session_state.get('design_engineer_input', ''),
+                        'rooms': st.session_state.get('project_rooms', [])
+                    }
+                    if save_project(db, st.session_state.user_email, project_data):
+                        st.success(f"Project '{project_name}' saved successfully!")
+                        # Refresh project list
+                        st.session_state.user_projects = load_projects(db, st.session_state.user_email)
+                        st.rerun()
+                    else:
+                        st.error("Failed to save project.")
+        
+        with col_load:
+            if st.session_state.user_projects:
+                project_names = ["--- Select a project to load ---"] + [p['name'] for p in st.session_state.user_projects]
+                selected_project_name = st.selectbox("Load Saved Project", project_names, key="project_loader")
+
+                if selected_project_name != "--- Select a project to load ---":
+                    # Find the selected project data
+                    selected_project_data = next((p for p in st.session_state.user_projects if p['name'] == selected_project_name), None)
+                    if selected_project_data:
+                        # Load data into session state
+                        st.session_state.project_name_input = selected_project_data.get('name', '')
+                        st.session_state.client_name_input = selected_project_data.get('client', '')
+                        st.session_state.location_input = selected_project_data.get('location', '')
+                        st.session_state.design_engineer_input = selected_project_data.get('engineer', '')
+                        st.session_state.project_rooms = selected_project_data.get('rooms', [])
+                        # Reset current room view to the first room of the loaded project
+                        st.session_state.current_room_index = 0
+                        if st.session_state.project_rooms:
+                            st.session_state.boq_items = st.session_state.project_rooms[0].get('boq_items', [])
+                        else:
+                            st.session_state.boq_items = []
+                        
+                        st.success(f"Project '{selected_project_name}' loaded.")
+                        # Use st.rerun to ensure all widgets update with loaded data
+                        st.rerun()
+
+        st.markdown("---")
+        create_multi_room_interface() # This function now manages rooms within the currently loaded project
+
     with tab2:
         st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
         create_room_calculator()
