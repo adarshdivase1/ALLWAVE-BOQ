@@ -12,67 +12,39 @@ try:
     from components.gemini_handler import generate_with_retry
     from components.av_designer import calculate_avixa_recommendations, determine_equipment_requirements
     from components.data_handler import match_product_in_database
+    
+    # NEW IMPORTS - Add these
+    from components.intelligent_product_selector import IntelligentProductSelector, ProductRequirement
+    from components.nlp_requirements_parser import (
+        NLPRequirementsParser, 
+        extract_room_specific_requirements,
+        merge_equipment_requirements
+    )
 except ImportError as e:
     st.error(f"BOQ Generator failed to import a component: {e}")
+    # Add fallback classes
+    class ProductRequirement:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+    class IntelligentProductSelector:
+        def __init__(self, *args, **kwargs): pass
+        def select_product(self, req): return None
+        def get_selection_report(self): return "Fallback mode: No report available."
+    class NLPRequirementsParser:
+        def parse(self, text): return {}
+    def extract_room_specific_requirements(text): return {'equipment_overrides': {}, 'client_preferences': {}}
+    def merge_equipment_requirements(base, overrides): return base
     def generate_with_retry(model, prompt): return None
     def calculate_avixa_recommendations(*args): return {}
     def determine_equipment_requirements(*args): return {'displays': {}, 'audio_system': {}, 'video_system': {}}
     def match_product_in_database(*args): return None
 
 
-# ==================== CLIENT PREFERENCES PARSER ====================
-def parse_client_preferences(features_text):
-    """
-    Extract client brand/product preferences from requirements text.
-    Returns dict with preferred brands for each category.
-    """
-    if not features_text:
-        return {}
-    
-    text_lower = features_text.lower()
-    preferences = {
-        'displays': None,
-        'video_conferencing': None,
-        'audio': None,
-        'control': None,
-        'cables': None
-    }
-    
-    # Display brands
-    display_brands = ['samsung', 'lg', 'nec', 'sony', 'sharp', 'viewsonic']
-    for brand in display_brands:
-        if brand in text_lower and ('display' in text_lower or 'screen' in text_lower or 'monitor' in text_lower):
-            preferences['displays'] = brand.capitalize()
-            break
-    
-    # Video conferencing brands
-    vc_brands = ['poly', 'cisco', 'yealink', 'logitech', 'neat', 'crestron', 'zoom']
-    for brand in vc_brands:
-        if brand in text_lower and any(kw in text_lower for kw in ['video', 'conferencing', 'camera', 'codec']):
-            preferences['video_conferencing'] = brand.capitalize()
-            break
-    
-    # Audio brands
-    audio_brands = ['shure', 'biamp', 'qsc', 'extron', 'bose', 'sennheiser', 'audio-technica']
-    for brand in audio_brands:
-        if brand in text_lower and any(kw in text_lower for kw in ['audio', 'microphone', 'speaker', 'dsp']):
-            preferences['audio'] = brand.capitalize()
-            break
-    
-    # Control brands
-    control_brands = ['crestron', 'extron', 'amx', 'qsc']
-    for brand in control_brands:
-        if brand in text_lower and any(kw in text_lower for kw in ['control', 'touch panel', 'processor']):
-            preferences['control'] = brand.capitalize()
-            break
-    
-    return preferences
-
-
 # ==================== ENHANCED FALLBACK WITH CLIENT PREFERENCES ====================
-def _get_fallback_product(category, sub_category, product_df, equipment_reqs=None, budget_tier='Standard', client_preferences=None):
+def _get_fallback_product_legacy(category, sub_category, product_df, equipment_reqs=None, budget_tier='Standard', client_preferences=None):
     """
-    Intelligent fallback with CLIENT BRAND PREFERENCE support
+    LEGACY fallback - kept for backward compatibility
+    Now we use IntelligentProductSelector instead
     """
     if sub_category:
         matches = product_df[
@@ -249,20 +221,10 @@ def _get_fallback_product(category, sub_category, product_df, equipment_reqs=Non
 
 
 # ==================== COMPONENT BLUEPRINT WITH CONTROL SYSTEM ====================
-# UPDATE: components/boq_generator.py
-
 def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Standard', room_area=300):
     """
-    Enhanced blueprint with strict product requirements
+    Enhanced blueprint using the NEW ProductRequirement dataclass
     """
-    # This function requires a ProductRequirement class/object to be defined elsewhere
-    # For this file to be self-contained, a placeholder is needed.
-    class ProductRequirement:
-        def __init__(self, **kwargs):
-            self.spec = kwargs
-        def __getitem__(self, key):
-            return self.spec.get(key)
-
     blueprint = {}
     
     room_length = technical_reqs.get('room_length', (room_area ** 0.5) * 1.2)
@@ -284,10 +246,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             size_requirement=size,
             required_keywords=['display', 'monitor', '4k', 'uhd'],
             blacklist_keywords=['mount', 'bracket', 'stand', 'arm'],
-            client_preference_weight=0.8  # High importance for display brand
+            client_preference_weight=0.8
         )
 
-        # FIXED: Display Mount with STRICT requirements
         blueprint['display_mount'] = ProductRequirement(
             category='Mounts',
             sub_category='Display Mount / Cart',
@@ -360,23 +321,19 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         ]
     )
 
-    # === AUDIO SYSTEM with STRICT RULES ===
+    # === AUDIO SYSTEM ===
     if 'audio_system' in equipment_reqs:
         audio_reqs = equipment_reqs['audio_system']
         audio_type = audio_reqs.get('type', '')
         needs_dsp = audio_reqs.get('dsp_required', False)
         
-        # Check if audio is integrated (video bar)
         has_integrated_audio = 'integrated' in audio_type.lower() or 'video bar' in audio_type.lower()
-
-        # For large room audio systems
         is_large_room_audio = any(x in audio_type.lower() for x in 
                                   ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
         if is_large_room_audio:
             has_integrated_audio = False
             needs_dsp = True
         
-        # DSP (if needed)
         if needs_dsp and not has_integrated_audio:
             blueprint['audio_dsp'] = ProductRequirement(
                 category='Audio',
@@ -392,11 +349,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                 client_preference_weight=0.7
             )
 
-        # Microphones
         mic_type = audio_reqs.get('microphone_type', '')
         if mic_type and not has_integrated_audio:
             mic_count = audio_reqs.get('microphone_count', 2)
-
             if 'ceiling' in mic_type.lower():
                 blueprint['ceiling_microphones'] = ProductRequirement(
                     category='Audio',
@@ -418,11 +373,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     blacklist_keywords=['ceiling', 'wireless', 'mount']
                 )
 
-        # Speakers
         speaker_type = audio_reqs.get('speaker_type', '')
         if speaker_type and not has_integrated_audio:
             speaker_count = audio_reqs.get('speaker_count', 2)
-
             if 'ceiling' in speaker_type.lower():
                 blueprint['ceiling_speakers'] = ProductRequirement(
                     category='Audio',
@@ -433,23 +386,22 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     required_keywords=['ceiling', 'speaker', 'loudspeaker'],
                     blacklist_keywords=['mount', 'bracket', 'wall', 'portable']
                 )
-
-            # CRITICAL: Amplifier for passive speakers
-            if speaker_count > 0:
-                blueprint['power_amplifier'] = ProductRequirement(
-                    category='Audio',
-                    sub_category='Amplifier',
-                    quantity=1,
-                    priority=7,
-                    justification=f'Power amplifier for {speaker_count} passive speakers',
-                    power_requirement=speaker_count * 100,  # Rough estimate
-                    required_keywords=['amplifier', 'power', 'channel', 'watts'],
-                    blacklist_keywords=[
-                        'summing', 'quad active', 'line driver',
-                        '60-552', '60-553', 'dsp', 'processor',
-                        'mixer', 'interface'
-                    ]
-                )
+                
+                if speaker_count > 0:
+                    blueprint['power_amplifier'] = ProductRequirement(
+                        category='Audio',
+                        sub_category='Amplifier',
+                        quantity=1,
+                        priority=7,
+                        justification=f'Power amplifier for {speaker_count} passive speakers',
+                        power_requirement=speaker_count * 100,
+                        required_keywords=['amplifier', 'power', 'channel', 'watts'],
+                        blacklist_keywords=[
+                            'summing', 'quad active', 'line driver',
+                            '60-552', '60-553', 'dsp', 'processor',
+                            'mixer', 'interface'
+                        ]
+                    )
 
     # === CONNECTIVITY ===
     if equipment_reqs.get('content_sharing') or 'wireless presentation' in technical_reqs.get('features', '').lower():
@@ -463,7 +415,6 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring']
         )
 
-    # Network Cables
     cable_count = 5 if room_area < 400 else 8
     blueprint['network_cables'] = ProductRequirement(
         category='Cables & Connectivity',
@@ -475,7 +426,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         blacklist_keywords=['bulk', 'spool', 'reel']
     )
 
-    # Infrastructure
+    # === INFRASTRUCTURE ===
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
         blueprint['equipment_rack'] = ProductRequirement(
             category='Infrastructure',
@@ -504,13 +455,32 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
 # ==================== MAIN BOQ GENERATION ====================
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """
-    Main BOQ generation with CLIENT PREFERENCE support
+    PRODUCTION-READY BOQ generation with NLP + Intelligent Product Selection
     """
-    # Parse client preferences
-    client_preferences = parse_client_preferences(features)
     
+    # ========== STEP 1: NLP PARSING ==========
+    st.info("🧠 Step 1: Parsing client requirements with NLP...")
+    
+    nlp_results = extract_room_specific_requirements(features)
+    client_preferences = nlp_results.get('client_preferences', {})
+    equipment_overrides = nlp_results.get('equipment_overrides', {})
+    parsed_requirements = nlp_results.get('parsed_requirements', {})
+    
+    # Show NLP parsing results
     if client_preferences:
-        st.success(f"📋 Client Preferences Detected: {', '.join([f'{k}: {v}' for k, v in client_preferences.items() if v])}")
+        prefs_display = ", ".join([f"{k.replace('_', ' ').title()}: {v}" 
+                                   for k, v in client_preferences.items() if v])
+        if prefs_display:
+            st.success(f"✅ Client Preferences Detected: {prefs_display}")
+    
+    if parsed_requirements.get('special_requirements'):
+        st.info(f"⚡ Special Requirements: {', '.join(parsed_requirements['special_requirements'][:3])}")
+    
+    confidence = parsed_requirements.get('confidence_score', 0) * 100
+    st.write(f"📊 NLP Confidence: {confidence:.1f}%")
+    
+    # ========== STEP 2: AVIXA CALCULATIONS ==========
+    st.info("📐 Step 2: Calculating AVIXA-compliant specifications...")
     
     length = (room_area ** 0.5) * 1.2
     width = room_area / length
@@ -521,45 +491,89 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         room_type
     )
     
-    equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
-    required_components = _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier, room_area)
+    # ========== STEP 3: EQUIPMENT REQUIREMENTS ==========
+    st.info("🔧 Step 3: Determining equipment requirements...")
     
-    # Use fallback system with client preferences
-    try:
-        boq_items = []
+    base_equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
+    
+    # Merge NLP overrides with base requirements
+    equipment_reqs = merge_equipment_requirements(base_equipment_reqs, equipment_overrides)
+    
+    # ========== STEP 4: BUILD COMPONENT BLUEPRINT ==========
+    st.info("📋 Step 4: Building component blueprint...")
+    
+    required_components = _build_component_blueprint(
+        equipment_reqs, 
+        technical_reqs, 
+        budget_tier, 
+        room_area
+    )
+    
+    st.write(f"✅ Blueprint created with {len(required_components)} components")
+    
+    # ========== STEP 5: INTELLIGENT PRODUCT SELECTION ==========
+    st.info("🎯 Step 5: Selecting products with intelligent matching...")
+    
+    # Initialize the intelligent selector
+    selector = IntelligentProductSelector(
+        product_df=product_df,
+        client_preferences=client_preferences,
+        budget_tier=budget_tier
+    )
+    
+    boq_items = []
+    selection_summary = []
+    
+    # Sort components by priority
+    sorted_components = sorted(
+        required_components.items(),
+        key=lambda x: x[1].priority if hasattr(x[1], 'priority') else 999
+    )
+    
+    progress_bar = st.progress(0)
+    for idx, (comp_key, comp_spec) in enumerate(sorted_components):
+        progress = (idx + 1) / len(sorted_components)
+        progress_bar.progress(progress, text=f"Selecting {comp_key}...")
         
-        for comp_key, comp_spec in required_components.items():
-            product = _get_fallback_product(
-                comp_spec['category'],
-                comp_spec.get('sub_category'),
-                product_df,
-                equipment_reqs,
-                budget_tier,
-                client_preferences  # PASS CLIENT PREFERENCES
-            )
-            
-            if product:
-                product.update({
-                    'quantity': comp_spec['quantity'],
-                    'justification': comp_spec['justification'],
-                    'matched': True
-                })
-                boq_items.append(product)
-            else:
-                st.warning(f"⚠️ Could not find product for: {comp_key}")
+        # Use intelligent selector
+        product = selector.select_product(comp_spec)
         
-        if not boq_items:
-            raise Exception("No BOQ items generated")
-            
-    except Exception as e:
-        st.error(f"BOQ generation failed: {str(e)}")
+        if product:
+            product.update({
+                'quantity': comp_spec.quantity,
+                'justification': comp_spec.justification,
+                'matched': True
+            })
+            boq_items.append(product)
+            selection_summary.append(f"✅ {comp_key}: {product.get('brand')} {product.get('model_number')}")
+        else:
+            selection_summary.append(f"❌ {comp_key}: NOT FOUND")
+            st.warning(f"⚠️ Could not find suitable product for: {comp_key}")
+    
+    progress_bar.empty()
+    
+    # Show selection summary
+    with st.expander("📊 Product Selection Details", expanded=False):
+        for summary_line in selection_summary:
+            st.write(summary_line)
+        
+        # Show selector log
+        st.write("\n**Detailed Selection Log:**")
+        st.code(selector.get_selection_report())
+    
+    if not boq_items:
+        st.error("❌ No products could be selected. Please check your requirements.")
         return [], {}, {}, {}
     
-    # Post-process and validate
+    # ========== STEP 6: VALIDATION ==========
+    st.info("✅ Step 6: Validating BOQ completeness...")
+    
     processed_boq, validation_results = post_process_boq(
         boq_items, product_df, avixa_calcs,
         equipment_reqs, room_type, required_components
     )
+    
+    st.success(f"✅ BOQ generated with {len(processed_boq)} items!")
     
     return processed_boq, avixa_calcs, equipment_reqs, validation_results
 
@@ -577,7 +591,8 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     if not has_control:
         validation_results['warnings'].append("⚠️ No control system found - adding touch controller")
         
-        control_product = _get_fallback_product(
+        # Since the legacy function is kept, we can use it for simple fallbacks like this
+        control_product = _get_fallback_product_legacy(
             'Video Conferencing',
             'Touch Controller / Panel',
             product_df,
