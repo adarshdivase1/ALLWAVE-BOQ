@@ -41,6 +41,7 @@ class IntelligentProductSelector:
         self.client_preferences = client_preferences or {}
         self.budget_tier = budget_tier
         self.selection_log = []  # For debugging/reporting
+        self.existing_selections = [] # For ecosystem checks
     
     def select_product(self, requirement: ProductRequirement) -> Optional[Dict]:
         """
@@ -77,6 +78,9 @@ class IntelligentProductSelector:
         
         # STAGE 5: Client Preference Weighting
         candidates = self._apply_client_preferences(candidates, requirement)
+
+        # STAGE 5.5: Brand Ecosystem Check
+        candidates = self._check_brand_ecosystem(candidates, requirement, self.existing_selections)
         
         # STAGE 6: Budget-Aware Selection
         selected = self._select_by_budget(candidates, requirement)
@@ -299,7 +303,32 @@ class IntelligentProductSelector:
                 return preferred_matches
         
         return df
-    
+
+    def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
+        """
+        Stage 5.5: Ensure brand ecosystem compatibility
+        """
+        # If video conferencing category, check what else has been selected
+        if req.category in ['Audio', 'Video Conferencing']:
+            # Find primary video system brand
+            vc_brand = None
+            for selected in existing_selections:
+                if selected.get('category') == 'Video Conferencing':
+                    if 'Video Bar' in selected.get('sub_category', '') or \
+                       'Room Kit' in selected.get('sub_category', ''):
+                        vc_brand = selected.get('brand', '').lower()
+                        break
+            
+            if vc_brand:
+                # Prioritize same brand for accessories
+                if req.category == 'Audio' and any(term in req.sub_category for term in ['Microphone', 'Expansion']):
+                    brand_matches = df[df['brand'].str.lower() == vc_brand]
+                    if not brand_matches.empty:
+                        self.log(f"✅ Prioritizing {vc_brand} accessories for ecosystem compatibility")
+                        return brand_matches
+        
+        return df
+
     def _select_by_budget(self, df, req: ProductRequirement):
         """Stage 6: Select based on budget tier"""
         
