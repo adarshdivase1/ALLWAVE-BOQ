@@ -9,7 +9,8 @@ def setup_gemini():
     try:
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            # Using a more recent and widely available model
+            model = genai.GenerativeModel('gemini-1.5-flash')
             return model
         else:
             st.error("GEMINI_API_KEY not found in Streamlit secrets.")
@@ -128,4 +129,3 @@ def extract_text_from_response(response):
             return None
     
     return None
-
