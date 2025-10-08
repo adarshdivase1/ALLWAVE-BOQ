@@ -153,7 +153,11 @@ Be specific to THIS product and room. Use actual numbers from context."""
 
     try:
         # SIMPLIFIED: generate_with_retry now returns plain text by default
-        response_text = generate_with_retry(model, prompt)
+        response_text = generate_with_retry(model, prompt, return_text_only=True)
+
+if not response_text or not isinstance(response_text, str):
+    st.warning("⚠️ AI returned non-text response. Using fallback.")
+    return _get_fallback_justification(product_info, room_context)
         
         if not response_text:
             return _get_fallback_justification(product_info, room_context)
@@ -873,3 +877,4 @@ def calculate_boq_summary(boq_df):
         }).to_dict('index')
     
     return summary
+
