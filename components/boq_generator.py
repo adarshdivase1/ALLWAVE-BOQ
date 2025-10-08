@@ -624,6 +624,8 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             touch_panel_keywords.append('cisco')
             touch_panel_keywords.append('touch 10')
             st.info(f"🔗 Matching touch panel to Cisco ecosystem")
+            touch_panel_blacklist.extend(['poly', 'yealink', 'crestron tss'])
+            st.info(f"🔒 Restricting touch panel to Cisco ecosystem")
         elif 'poly' in vc_brand:
             touch_panel_keywords.append('poly')
             touch_panel_keywords.append('tc8')
@@ -904,6 +906,10 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     base_equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     equipment_reqs = merge_equipment_requirements(base_equipment_reqs, equipment_overrides)
     
+    # In generate_boq_from_ai, after equipment_reqs definition
+    st.write("🔍 **DEBUG: Equipment Requirements**")
+    st.json(equipment_reqs) # This will show you what's being passed to blueprint
+    
     # ========== STEP 4: BUILD COMPONENT BLUEPRINT ==========
     st.info("📋 Step 4: Building component blueprint...")
     
@@ -913,6 +919,11 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         budget_tier, 
         room_area
     )
+    
+    # Also add after blueprint creation
+    st.write("🔍 **DEBUG: Component Blueprint**")
+    for key, req in required_components.items():
+        st.write(f"- {key}: {req.required_keywords} | Blacklist: {req.blacklist_keywords}")
     
     st.write(f"✅ Blueprint created with {len(required_components)} components")
     
