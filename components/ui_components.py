@@ -270,9 +270,18 @@ def update_boq_content_with_current_items():
         # Get top 3 reasons (already formatted during BOQ generation)
         top_3_reasons = item.get('top_3_reasons', [])
         
-        # Format as numbered list for display
-        if top_3_reasons:
-            reasons_text = '<br>'.join([f"{i+1}. {reason[:80]}" for i, reason in enumerate(top_3_reasons)])
+        # CRITICAL: Check if it's already a list or needs parsing
+        if isinstance(top_3_reasons, str):
+            # If it's a string, parse it back to list
+            reasons_list = [r.strip() for r in top_3_reasons.split('\n') if r.strip()]
+        elif isinstance(top_3_reasons, list):
+            reasons_list = top_3_reasons
+        else:
+            reasons_list = []
+        
+        # Format as numbered list for display (limit each reason to 120 chars for readability)
+        if reasons_list:
+            reasons_text = '<br>'.join([f"{i+1}. {reason[:120]}" for i, reason in enumerate(reasons_list[:3])])
         else:
             reasons_text = "Standard component for this room type"
         
