@@ -835,7 +835,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     for room in rooms_data:
         if room.get('boq_items') and len(room['boq_items']) > 0:  # More explicit check
             print(f"DEBUG: Creating sheet for room: {room['name']}")
-            print(f"DEBUG: Room has {len(room['bo_items'])} items")
+            print(f"DEBUG: Room has {len(room['boq_items'])} items")
             
             # Calculate room totals for summary
             subtotal = sum(
@@ -887,3 +887,4 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
+
