@@ -136,9 +136,14 @@ def generate_product_info_card(product_name, brand, model, category, size_inches
     
     # Convert to BytesIO
     img_buffer = BytesIO()
-    img.save(img_buffer, format='PNG', optimize=True)
+    img.save(img_buffer, format='PNG', optimize=True, quality=95)
     img_buffer.seek(0)
     
+    # CRITICAL: Validate buffer has data
+    if img_buffer.getbuffer().nbytes == 0:
+        print("ERROR: Generated image buffer is empty!")
+        return None
+
     return img_buffer
 
 
