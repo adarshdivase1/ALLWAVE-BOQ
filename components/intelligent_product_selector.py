@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import streamlit as st
+import pandas as pd
 
 @dataclass
 class ProductRequirement:
@@ -244,16 +245,8 @@ class IntelligentProductSelector:
                 if req.size_requirement and req.size_requirement >= 85:
                     self.log(f"Large display ({req.size_requirement}\") - filtering for heavy-duty mounts")
                     
-                    # Require "large" or specific large mount indicators
-                    large_mount_df = df[df['name'].str.contains(
-                        r'(large|heavy.*duty|lsm|commercial|video.*wall|90|98|100)',
-                        case=False, na=False, regex=True
-                    )]
-                    
-                    if not large_mount_df.empty:
-                        df = large_mount_df
-                    else:
-                        self.log("⚠️ WARNING: No large-format mounts found!")
+                    # **NEW**: Validate actual capacity
+                    df = self._validate_mount_capacity(df, req) # ADD THIS LINE
                     
                     # EXCLUDE small/medium mounts by model number
                     df = df[~df['model_number'].str.contains(
@@ -272,6 +265,44 @@ class IntelligentProductSelector:
         
         return df
         
+    def _validate_mount_capacity(self, df, req: ProductRequirement):
+        """Validate mount can actually support the display"""
+        if not req.size_requirement or req.size_requirement < 85:
+            return df  # Standard validation sufficient for smaller displays
+        
+        # For 85"+ displays, require explicit large format capability
+        # Extract weight capacity from product specs
+        validated_mounts = []
+        
+        for idx, product in df.iterrows():
+            name = product.get('name', '').lower()
+            specs = product.get('specifications', '').lower()
+            combined = f"{name} {specs}"
+            
+            # Check for large format indicators
+            has_large_support = any(term in combined for term in [
+                '85"', '90"', '95"', '98"', '100"',
+                'large format', 'video wall', 'commercial display',
+                '150 lbs', '175 lbs', '200 lbs', '250 lbs',
+                'vesa 800', 'vesa 1000'
+            ])
+            
+            # Check for small mount exclusions
+            is_small_mount = any(term in combined for term in [
+                'up to 80"', 'max 70"', 'vesa 400 max',
+                'medium', 'small', 'compact'
+            ])
+            
+            if has_large_support and not is_small_mount:
+                validated_mounts.append(product)
+        
+        if validated_mounts:
+            self.log(f"✅ {len(validated_mounts)} mounts validated for {req.size_requirement}\" display")
+            return pd.DataFrame(validated_mounts)
+        else:
+            self.log(f"⚠️ WARNING: No mounts found with validated capacity for {req.size_requirement}\" display")
+            return df  # Return original if no validated mounts found
+            
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """Stage 5: Weight products by client preferences"""
         
