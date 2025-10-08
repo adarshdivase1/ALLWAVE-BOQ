@@ -493,54 +493,15 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             total_before_gst_hardware += subtotal
             total_gst_hardware += total_tax
 
-            # === EXTRACT TOP 3 REASONS ===
-            justification = item.get('justification', '')
+            # === GET TOP 3 REASONS (Already extracted during BOQ generation) ===
+            reasons = item.get('top_3_reasons', [])
 
-            # Method 1: Try to parse numbered/bulleted list
-            reasons = []
-            for line in justification.split('\n'):
-                line = line.strip()
-                if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-') or line.startswith('*')):
-                    # Remove numbering/bullets
-                    clean_line = re.sub(r'^[\d\.\)•\-\*]\s*', '', line).strip()
-                    if clean_line and len(clean_line) > 5:  # Must be substantial
-                        reasons.append(clean_line)
-
-            # Method 2: If no structured reasons, try splitting by sentences
-            if not reasons and justification:
-                sentences = re.split(r'[.!?]+', justification)
-                reasons = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
-
-            # Method 3: Fallback to generic reasons based on category
+            # Fallback if somehow missing
             if not reasons:
-                category = item.get('category', '')
-                if category == 'Displays':
-                    reasons = [
-                        "AVIXA-compliant display sizing for optimal viewing",
-                        "Professional-grade 4K resolution for clarity",
-                        "Commercial warranty and reliability"
-                    ]
-                elif category == 'Video Conferencing':
-                    reasons = [
-                        "Certified for enterprise UC platforms",
-                        "Auto-framing and speaker tracking",
-                        "Plug-and-play installation"
-                    ]
-                elif category == 'Audio':
-                    reasons = [
-                        "AVIXA-calculated coverage for room size",
-                        "Professional AEC and noise reduction",
-                        "Scalable for future expansion"
-                    ]
-                else:
-                    reasons = [
-                        "Industry-standard solution",
-                        "Reliable performance and support",
-                        "Cost-effective for project scope"
-                    ]
+                reasons = ["Standard component for this room type"]
 
             # Format as "1. Reason\n2. Reason\n3. Reason"
-            top_3_reasons = '\n'.join([f"{idx+1}. {reason[:80]}" for idx, reason in enumerate(reasons[:3])])
+            top_3_reasons = '\n'.join([f"{idx+1}. {reason}" for idx, reason in enumerate(reasons)])
 
             # Build row data
             row_data = [
@@ -741,7 +702,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             
             # GST calculation
             gst_electronics = sum(
-                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
+                (item.get('price', o, 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
                 for item in room['boq_items']
             )
             gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
