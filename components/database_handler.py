@@ -113,7 +113,11 @@ def save_project(db, user_email, project_data):
             'current_room_index': int(st.session_state.get('current_room_index', 0)),
             
             # BOQ State (Tab 4)
-            'boq_items': st.session_state.get('boq_items', []),
+            # Ensure top_3_reasons is saved for each item
+            'boq_items': [
+                {**item, 'top_3_reasons': item.get('top_3_reasons', [])} 
+                for item in st.session_state.get('boq_items', [])
+            ],
             'validation_results': st.session_state.get('validation_results', {}),
             
             # 3D Visualization State (Tab 5)
