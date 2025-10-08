@@ -191,22 +191,31 @@ def create_multi_room_interface():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
 
-            excel_data = generate_company_excel(
-                project_details=project_details,
-                rooms_data=st.session_state.project_rooms,
-                usd_to_inr_rate=get_usd_to_inr_rate()
-            )
-
-            if excel_data:
-                filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                st.download_button(
-                    label="📊 Download Full Project BOQ",
-                    data=excel_data,
-                    file_name=filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="secondary"
+            # CRITICAL: Validate rooms before passing
+            valid_rooms = [
+                room for room in st.session_state.project_rooms 
+                if room.get('boq_items') and len(room['boq_items']) > 0
+            ]
+            
+            if not valid_rooms:
+                st.warning("No rooms with BOQ items to export.")
+            else:
+                excel_data = generate_company_excel(
+                    project_details=project_details,
+                    rooms_data=valid_rooms,  # Pass only valid rooms
+                    usd_to_inr_rate=get_usd_to_inr_rate()
                 )
+
+                if excel_data:
+                    filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                    st.download_button(
+                        label="📊 Download Full Project BOQ",
+                        data=excel_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="secondary"
+                    )
 
     # Room selection and management
     if st.session_state.project_rooms:
