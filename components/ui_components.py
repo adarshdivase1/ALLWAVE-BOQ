@@ -262,12 +262,41 @@ def update_boq_content_with_current_items():
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items generated yet."
         return
 
-    # Just store a simple flag that content exists
-    st.session_state.boq_content = f"BOQ with {len(st.session_state.boq_items)} items"
+    boq_content = "## Bill of Quantities\n\n"
+    boq_content += "| Category | Sub-Category | Brand | Model | Name | Qty | Unit Price (USD) | Top 3 Reasons |\n"  # ← Changed header
+    boq_content += "|---|---|---|---|---|---|---|---|\n"
+
+    for item in st.session_state.boq_items:
+        # Get top 3 reasons (already formatted during BOQ generation)
+        top_3_reasons = item.get('top_3_reasons', [])
+        
+        # Format as numbered list for display
+        if top_3_reasons:
+            reasons_text = '<br>'.join([f"{i+1}. {reason[:80]}" for i, reason in enumerate(top_3_reasons)])
+        else:
+            reasons_text = "Standard component for this room type"
+        
+        # Add warning if not matched
+        if not item.get('matched'):
+            reasons_text = f"⚠️ **VERIFY PRODUCT**<br>{reasons_text}"
+
+        boq_content += (
+            f"| {item.get('category', 'N/A')} "
+            f"| {item.get('sub_category', 'N/A')} "
+            f"| {item.get('brand', 'N/A')} "
+            f"| {item.get('model_number', 'N/A')} "
+            f"| {item.get('name', 'N/A')} "
+            f"| {item.get('quantity', 1)} "
+            f"| ${item.get('price', 0):,.2f} "
+            f"| {reasons_text} |\n"  # ← Now shows formatted reasons
+        )
+
+    st.session_state.boq_content = boq_content
 
 
 def display_boq_results(product_df, project_details):
-    """Display BOQ results with EXPANDABLE CARDS showing Top 3 Reasons."""
+    """Display BOQ results with interactive editing and validation feedback."""
+    boq_content = st.session_state.get('boq_content')
     validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
 
@@ -286,130 +315,47 @@ def display_boq_results(product_df, project_details):
                 for warning in validation_results['warnings']:
                     st.write(f"- {warning}")
 
-    # === DISPLAY BOQ AS EXPANDABLE CARDS ===
-    if st.session_state.get('boq_items'):
-        currency = st.session_state.get('currency_select', 'USD')
-        
-        # First, show a summary table (compact view without reasons)
-        st.markdown("### 📊 Quick Summary")
-        summary_data = []
-        for item in st.session_state.boq_items:
-            match_icon = "✅" if item.get('matched') else "⚠️"
-            total_price = item.get('price', 0) * item.get('quantity', 1)
-            
-            summary_data.append({
-                '': match_icon,
-                'Category': item.get('category', 'N/A'),
-                'Brand': item.get('brand', 'N/A'),
-                'Model': item.get('model_number', 'N/A'),
-                'Qty': item.get('quantity', 1),
-                'Unit Price': f"${item.get('price', 0):,.2f}",
-                'Total': f"${total_price:,.2f}"
-            })
-        
-        summary_df = pd.DataFrame(summary_data)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        st.markdown("### 📋 Detailed View (Click to expand)")
-        
-        # Then show expandable cards with full details
-        for i, item in enumerate(st.session_state.boq_items):
-            match_icon = "✅" if item.get('matched') else "⚠️"
-            total_price = item.get('price', 0) * item.get('quantity', 1)
-            
-            # Create expander title
-            expander_title = f"{match_icon} **{item.get('brand', 'N/A')}** {item.get('model_number', 'N/A')} - {item.get('name', 'N/A')[:50]}..."
-            
-            with st.expander(expander_title, expanded=False):
-                col1, col2, col3 = st.columns([2, 1, 1])
-                
-                with col1:
-                    st.write(f"**Category:** {item.get('category', 'N/A')} / {item.get('sub_category', 'N/A')}")
-                    st.write(f"**Product Name:** {item.get('name', 'N/A')}")
-                    st.write(f"**Brand:** {item.get('brand', 'N/A')}")
-                    st.write(f"**Model:** {item.get('model_number', 'N/A')}")
-                
-                with col2:
-                    st.metric("Quantity", item.get('quantity', 1))
-                    display_price = convert_currency(item.get('price', 0), currency)
-                    st.metric("Unit Price", format_currency(display_price, currency))
-                
-                with col3:
-                    display_total = convert_currency(total_price, currency)
-                    st.metric("Line Total", format_currency(display_total, currency))
-                    st.write(f"**Warranty:** {item.get('warranty', 'N/A')}")
-                    st.write(f"**Lead Time:** {item.get('lead_time_days', 'N/A')} days")
-                
-                st.markdown("---")
-                st.markdown("### 🎯 Top 3 Reasons for Selecting This Product")
-                
-                # === CRITICAL: PROPER TOP 3 REASONS DISPLAY ===
-                top_3_reasons = item.get('top_3_reasons', [])
-                
-                # Parse if string
-                if isinstance(top_3_reasons, str):
-                    reasons_list = [r.strip() for r in top_3_reasons.split('\n') if r.strip()]
-                elif isinstance(top_3_reasons, list):
-                    reasons_list = top_3_reasons
-                else:
-                    reasons_list = []
-                
-                # Display reasons
-                if reasons_list and len(reasons_list) > 0:
-                    for idx, reason in enumerate(reasons_list[:3], 1):
-                        # Remove any existing numbering from the reason text
-                        clean_reason = reason.strip()
-                        if clean_reason and len(clean_reason) > 2:
-                            # Remove leading numbers/bullets
-                            clean_reason = clean_reason.lstrip('0123456789.•-* ')
-                            st.markdown(f"**{idx}.** {clean_reason}")
-                else:
-                    st.info("ℹ️ Standard component selected for this room configuration")
-                
-                # Show technical justification if available
-                if item.get('justification'):
-                    with st.expander("📝 Technical Justification (Internal Notes)", expanded=False):
-                        st.write(item.get('justification'))
-    
+    # Display BOQ content
+    if boq_content:
+        st.markdown(boq_content, unsafe_allow_html=True)
     else:
-        st.info("No BOQ content generated yet. Use the form above to generate a BOQ.")
+        st.info("No BOQ content generated yet. Use the editor below to build your BOQ.")
 
-    # === SUMMARY METRICS AND DOWNLOAD ===
+    # Summary metrics and download
     if st.session_state.get('boq_items'):
-        st.markdown("---")
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            currency = st.session_state.get('currency_select', 'USD')
+            currency = st.session_state.get('currency_select', 'USD') # Use currency_select from sidebar
             total_cost_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
 
             # Add 30% for services (installation, warranty, PM)
             total_with_services = total_cost_hardware * 1.30
 
-            # Apply discount for existing customers
+            # --- NEW: APPLY DISCOUNT FOR EXISTING CUSTOMERS ---
             is_existing = st.session_state.get('is_existing_customer', False)
             if is_existing:
-                discount_rate = 0.05
+                discount_rate = 0.05  # 5% discount
                 discount_amount = total_with_services * discount_rate
                 final_total = total_with_services - discount_amount
 
                 display_final_total = convert_currency(final_total, currency)
-                discount_display = format_currency(convert_currency(discount_amount, currency), currency)
-                
+                help_text = f"Includes services. A 5% existing customer discount has been applied (-{format_currency(convert_currency(discount_amount, currency), currency)})."
+
                 st.metric(
-                    "💰 Estimated Project Total (Discounted)",
+                    "Estimated Project Total (Discounted)",
                     format_currency(display_final_total, currency),
-                    help=f"Includes installation, warranty, and project management. A 5% existing customer discount has been applied (-{discount_display})."
+                    help=help_text
                 )
             else:
                 final_total = total_with_services
                 display_final_total = convert_currency(final_total, currency)
                 st.metric(
-                    "💰 Estimated Project Total",
+                    "Estimated Project Total",
                     format_currency(display_final_total, currency),
-                    help="Includes installation, warranty, and project management (30% of hardware cost)."
+                    help="Includes installation, warranty, and project management. New customers may be eligible for discounts."
                 )
+            # --- END NEW BLOCK ---
 
         with col2:
             # Generate Excel for current room
