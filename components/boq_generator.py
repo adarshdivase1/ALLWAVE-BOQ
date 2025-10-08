@@ -40,6 +40,76 @@ except ImportError as e:
     def match_product_in_database(*args): return None
 
 
+# ==================== NEW HELPER FUNCTION ====================
+def extract_top_3_reasons(justification, category='General'):
+    """
+    Extract or generate top 3 reasons from justification text.
+    This ensures consistency between app display and Excel export.
+    """
+    reasons = []
+    
+    # Method 1: Parse numbered/bulleted list
+    for line in justification.split('\n'):
+        line = line.strip()
+        if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-') or line.startswith('*')):
+            clean_line = re.sub(r'^[\d\.\)•\-\*]\s*', '', line).strip()
+            if clean_line and len(clean_line) > 5:
+                reasons.append(clean_line)
+    
+    # Method 2: Split by sentences if no structured list
+    if not reasons and justification:
+        sentences = re.split(r'[.!?]+', justification)
+        reasons = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+    
+    # Method 3: Generate category-specific defaults
+    if not reasons:
+        category_defaults = {
+            'Displays': [
+                "AVIXA-compliant display sizing for optimal viewing distance",
+                "Professional-grade 4K resolution for clarity and detail",
+                "Commercial warranty and enterprise reliability"
+            ],
+            'Video Conferencing': [
+                "Certified for Microsoft Teams/Zoom enterprise platforms",
+                "Auto-framing and speaker tracking technology",
+                "Plug-and-play installation with minimal configuration"
+            ],
+            'Audio': [
+                "AVIXA-calculated coverage pattern for room acoustics",
+                "Professional AEC and noise reduction processing",
+                "Scalable architecture for future expansion"
+            ],
+            'Control Systems': [
+                "Intuitive touch interface for non-technical users",
+                "Centralized control of all AV systems",
+                "Scheduled automation and energy management"
+            ],
+            'Mounts': [
+                "Engineered load capacity for equipment safety",
+                "Flexible positioning for optimal viewing angles",
+                "Professional-grade construction and finish"
+            ],
+            'Cables & Connectivity': [
+                "Certified bandwidth for 4K/8K signal transmission",
+                "Future-proof infrastructure investment",
+                "Reduced signal degradation over distance"
+            ],
+            'Infrastructure': [
+                "Organized equipment management and cooling",
+                "Simplified maintenance and troubleshooting access",
+                "Professional appearance and cable management"
+            ]
+        }
+        reasons = category_defaults.get(category, [
+            "Industry-standard solution for this application",
+            "Reliable performance and manufacturer support",
+            "Cost-effective for project scope and requirements"
+        ])
+    
+    # Return top 3 reasons only
+    return reasons[:3]
+
+
 # ==================== ENHANCED FALLBACK WITH CLIENT PREFERENCES ====================
 def _get_fallback_product_legacy(category, sub_category, product_df, equipment_reqs=None, budget_tier='Standard', client_preferences=None):
     """
@@ -547,9 +617,16 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         product = selector.select_product(comp_spec)
         
         if product:
+            # Extract top 3 reasons from justification
+            top_3_reasons = extract_top_3_reasons(
+                comp_spec.justification, 
+                product.get('category', 'General')
+            )
+            
             product.update({
                 'quantity': comp_spec.quantity,
                 'justification': comp_spec.justification,
+                'top_3_reasons': top_3_reasons,  # ← NEW FIELD
                 'matched': True
             })
             boq_items.append(product)
