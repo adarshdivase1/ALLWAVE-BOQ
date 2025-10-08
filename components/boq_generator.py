@@ -154,12 +154,9 @@ Be specific to THIS product and room. Use actual numbers from context."""
     try:
         # SIMPLIFIED: generate_with_retry now returns plain text by default
         response_text = generate_with_retry(model, prompt, return_text_only=True)
-
-if not response_text or not isinstance(response_text, str):
-    st.warning("⚠️ AI returned non-text response. Using fallback.")
-    return _get_fallback_justification(product_info, room_context)
         
-        if not response_text:
+        if not response_text or not isinstance(response_text, str):
+            st.warning("⚠️ AI returned non-text response. Using fallback.")
             return _get_fallback_justification(product_info, room_context)
         
         # Extract JSON from markdown code blocks if present
@@ -583,16 +580,24 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             required_keywords=['table', 'plate', 'connectivity', 'hdmi'],
             blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring']
         )
-
-    cable_count = 5 if room_area < 400 else 8
+    
+    # === MODIFIED CABLE LOGIC ===
+    # Calculate cables based on room size and equipment count
+    if room_area < 150:  # Small huddle
+        cable_count = 3
+    elif room_area < 400:  # Medium rooms
+        cable_count = 5
+    else:  # Large rooms
+        cable_count = 8
+    
     blueprint['network_cables'] = ProductRequirement(
         category='Cables & Connectivity',
         sub_category='AV Cable',
         quantity=cable_count,
         priority=10,
-        justification='Network patch cables for equipment',
-        required_keywords=['cat6', 'cat7', 'ethernet', 'network'], # More specific
-        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo'] # Exclude obsolete
+        justification=f'{cable_count}x network patch cables for equipment connectivity',
+        required_keywords=['cat6', 'cat7', 'ethernet', 'network'],
+        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo']
     )
 
     # === INFRASTRUCTURE ===
@@ -877,4 +882,3 @@ def calculate_boq_summary(boq_df):
         }).to_dict('index')
     
     return summary
-
