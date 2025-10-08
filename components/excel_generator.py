@@ -663,6 +663,146 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 cell.alignment = Alignment(vertical='top')
 
 
+# ==================== SCOPE OF WORK SHEET ====================
+def _add_scope_of_work_sheet(workbook, styles):
+    """Creates the Scope of Work sheet based on AllWave AV standard format."""
+    sheet = workbook.create_sheet(title="Scope of Work", index=1)
+    _create_sheet_header(sheet)
+    sheet.sheet_view.showGridLines = False
+    
+    # Set column widths
+    sheet.column_dimensions['A'].width = 8
+    sheet.column_dimensions['B'].width = 80
+    
+    row_cursor = 4
+    
+    # === TITLE ===
+    sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
+    title_cell = sheet[f'A{row_cursor}']
+    title_cell.value = "Scope of Work"
+    title_cell.font = Font(size=14, bold=True, color="FFFFFF")
+    title_cell.fill = PatternFill(start_color="2563eb", end_color="2563eb", fill_type="solid")
+    title_cell.alignment = Alignment(horizontal='center', vertical='center')
+    title_cell.border = styles['thin_border']
+    sheet.row_dimensions[row_cursor].height = 25
+    row_cursor += 2
+    
+    # === SCOPE ITEMS ===
+    scope_items = [
+        "Site Coordination and Prerequisites Clearance",
+        "Detailed schematic drawings according to the design",
+        "Conduit layout drawings/equipment layout drawings, showing mounting location",
+        "Laying of all AV Cables",
+        "Termination of cables with respective connectors",
+        "Installation of all AV equipment in rack as per layout",
+        "Configuration of Audio/Video Switcher",
+        "Configuration of DSP mixer",
+        "Touch Panel Design",
+        "System programming as per design requirement"
+    ]
+    
+    for idx, item in enumerate(scope_items, 1):
+        sheet[f'A{row_cursor}'] = idx
+        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'A{row_cursor}'].border = styles['thin_border']
+        
+        sheet[f'B{row_cursor}'] = item
+        sheet[f'B{row_cursor}'].border = styles['thin_border']
+        sheet.row_dimensions[row_cursor].height = 30
+        row_cursor += 1
+    
+    row_cursor += 1
+    
+    # === EXCLUSIONS SECTION ===
+    sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
+    section_cell = sheet[f'A{row_cursor}']
+    section_cell.value = "Exclusions and Dependencies"
+    section_cell.fill = styles['table_header_blue_fill']
+    section_cell.font = styles['bold_font']
+    section_cell.border = styles['thin_border']
+    row_cursor += 1
+    
+    sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
+    cell = sheet[f'A{row_cursor}']
+    cell.value = "The following items need to be arranged by the client on site:"
+    cell.border = styles['thin_border']
+    sheet.row_dimensions[row_cursor].height = 20
+    row_cursor += 1
+    
+    exclusions = [
+        "Civil work like cutting of false ceilings, chipping, etc.",
+        "Electrical work like laying of conduits, raceways, and providing stabilized power supply",
+        "Carpentry work like cutouts on furniture, etc.",
+        "Connectivity for electric power, LAN, telephone, IP (1 Mbps), ISDN (1 Mbps) & cable TV points",
+        "Ballasts (0 to 10 volts) in case of fluorescent dimming for lights",
+        "Shelves for mounting devices (if a rack is not in the SOW)",
+        "Adequate cooling/ventilation for all equipment racks and cabinets"
+    ]
+    
+    for idx, item in enumerate(exclusions, 1):
+        sheet[f'A{row_cursor}'] = idx
+        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'A{row_cursor}'].border = styles['thin_border']
+        
+        sheet[f'B{row_cursor}'] = item
+        sheet[f'B{row_cursor}'].border = styles['thin_border']
+        sheet[f'B{row_cursor}'].alignment = Alignment(wrap_text=True, vertical='top')
+        sheet.row_dimensions[row_cursor].height = 25
+        row_cursor += 1
+
+
+# ==================== PROPOSAL SUMMARY SHEET ====================
+def _add_proposal_summary_sheet(workbook, rooms_data, styles):
+    """Creates the Proposal Summary sheet."""
+    sheet = workbook.create_sheet(title="Proposal Summary", index=2)
+    _create_sheet_header(sheet)
+    sheet.sheet_view.showGridLines = False
+    
+    # Set column widths
+    sheet.column_dimensions['A'].width = 10
+    sheet.column_dimensions['B'].width = 50
+    sheet.column_dimensions['C'].width = 15
+    
+    row_cursor = 4
+    
+    # === TITLE ===
+    sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
+    title_cell = sheet[f'A{row_cursor}']
+    title_cell.value = "Proposal Summary"
+    title_cell.font = Font(size=14, bold=True, color="FFFFFF")
+    title_cell.fill = PatternFill(start_color="2563eb", end_color="2563eb", fill_type="solid")
+    title_cell.alignment = Alignment(horizontal='center', vertical='center')
+    title_cell.border = styles['thin_border']
+    sheet.row_dimensions[row_cursor].height = 25
+    row_cursor += 2
+    
+    # === TABLE HEADERS ===
+    headers = ['Sr. No.', 'Description', 'Total Qty']
+    for col_idx, header in enumerate(headers, 1):
+        cell = sheet.cell(row=row_cursor, column=col_idx)
+        cell.value = header
+        cell.fill = styles['table_header_blue_fill']
+        cell.font = styles['bold_font']
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = styles['thin_border']
+    row_cursor += 1
+    
+    # === ROOM DATA ===
+    for idx, room in enumerate(rooms_data, 1):
+        sheet[f'A{row_cursor}'] = idx
+        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'A{row_cursor}'].border = styles['thin_border']
+        
+        sheet[f'B{row_cursor}'] = room.get('name', f'Room {idx}')
+        sheet[f'B{row_cursor}'].border = styles['thin_border']
+        
+        sheet[f'C{row_cursor}'] = 1  # Quantity of rooms
+        sheet[f'C{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'C{row_cursor}'].border = styles['thin_border']
+        
+        row_cursor += 1
+
+
 # ==================== MAIN ENTRY POINT ====================
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
@@ -682,14 +822,20 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     # === SHEET 1: VERSION CONTROL ===
     _add_version_control_sheet(workbook, project_details, styles)
     
-    # === SHEET 2: TERMS & CONDITIONS ===
+    # === SHEET 2: SCOPE OF WORK ===
+    _add_scope_of_work_sheet(workbook, styles)
+    
+    # === SHEET 3: PROPOSAL SUMMARY ===
+    _add_proposal_summary_sheet(workbook, rooms_data, styles)
+    
+    # === SHEET 4: TERMS & CONDITIONS ===
     _add_terms_and_conditions_sheet(workbook, styles)
     
-    # === SHEET 3+: ROOM BOQ SHEETS ===
+    # === SHEET 5+: ROOM BOQ SHEETS ===
     for room in rooms_data:
         if room.get('boq_items') and len(room['boq_items']) > 0:  # More explicit check
             print(f"DEBUG: Creating sheet for room: {room['name']}")
-            print(f"DEBUG: Room has {len(room['boq_items'])} items")
+            print(f"DEBUG: Room has {len(room['bo_items'])} items")
             
             # Calculate room totals for summary
             subtotal = sum(
@@ -741,4 +887,3 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
-
