@@ -110,6 +110,137 @@ def extract_top_3_reasons(justification, category='General'):
     return reasons[:3]
 
 
+# ==================== BRAND COMPATIBILITY & FEATURE CHECKER ====================
+def check_component_compatibility(blueprint, selected_products):
+    """
+    Intelligent compatibility checker that removes redundant components
+    and ensures brand compatibility.
+    
+    Returns: (filtered_blueprint, compatibility_warnings)
+    """
+    filtered_blueprint = {}
+    warnings = []
+    
+    # === RULE 1: Video Bar = Integrated Audio ===
+    has_video_bar = any(
+        'Video Bar' in comp.sub_category 
+        for comp in blueprint.values() 
+        if hasattr(comp, 'sub_category')
+    )
+    
+    if has_video_bar:
+        # Check if video bar has integrated audio from product database
+        video_bar_product = None
+        for comp_key, comp in blueprint.items():
+            if hasattr(comp, 'sub_category') and 'Video Bar' in comp.sub_category:
+                # Find the actual selected product
+                for product in selected_products:
+                    if product.get('sub_category') == comp.sub_category:
+                        video_bar_product = product
+                        break
+                break
+        
+        if video_bar_product:
+            product_name = video_bar_product.get('name', '').lower()
+            product_specs = video_bar_product.get('specifications', '').lower()
+            combined_text = f"{product_name} {product_specs}"
+            
+            # Check for integrated audio indicators
+            has_integrated_mics = any(term in combined_text for term in 
+                ['integrated microphone', 'built-in microphone', 'beamforming mic', 
+                 'mic array', 'microphone array', 'integrated mic'])
+            
+            has_integrated_speakers = any(term in combined_text for term in 
+                ['integrated speaker', 'built-in speaker', 'full-duplex audio',
+                 'speaker array', 'integrated audio'])
+            
+            if has_integrated_mics or has_integrated_speakers:
+                warnings.append(
+                    f"ℹ️ {video_bar_product.get('brand')} {video_bar_product.get('model_number')} "
+                    f"has integrated audio - removing redundant components"
+                )
+                
+                # Filter out redundant audio components
+                for comp_key, comp in blueprint.items():
+                    if hasattr(comp, 'category'):
+                        # Remove table mics if video bar has integrated mics
+                        if has_integrated_mics and comp.category == 'Audio' and 'Table' in comp.sub_category:
+                            warnings.append(f"❌ Removed: {comp_key} (video bar has integrated microphones)")
+                            continue
+                        
+                        # Remove DSP if video bar has built-in processing
+                        if has_integrated_mics and comp.category == 'Audio' and 'DSP' in comp.sub_category:
+                            # Only remove if it's a small room (video bar DSP sufficient)
+                            if hasattr(comp, 'justification') and 'small' in comp.justification.lower():
+                                warnings.append(f"❌ Removed: {comp_key} (video bar has integrated DSP)")
+                                continue
+                    
+                    filtered_blueprint[comp_key] = comp
+            else:
+                filtered_blueprint = blueprint.copy()
+        else:
+            filtered_blueprint = blueprint.copy()
+    else:
+        filtered_blueprint = blueprint.copy()
+    
+    # === RULE 2: Brand Ecosystem Compatibility ===
+    selected_brands = {}
+    for comp_key, comp in filtered_blueprint.items():
+        if hasattr(comp, 'category'):
+            if comp.category == 'Video Conferencing':
+                # Track video conferencing brand
+                for product in selected_products:
+                    if product.get('category') == 'Video Conferencing':
+                        selected_brands['video_conferencing'] = product.get('brand', '').lower()
+                        break
+    
+    # Check for cross-brand incompatibilities
+    vc_brand = selected_brands.get('video_conferencing', '')
+    
+    if vc_brand:
+        # If Poly video system, prefer Poly audio accessories
+        if 'poly' in vc_brand:
+            for comp_key, comp in list(filtered_blueprint.items()):
+                if hasattr(comp, 'category') and comp.category == 'Audio':
+                    if 'Table' in comp.sub_category or 'Microphone' in comp.sub_category:
+                        # Add brand preference
+                        comp.client_preference_weight = 0.95
+                        comp.required_keywords = comp.required_keywords or []
+                        if 'poly' not in [k.lower() for k in comp.required_keywords]:
+                            warnings.append(
+                                f"ℹ️ Prioritizing Poly audio accessories for {vc_brand} video system compatibility"
+                            )
+        
+        # If Yealink video system, prefer Yealink accessories
+        elif 'yealink' in vc_brand:
+            for comp_key, comp in list(filtered_blueprint.items()):
+                if hasattr(comp, 'category') and comp.category == 'Audio':
+                    if 'Table' in comp.sub_category or 'Expansion' in comp.sub_category:
+                        comp.client_preference_weight = 0.95
+                        warnings.append(
+                            f"ℹ️ Prioritizing Yealink audio accessories for {vc_brand} video system compatibility"
+                        )
+    
+    # === RULE 3: DSP Redundancy Check ===
+    has_external_dsp = 'audio_dsp' in filtered_blueprint
+    has_video_codec_with_dsp = any(
+        comp_key in ['video_codec', 'video_conferencing_system'] 
+        for comp_key in filtered_blueprint
+    )
+    
+    if has_external_dsp and has_video_codec_with_dsp:
+        # Check if codec has built-in DSP capabilities
+        for product in selected_products:
+            if product.get('category') == 'Video Conferencing':
+                product_specs = product.get('specifications', '').lower()
+                if any(term in product_specs for term in ['dsp', 'audio processing', 'echo cancellation', 'noise reduction']):
+                    warnings.append(
+                        "⚠️ Video codec has built-in DSP - external DSP may be redundant for small/medium rooms"
+                    )
+    
+    return filtered_blueprint, warnings
+
+
 # ==================== NEW AI JUSTIFICATION FUNCTIONS (MODIFIED) ====================
 def generate_ai_product_justification(model, product_info, room_context, avixa_calcs):
     """Generate intelligent, context-aware product justification using Gemini AI."""
@@ -487,87 +618,105 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         ]
     )
 
-    # === AUDIO SYSTEM ===
+    # === AUDIO SYSTEM WITH REDUNDANCY CHECK ===
     if 'audio_system' in equipment_reqs:
         audio_reqs = equipment_reqs['audio_system']
         audio_type = audio_reqs.get('type', '')
         needs_dsp = audio_reqs.get('dsp_required', False)
         
-        has_integrated_audio = 'integrated' in audio_type.lower() or 'video bar' in audio_type.lower()
+        # CRITICAL: Check if audio is integrated in video system
+        has_integrated_audio = any(term in audio_type.lower() for term in 
+            ['integrated', 'video bar', 'all-in-one'])
+        
+        # Large room audio is NEVER integrated
         is_large_room_audio = any(x in audio_type.lower() for x in 
-                                    ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
+            ['ceiling audio', 'pro audio', 'voice reinforcement', 'fully integrated'])
+        
         if is_large_room_audio:
             has_integrated_audio = False
             needs_dsp = True
         
-        if needs_dsp and not has_integrated_audio:
-            blueprint['audio_dsp'] = ProductRequirement(
-                category='Audio',
-                sub_category='DSP / Audio Processor / Mixer',
-                quantity=1,
-                priority=4,
-                justification='Digital signal processor for audio management',
-                required_keywords=['dsp', 'processor', 'audio', 'digital'],
-                blacklist_keywords=[
-                    'amplifier', 'amp-', 'power amp', 'summing',
-                    '60-552', '60-553', 'line driver'
-                ],
-                client_preference_weight=0.7
-            )
-
-        mic_type = audio_reqs.get('microphone_type', '')
-        if mic_type and not has_integrated_audio:
-            mic_count = audio_reqs.get('microphone_count', 2)
-            if 'ceiling' in mic_type.lower():
-                blueprint['ceiling_microphones'] = ProductRequirement(
+        # === NEW: Don't add redundant components for integrated systems ===
+        if not has_integrated_audio:
+            # Only add DSP if truly needed AND not integrated
+            if needs_dsp:
+                blueprint['audio_dsp'] = ProductRequirement(
                     category='Audio',
-                    sub_category='Ceiling Microphone',
-                    quantity=mic_count,
-                    priority=5,
-                    justification=f'{mic_count}x ceiling microphones for audio pickup',
-                    required_keywords=['ceiling', 'microphone', 'mic'],
-                    blacklist_keywords=['mount', 'bracket', 'accessory', 'table']
-                )
-            elif 'table' in mic_type.lower():
-                blueprint['table_microphones'] = ProductRequirement(
-                    category='Audio',
-                    sub_category='Table/Boundary Microphone',
-                    quantity=mic_count,
-                    priority=5,
-                    justification=f'{mic_count}x table microphones',
-                    required_keywords=['table', 'boundary', 'microphone'],
-                    blacklist_keywords=['ceiling', 'wireless', 'mount']
+                    sub_category='DSP / Audio Processor / Mixer',
+                    quantity=1,
+                    priority=4,
+                    justification='Digital signal processor for audio management (large room or complex audio)',
+                    required_keywords=['dsp', 'processor', 'audio', 'digital'],
+                    blacklist_keywords=[
+                        'amplifier', 'amp-', 'power amp', 'summing',
+                        '60-552', '60-553', 'line driver'
+                    ],
+                    client_preference_weight=0.7
                 )
 
-        speaker_type = audio_reqs.get('speaker_type', '')
-        if speaker_type and not has_integrated_audio:
-            speaker_count = audio_reqs.get('speaker_count', 2)
-            if 'ceiling' in speaker_type.lower():
-                blueprint['ceiling_speakers'] = ProductRequirement(
-                    category='Audio',
-                    sub_category='Ceiling Loudspeaker',
-                    quantity=speaker_count,
-                    priority=6,
-                    justification=f'{speaker_count}x ceiling speakers',
-                    required_keywords=['ceiling', 'speaker', 'loudspeaker'],
-                    blacklist_keywords=['mount', 'bracket', 'wall', 'portable']
-                )
-                
-                if speaker_count > 0:
-                    blueprint['power_amplifier'] = ProductRequirement(
+            # Microphones
+            mic_type = audio_reqs.get('microphone_type', '')
+            mic_count = audio_reqs.get('microphone_count', 0)
+            
+            if mic_type and mic_count > 0:
+                if 'ceiling' in mic_type.lower():
+                    blueprint['ceiling_microphones'] = ProductRequirement(
                         category='Audio',
-                        sub_category='Amplifier',
-                        quantity=1,
-                        priority=7,
-                        justification=f'Power amplifier for {speaker_count} passive speakers',
-                        power_requirement=speaker_count * 100,
-                        required_keywords=['amplifier', 'power', 'channel', 'watts'],
-                        blacklist_keywords=[
-                            'summing', 'quad active', 'line driver',
-                            '60-552', '60-553', 'dsp', 'processor',
-                            'mixer', 'interface'
-                        ]
+                        sub_category='Ceiling Microphone',
+                        quantity=mic_count,
+                        priority=5,
+                        justification=f'{mic_count}x ceiling microphones for audio pickup',
+                        required_keywords=['ceiling', 'microphone', 'mic'],
+                        blacklist_keywords=['mount', 'bracket', 'accessory', 'table']
                     )
+                elif 'table' in mic_type.lower():
+                    # NEW: Add note that this might be redundant with video bar
+                    blueprint['table_microphones'] = ProductRequirement(
+                        category='Audio',
+                        sub_category='Table/Boundary Microphone',
+                        quantity=mic_count,
+                        priority=5,
+                        justification=f'{mic_count}x table microphones (check for video bar redundancy)',
+                        required_keywords=['table', 'boundary', 'microphone'],
+                        blacklist_keywords=['ceiling', 'wireless', 'mount']
+                    )
+
+            # Speakers (same logic)
+            speaker_type = audio_reqs.get('speaker_type', '')
+            speaker_count = audio_reqs.get('speaker_count', 0)
+            
+            if speaker_type and speaker_count > 0:
+                if 'ceiling' in speaker_type.lower():
+                    blueprint['ceiling_speakers'] = ProductRequirement(
+                        category='Audio',
+                        sub_category='Ceiling Loudspeaker',
+                        quantity=speaker_count,
+                        priority=6,
+                        justification=f'{speaker_count}x ceiling speakers',
+                        required_keywords=['ceiling', 'speaker', 'loudspeaker'],
+                        blacklist_keywords=['mount', 'bracket', 'wall', 'portable']
+                    )
+                    
+                    # Add amplifier for passive speakers
+                    if speaker_count > 0:
+                        blueprint['power_amplifier'] = ProductRequirement(
+                            category='Audio',
+                            sub_category='Amplifier',
+                            quantity=1,
+                            priority=7,
+                            justification=f'Power amplifier for {speaker_count} passive speakers',
+                            power_requirement=speaker_count * 100,
+                            required_keywords=['amplifier', 'power', 'channel', 'watts'],
+                            blacklist_keywords=[
+                                'summing', 'quad active', 'line driver',
+                                '60-552', '60-553', 'dsp', 'processor',
+                                'mixer', 'interface'
+                            ]
+                        )
+        else:
+            # Log that we're skipping audio components due to integration
+            st.info(f"ℹ️ Audio system type '{audio_type}' indicates integrated audio - skipping separate audio components")
+
 
     # === CONNECTIVITY ===
     if equipment_reqs.get('content_sharing') or 'wireless presentation' in technical_reqs.get('features', '').lower():
@@ -716,6 +865,9 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         progress = (idx + 1) / len(sorted_components)
         progress_bar.progress(progress, text=f"Selecting {comp_key}...")
         
+        # NEW: Pass existing selections for compatibility checking
+        selector.existing_selections = boq_items # Add this attribute
+        
         # Select product
         product = selector.select_product(comp_spec)
         
@@ -749,6 +901,45 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
             st.warning(f"⚠️ Could not find suitable product for: {comp_key}")
     
     progress_bar.empty()
+    
+    # ========== NEW: COMPATIBILITY & REDUNDANCY CHECK ==========
+    st.info("🔍 Step 5.5: Checking brand compatibility and feature redundancy...")
+    
+    filtered_blueprint, compat_warnings = check_component_compatibility(
+        required_components, 
+        boq_items
+    )
+    
+    # Show compatibility warnings
+    if compat_warnings:
+        with st.expander("⚠️ Compatibility Analysis", expanded=True):
+            for warning in compat_warnings:
+                if '❌' in warning:
+                    st.success(warning) # Removed redundant component
+                elif 'ℹ️' in warning:
+                    st.info(warning) # Informational
+                else:
+                    st.warning(warning)
+    
+    # Remove items that were filtered out
+    filtered_boq_items = []
+    for item in boq_items:
+        keep_item = True
+        for warning in compat_warnings:
+            if '❌ Removed:' in warning:
+                # Extract component key from warning
+                if any(cat in warning for cat in ['table_microphones', 'audio_dsp']):
+                    if item.get('sub_category') in ['Table/Boundary Microphone', 'DSP / Audio Processor / Mixer']:
+                        # Check if this item should be removed
+                        if ('Table' in item.get('sub_category', '') and 'microphone' in warning.lower()) or \
+                           ('DSP' in item.get('sub_category', '') and 'dsp' in warning.lower()):
+                            keep_item = False
+                            break
+        
+        if keep_item:
+            filtered_boq_items.append(item)
+    
+    boq_items = filtered_boq_items
     
     # Show selection summary
     with st.expander("📊 Product Selection Details", expanded=False):
