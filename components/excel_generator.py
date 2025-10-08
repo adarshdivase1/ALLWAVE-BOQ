@@ -702,7 +702,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             
             # GST calculation
             gst_electronics = sum(
-                (item.get('price', o, 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
+                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
                 for item in room['boq_items']
             )
             gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
@@ -741,3 +741,4 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
+
