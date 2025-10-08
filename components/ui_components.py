@@ -9,6 +9,8 @@ try:
     from components.room_profiles import ROOM_SPECS
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
     from components.excel_generator import generate_company_excel
+    # This specific import is now used in the UI, so it needs to be available
+    from components.boq_generator import extract_top_3_reasons 
 except ImportError:
     ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
     def get_usd_to_inr_rate(): return 83.5
@@ -17,6 +19,8 @@ except ImportError:
     def generate_company_excel(*args, **kwargs):
         st.error("Excel component unavailable.")
         return None
+    def extract_top_3_reasons(*args, **kwargs):
+        return ["Feature 1", "Feature 2", "Feature 3"]
 
 # ==================== MAIN UI SECTION BUILDERS ====================
 
@@ -257,46 +261,26 @@ def create_multi_room_interface():
 # ==================== BOQ DISPLAY AND EDITING ====================
 
 def update_boq_content_with_current_items():
-    """Update BOQ content in session state to reflect current items."""
+    """Update BOQ content in session state - ensures top_3_reasons exist."""
     if not st.session_state.get('boq_items'):
         st.session_state.boq_content = "## Bill of Quantities\n\nNo items generated yet."
         return
 
-    boq_content = "## Bill of Quantities\n\n"
-    boq_content += "| Category | Sub-Category | Brand | Model | Name | Qty | Unit Price (USD) | Top 3 Reasons |\n"  # ← Changed header
-    boq_content += "|---|---|---|---|---|---|---|---|\n"
-
+    # CRITICAL: Ensure all items have top_3_reasons field
     for item in st.session_state.boq_items:
-        # Get top 3 reasons (already formatted during BOQ generation)
-        top_3_reasons = item.get('top_3_reasons', [])
-        
-        # Format as numbered list for display
-        if top_3_reasons:
-            reasons_text = '<br>'.join([f"{i+1}. {reason[:80]}" for i, reason in enumerate(top_3_reasons)])
-        else:
-            reasons_text = "Standard component for this room type"
-        
-        # Add warning if not matched
-        if not item.get('matched'):
-            reasons_text = f"⚠️ **VERIFY PRODUCT**<br>{reasons_text}"
-
-        boq_content += (
-            f"| {item.get('category', 'N/A')} "
-            f"| {item.get('sub_category', 'N/A')} "
-            f"| {item.get('brand', 'N/A')} "
-            f"| {item.get('model_number', 'N/A')} "
-            f"| {item.get('name', 'N/A')} "
-            f"| {item.get('quantity', 1)} "
-            f"| ${item.get('price', 0):,.2f} "
-            f"| {reasons_text} |\n"  # ← Now shows formatted reasons
-        )
-
-    st.session_state.boq_content = boq_content
+        if 'top_3_reasons' not in item or not item['top_3_reasons']:
+            # Generate reasons from justification or category
+            justification = item.get('justification', '')
+            category = item.get('category', 'General')
+            
+            # Use the already imported helper function
+            item['top_3_reasons'] = extract_top_3_reasons(justification, category)
+    
+    st.session_state.boq_content = f"BOQ with {len(st.session_state.boq_items)} items"
 
 
 def display_boq_results(product_df, project_details):
-    """Display BOQ results with interactive editing and validation feedback."""
-    boq_content = st.session_state.get('boq_content')
+    """Display BOQ results with EXPANDABLE CARDS showing Top 3 Reasons - PRODUCTION READY."""
     validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
 
@@ -315,50 +299,159 @@ def display_boq_results(product_df, project_details):
                 for warning in validation_results['warnings']:
                     st.write(f"- {warning}")
 
-    # Display BOQ content
-    if boq_content:
-        st.markdown(boq_content, unsafe_allow_html=True)
-    else:
-        st.info("No BOQ content generated yet. Use the editor below to build your BOQ.")
-
-    # Summary metrics and download
+    # === DISPLAY BOQ ===
     if st.session_state.get('boq_items'):
+        currency = st.session_state.get('currency_select', 'USD')
+        
+        # Show a summary table (compact view)
+        st.markdown("### 📊 Quick Summary")
+        summary_data = []
+        for item in st.session_state.boq_items:
+            match_icon = "✅" if item.get('matched') else "⚠️"
+            total_price = item.get('price', 0) * item.get('quantity', 1)
+            
+            summary_data.append({
+                '': match_icon,
+                'Category': item.get('category', 'N/A'),
+                'Brand': item.get('brand', 'N/A'),
+                'Model': item.get('model_number', 'N/A'),
+                'Product': item.get('name', 'N/A')[:40] + '...' if len(item.get('name', '')) > 40 else item.get('name', 'N/A'),
+                'Qty': item.get('quantity', 1),
+                'Unit Price': f"${item.get('price', 0):,.2f}",
+                'Total': f"${total_price:,.2f}"
+            })
+        
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(
+            summary_df, 
+            use_container_width=True, 
+            hide_index=True,
+            height=min(400, len(summary_data) * 35 + 38)  # Auto height
+        )
+        
+        st.markdown("---")
+        st.markdown("### 📋 Detailed View (Click to expand for reasons & specs)")
+        
+        # Expandable cards with full details
+        for i, item in enumerate(st.session_state.boq_items):
+            match_icon = "✅" if item.get('matched') else "⚠️"
+            total_price = item.get('price', 0) * item.get('quantity', 1)
+            
+            # Create expander title
+            brand = item.get('brand', 'N/A')
+            model = item.get('model_number', 'N/A')
+            name = item.get('name', 'N/A')
+            expander_title = f"{match_icon} **{brand}** {model} - {name[:50]}{'...' if len(name) > 50 else ''}"
+            
+            with st.expander(expander_title, expanded=False):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    st.write(f"**Category:** {item.get('category', 'N/A')} / {item.get('sub_category', 'N/A')}")
+                    st.write(f"**Product Name:** {name}")
+                    st.write(f"**Brand:** {brand}")
+                    st.write(f"**Model:** {model}")
+                
+                with col2:
+                    st.metric("Quantity", item.get('quantity', 1))
+                    display_price = convert_currency(item.get('price', 0), currency)
+                    st.metric("Unit Price", format_currency(display_price, currency))
+                
+                with col3:
+                    display_total = convert_currency(total_price, currency)
+                    st.metric("Line Total", format_currency(display_total, currency))
+                    st.write(f"**Warranty:** {item.get('warranty', 'N/A')}")
+                    st.write(f"**Lead Time:** {item.get('lead_time_days', 14)} days")
+                
+                st.markdown("---")
+                
+                # === CRITICAL: TOP 3 REASONS DISPLAY ===
+                st.markdown("#### 🎯 Top 3 Reasons for Selecting This Product")
+                
+                top_3_reasons = item.get('top_3_reasons', [])
+                
+                # ROBUST PARSING
+                reasons_list = []
+                if isinstance(top_3_reasons, list):
+                    reasons_list = top_3_reasons
+                elif isinstance(top_3_reasons, str):
+                    # Parse string format
+                    for line in top_3_reasons.split('\n'):
+                        line = line.strip()
+                        if line:
+                            # Remove leading numbers/bullets
+                            clean_line = line.lstrip('0123456789.•-* ')
+                            if len(clean_line) > 5:
+                                reasons_list.append(clean_line)
+                
+                # If still no reasons, generate from category
+                if not reasons_list or len(reasons_list) == 0:
+                    reasons_list = extract_top_3_reasons(
+                        item.get('justification', ''),
+                        item.get('category', 'General')
+                    )
+                    # Update item for next time
+                    item['top_3_reasons'] = reasons_list
+                
+                # Display reasons with nice formatting
+                if reasons_list and len(reasons_list) > 0:
+                    for idx, reason in enumerate(reasons_list[:3], 1):
+                        if reason and len(reason.strip()) > 0:
+                            st.markdown(f"**{idx}.** {reason.strip()}")
+                else:
+                    st.info("ℹ️ Standard component selected for this room configuration")
+                
+                # Technical justification
+                if item.get('justification') and len(item.get('justification', '')) > 10:
+                    with st.expander("📝 Technical Justification (Internal Notes)", expanded=False):
+                        st.write(item.get('justification'))
+                
+                # Specifications
+                if item.get('specifications'):
+                    with st.expander("📐 Product Specifications", expanded=False):
+                        st.write(item.get('specifications'))
+    
+    else:
+        st.info("No BOQ content generated yet. Use the form above to generate a BOQ.")
+
+    # === SUMMARY METRICS AND DOWNLOAD ===
+    if st.session_state.get('boq_items'):
+        st.markdown("---")
         col1, col2 = st.columns([1, 1])
 
         with col1:
-            currency = st.session_state.get('currency_select', 'USD') # Use currency_select from sidebar
+            currency = st.session_state.get('currency_select', 'USD')
             total_cost_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in st.session_state.boq_items)
 
-            # Add 30% for services (installation, warranty, PM)
+            # Add 30% for services
             total_with_services = total_cost_hardware * 1.30
 
-            # --- NEW: APPLY DISCOUNT FOR EXISTING CUSTOMERS ---
+            # Discount for existing customers
             is_existing = st.session_state.get('is_existing_customer', False)
             if is_existing:
-                discount_rate = 0.05  # 5% discount
+                discount_rate = 0.05
                 discount_amount = total_with_services * discount_rate
                 final_total = total_with_services - discount_amount
 
                 display_final_total = convert_currency(final_total, currency)
-                help_text = f"Includes services. A 5% existing customer discount has been applied (-{format_currency(convert_currency(discount_amount, currency), currency)})."
-
+                discount_display = format_currency(convert_currency(discount_amount, currency), currency)
+                
                 st.metric(
-                    "Estimated Project Total (Discounted)",
+                    "💰 Estimated Project Total (Discounted)",
                     format_currency(display_final_total, currency),
-                    help=help_text
+                    help=f"Includes installation, warranty, and project management. 5% existing customer discount applied (-{discount_display})."
                 )
             else:
                 final_total = total_with_services
                 display_final_total = convert_currency(final_total, currency)
                 st.metric(
-                    "Estimated Project Total",
+                    "💰 Estimated Project Total",
                     format_currency(display_final_total, currency),
-                    help="Includes installation, warranty, and project management. New customers may be eligible for discounts."
+                    help="Hardware + Services (Installation 15%, Warranty 5%, Project Management 10%)"
                 )
-            # --- END NEW BLOCK ---
 
         with col2:
-            # Generate Excel for current room
+            # Generate Excel
             if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                 current_room_name = st.session_state.project_rooms[st.session_state.current_room_index]['name']
             else:
@@ -421,7 +514,6 @@ def create_interactive_boq_editor(product_df):
     tabs = st.tabs(["✏️ Edit Current BOQ", "➕ Add Products", "🔍 Product Search"])
 
     with tabs[0]:
-        # --- CHANGE: Pass product_df down to the editing function ---
         edit_current_boq(product_df, currency)
 
     with tabs[1]:
@@ -451,7 +543,6 @@ def edit_current_boq(product_df, currency):
                 item['model_number'] = st.text_input("Model No.", value=item.get('model_number', ''), key=f"model_{i}")
 
             with col2:
-                # --- CRITICAL CHANGE: Use the passed product_df ---
                 category_list = sorted(list(product_df['category'].unique()))
                 current_category = item.get('category', 'General AV')
                 try:
@@ -460,8 +551,6 @@ def edit_current_boq(product_df, currency):
                     cat_index = 0
                 item['category'] = st.selectbox("Category", category_list, index=cat_index, key=f"category_{i}")
 
-                # Sub-category selection
-                # --- CRITICAL CHANGE: Use the passed product_df ---
                 sub_cats = sorted(list(product_df[
                     product_df['category'] == item['category']
                 ]['sub_category'].unique()))
@@ -676,3 +765,14 @@ def product_search_interface(product_df, currency):
                         update_boq_content_with_current_items()
                         st.success(f"✅ Added {add_qty}x {product['name']}!")
                         st.rerun()
+
+# ==================== ALSO ADD THIS DEBUG VIEW (OPTIONAL) ====================
+def show_boq_debug_info():
+    """Debug view to check top_3_reasons data - remove in production."""
+    if st.session_state.get('boq_items'):
+        with st.expander("🔧 Debug: Top 3 Reasons Data", expanded=False):
+            for i, item in enumerate(st.session_state.boq_items):
+                st.write(f"**Item {i+1}: {item.get('name', 'Unknown')[:30]}**")
+                st.write(f"Type: {type(item.get('top_3_reasons'))}")
+                st.write(f"Content: {item.get('top_3_reasons')}")
+                st.write("---")
