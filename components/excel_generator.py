@@ -495,22 +495,52 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
 
             # === EXTRACT TOP 3 REASONS ===
             justification = item.get('justification', '')
-            # Try to parse numbered list format
+
+            # Method 1: Try to parse numbered/bulleted list
             reasons = []
             for line in justification.split('\n'):
                 line = line.strip()
-                if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-')):
+                if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-') or line.startswith('*')):
                     # Remove numbering/bullets
-                    clean_line = re.sub(r'^[\d\.\)•\-]\s*', '', line).strip()
-                    if clean_line:
+                    clean_line = re.sub(r'^[\d\.\)•\-\*]\s*', '', line).strip()
+                    if clean_line and len(clean_line) > 5:  # Must be substantial
                         reasons.append(clean_line)
-            
-            # If we didn't get structured reasons, use the full justification
+
+            # Method 2: If no structured reasons, try splitting by sentences
+            if not reasons and justification:
+                sentences = re.split(r'[.!?]+', justification)
+                reasons = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+
+            # Method 3: Fallback to generic reasons based on category
             if not reasons:
-                reasons = [justification] if justification else ["Standard component for this room type"]
-            
+                category = item.get('category', '')
+                if category == 'Displays':
+                    reasons = [
+                        "AVIXA-compliant display sizing for optimal viewing",
+                        "Professional-grade 4K resolution for clarity",
+                        "Commercial warranty and reliability"
+                    ]
+                elif category == 'Video Conferencing':
+                    reasons = [
+                        "Certified for enterprise UC platforms",
+                        "Auto-framing and speaker tracking",
+                        "Plug-and-play installation"
+                    ]
+                elif category == 'Audio':
+                    reasons = [
+                        "AVIXA-calculated coverage for room size",
+                        "Professional AEC and noise reduction",
+                        "Scalable for future expansion"
+                    ]
+                else:
+                    reasons = [
+                        "Industry-standard solution",
+                        "Reliable performance and support",
+                        "Cost-effective for project scope"
+                    ]
+
             # Format as "1. Reason\n2. Reason\n3. Reason"
-            top_3_reasons = '\n'.join([f"{idx+1}. {reason}" for idx, reason in enumerate(reasons[:3])])
+            top_3_reasons = '\n'.join([f"{idx+1}. {reason[:80]}" for idx, reason in enumerate(reasons[:3])])
 
             # Build row data
             row_data = [
@@ -551,19 +581,30 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 )
                 
                 if img_buffer:
+                    # CRITICAL: Ensure buffer is at position 0
+                    img_buffer.seek(0)
+                    
                     excel_img = ExcelImage(img_buffer)
                     # Scale to fit Excel cell
                     excel_img.width = 150
                     excel_img.height = 100
                     
-                    # Add to 'B' column (Reference Image)
-                    sheet.add_image(excel_img, f'B{current_row}')
+                    # CRITICAL: Anchor properly to cell
+                    cell_anchor = f'B{current_row}'
+                    sheet.add_image(excel_img, cell_anchor)
                     
-                    # Increase row height to accommodate image
-                    sheet.row_dimensions[current_row].height = 75
+                    # CRITICAL: Set row height AFTER adding image
+                    sheet.row_dimensions[current_row].height = 80  # Increased from 75
+                    
+                    print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
+                else:
+                    print(f"DEBUG: No image buffer generated for {item.get('name', 'Unknown')}")
+                    
             except Exception as e:
                 # Fail gracefully - don't break BOQ generation
-                print(f"Could not add product image for {item.get('name', 'Unknown')}: {e}")
+                print(f"ERROR: Could not add product image for {item.get('name', 'Unknown')}: {e}")
+                import traceback
+                traceback.print_exc()
             
             item_s_no += 1
 
@@ -685,7 +726,10 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     
     # === SHEET 3+: ROOM BOQ SHEETS ===
     for room in rooms_data:
-        if room.get('boq_items'):
+        if room.get('boq_items') and len(room['boq_items']) > 0:  # More explicit check
+            print(f"DEBUG: Creating sheet for room: {room['name']}")
+            print(f"DEBUG: Room has {len(room['boq_items'])} items")
+            
             # Calculate room totals for summary
             subtotal = sum(
                 item.get('price', 0) * item.get('quantity', 1) 
@@ -697,8 +741,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             
             # GST calculation
             gst_electronics = sum(
-                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * 
-                (item.get('gst_rate', 18) / 100)
+                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
                 for item in room['boq_items']
             )
             gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
@@ -720,6 +763,8 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
                 usd_to_inr_rate, 
                 project_details.get('gst_rates', {})
             )
+            
+            print(f"DEBUG: Successfully created sheet for {room['name']}")
 
     # === CLEANUP ===
     # Remove default sheet
