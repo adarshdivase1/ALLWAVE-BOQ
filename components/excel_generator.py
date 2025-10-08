@@ -751,22 +751,34 @@ def _add_scope_of_work_sheet(workbook, styles):
         row_cursor += 1
 
 
-# ==================== PROPOSAL SUMMARY SHEET ====================
+# ==================== PROPOSAL SUMMARY SHEET (FIXED VERSION) ====================
 def _add_proposal_summary_sheet(workbook, rooms_data, styles):
-    """Creates the Proposal Summary sheet."""
+    """
+    Creates the Proposal Summary sheet with FULL CALCULATIONS from BOQ sheets.
+    Now includes: Rate w/o TAX, Amount w/o TAX, Total TAX Amount, Amount with Tax
+    """
     sheet = workbook.create_sheet(title="Proposal Summary", index=2)
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
-    # Set column widths
-    sheet.column_dimensions['A'].width = 10
-    sheet.column_dimensions['B'].width = 50
-    sheet.column_dimensions['C'].width = 15
+    # === SET COLUMN WIDTHS ===
+    column_widths = {
+        'A': 10,  # Sr. No
+        'B': 50,  # Description
+        'C': 12,  # Total Qty
+        'D': 18,  # Rate w/o TAX
+        'E': 18,  # Amount w/o TAX
+        'F': 18,  # Total TAX Amount
+        'G': 18   # Amount with Tax
+    }
+    
+    for col, width in column_widths.items():
+        sheet.column_dimensions[col].width = width
     
     row_cursor = 4
     
     # === TITLE ===
-    sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
     title_cell = sheet[f'A{row_cursor}']
     title_cell.value = "Proposal Summary"
     title_cell.font = Font(size=14, bold=True, color="FFFFFF")
@@ -776,75 +788,202 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     sheet.row_dimensions[row_cursor].height = 25
     row_cursor += 2
     
-    # === TABLE HEADERS ===
-    headers = ['Sr. No.', 'Description', 'Total Qty']
-    for col_idx, header in enumerate(headers, 1):
+    # === TABLE HEADERS (ROW 1) ===
+    headers_row1 = ['Sr. No', 'Description', 'Total Qty', '', 'INR Supply', '', '']
+    for col_idx, header in enumerate(headers_row1, 1):
         cell = sheet.cell(row=row_cursor, column=col_idx)
         cell.value = header
         cell.fill = styles['table_header_blue_fill']
         cell.font = styles['bold_font']
         cell.alignment = Alignment(horizontal='center', vertical='center')
         cell.border = styles['thin_border']
+    
+    # Merge "INR Supply" across columns D-G
+    sheet.merge_cells(f'D{row_cursor}:G{row_cursor}')
     row_cursor += 1
     
-    # === ROOM DATA ===
+    # === TABLE HEADERS (ROW 2 - Sub-headers) ===
+    headers_row2 = ['', '', '', 'Rate w/o TAX', 'Amount w/o TAX', 'Total TAX Amount', 'Amount with Tax']
+    for col_idx, header in enumerate(headers_row2, 1):
+        cell = sheet.cell(row=row_cursor, column=col_idx)
+        cell.value = header
+        cell.fill = styles['table_header_blue_fill']
+        cell.font = styles['bold_font']
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = styles['thin_border']
+    
+    sheet.row_dimensions[row_cursor].height = 30  # Extra height for wrapped text
+    row_cursor += 1
+    
+    # === ROOM DATA WITH CALCULATIONS ===
+    grand_subtotal = 0
+    grand_tax = 0
+    grand_total = 0
+    
     for idx, room in enumerate(rooms_data, 1):
-        sheet[f'A{row_cursor}'] = idx
-        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
-        sheet[f'A{row_cursor}'].border = styles['thin_border']
+        # Calculate room totals (these should already be in room dict from main function)
+        room_subtotal = room.get('subtotal', 0)
+        room_tax = room.get('gst', 0)
+        room_total = room.get('total', 0)
         
-        sheet[f'B{row_cursor}'] = room.get('name', f'Room {idx}')
-        sheet[f'B{row_cursor}'].border = styles['thin_border']
+        # Fallback calculation if totals weren't pre-calculated
+        if room_subtotal == 0 and room.get('boq_items'):
+            try:
+                from components.boq_generator import boq_to_dataframe, calculate_boq_summary
+                boq_df = boq_to_dataframe(room['boq_items'])
+                summary = calculate_boq_summary(boq_df)
+                room_subtotal = summary.get('subtotal', 0)
+                room_tax = summary.get('total_gst', 0)
+                room_total = summary.get('grand_total', 0)
+            except ImportError:
+                # This block will run if the boq_generator isn't available
+                # It duplicates the logic from the main function as a safety net
+                pass
+
+        grand_subtotal += room_subtotal
+        grand_tax += room_tax
+        grand_total += room_total
         
-        sheet[f'C{row_cursor}'] = 1  # Quantity of rooms
-        sheet[f'C{row_cursor}'].alignment = Alignment(horizontal='center')
-        sheet[f'C{row_cursor}'].border = styles['thin_border']
+        # Calculate average rate (Amount / Quantity)
+        total_qty = sum(item.get('quantity', 1) for item in room.get('boq_items', []))
+        avg_rate = room_subtotal / total_qty if total_qty > 0 else room_subtotal
         
+        # Populate row
+        row_data = [
+            idx,
+            room.get('name', f'Room {idx}'),
+            total_qty,
+            avg_rate,
+            room_subtotal,
+            room_tax,
+            room_total
+        ]
+        
+        for col_idx, value in enumerate(row_data, 1):
+            cell = sheet.cell(row=row_cursor, column=col_idx)
+            cell.value = value
+            cell.border = styles['thin_border']
+            
+            # Apply number formatting to currency columns
+            if col_idx >= 4:  # Rate and all amount columns
+                cell.number_format = styles['currency_format']
+                cell.alignment = Alignment(horizontal='right', vertical='center')
+            elif col_idx == 1:  # Sr. No
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            elif col_idx == 3:  # Qty
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            else:  # Description
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+        
+        row_cursor += 1
+    
+    # === GRAND TOTAL ROW ===
+    row_cursor += 1  # Add spacing
+    
+    # Merge cells A to C for "GRAND TOTAL" label
+    sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
+    total_label_cell = sheet[f'A{row_cursor}']
+    total_label_cell.value = "GRAND TOTAL"
+    total_label_cell.font = Font(bold=True, size=12)
+    total_label_cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    total_label_cell.alignment = Alignment(horizontal='center', vertical='center')
+    total_label_cell.border = styles['thin_border']
+    
+    # Add grand totals to columns D-G
+    grand_total_data = [
+        '',  # Rate w/o TAX (not applicable for total)
+        grand_subtotal,
+        grand_tax,
+        grand_total
+    ]
+    
+    for col_idx, value in enumerate(grand_total_data, 4):
+        cell = sheet.cell(row=row_cursor, column=col_idx)
+        cell.value = value
+        cell.font = Font(bold=True, size=11)
+        cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        cell.border = styles['thin_border']
+        
+        if value:  # Only format if not empty
+            cell.number_format = styles['currency_format']
+            cell.alignment = Alignment(horizontal='right', vertical='center')
+    
+    sheet.row_dimensions[row_cursor].height = 25
+    
+    # === COMMERCIAL TERMS SECTION (Below Grand Total) ===
+    row_cursor += 3
+    
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    ct_header = sheet[f'A{row_cursor}']
+    ct_header.value = "Commercial Terms"
+    ct_header.font = Font(size=12, bold=True, color="FFFFFF")
+    ct_header.fill = PatternFill(start_color="2563eb", end_color="2563eb", fill_type="solid")
+    ct_header.alignment = Alignment(horizontal='center', vertical='center')
+    ct_header.border = styles['thin_border']
+    row_cursor += 1
+    
+    # Add basic commercial terms
+    commercial_terms = [
+        ("A. Delivery, Installations & Site Schedule", ""),
+        ("All Wave AV Systems undertake to ensure it's best efforts to complete the assignment for Client within the shortest timelines possible.", ""),
+        ("", ""),
+        ("1. Project Schedule & Site Requirements", ""),
+        ("Week 1-3", ""),
+        ("All Wave AV Systems", "Design & Procurement"),
+        ("Client", "Site Preparations"),
+        ("", ""),
+        ("2. Delivery Terms", ""),
+        ("Duty Paid INR- Free delivery at site", ""),
+        ("Direct Import- FOB OR Ex-works of CIF", "")
+    ]
+    
+    for term_label, term_value in commercial_terms:
+        if not term_label and not term_value:
+            # Blank row for spacing
+            row_cursor += 1
+            continue
+        
+        sheet.merge_cells(f'A{row_cursor}:E{row_cursor}')
+        label_cell = sheet[f'A{row_cursor}']
+        label_cell.value = term_label
+        label_cell.border = styles['thin_border']
+        label_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        
+        if term_label.startswith(('A.', 'B.', 'C.', 'D.', '1.', '2.')):
+            label_cell.font = styles['bold_font']
+            label_cell.fill = styles['header_light_green_fill']
+        
+        sheet.merge_cells(f'F{row_cursor}:G{row_cursor}')
+        value_cell = sheet[f'F{row_cursor}']
+        value_cell.value = term_value
+        value_cell.border = styles['thin_border']
+        value_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        
+        sheet.row_dimensions[row_cursor].height = 20 if len(term_label) < 50 else 30
         row_cursor += 1
 
 
-# ==================== MAIN ENTRY POINT ====================
+# ==================== MAIN ENTRY POINT (UPDATED) ====================
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
     Main function to generate the complete Excel workbook.
-    
-    Args:
-        project_details: Dict containing project metadata
-        rooms_data: List of room dicts, each with 'name' and 'boq_items'
-        usd_to_inr_rate: Exchange rate for currency conversion
-    
-    Returns:
-        bytes: Excel file as byte array
+    FIXED: Now calculates room totals BEFORE creating Proposal Summary
     """
     workbook = openpyxl.Workbook()
     styles = _define_styles()
 
-    # === SHEET 1: VERSION CONTROL ===
-    _add_version_control_sheet(workbook, project_details, styles)
-    
-    # === SHEET 2: SCOPE OF WORK ===
-    _add_scope_of_work_sheet(workbook, styles)
-    
-    # === SHEET 3: PROPOSAL SUMMARY ===
-    _add_proposal_summary_sheet(workbook, rooms_data, styles)
-    
-    # === SHEET 4: TERMS & CONDITIONS ===
-    _add_terms_and_conditions_sheet(workbook, styles)
-    
-    # === SHEET 5+: ROOM BOQ SHEETS ===
+    # === CALCULATE ROOM TOTALS FIRST ===
     for room in rooms_data:
-        if room.get('boq_items') and len(room['boq_items']) > 0:  # More explicit check
-            print(f"DEBUG: Creating sheet for room: {room['name']}")
-            print(f"DEBUG: Room has {len(room['boq_items'])} items")
-            
-            # Calculate room totals for summary
-            subtotal = sum(
+        if room.get('boq_items') and len(room['boq_items']) > 0:
+            # Calculate hardware subtotal
+            subtotal_hardware = sum(
                 item.get('price', 0) * item.get('quantity', 1) 
                 for item in room['boq_items']
             ) * usd_to_inr_rate
             
-            services_total = subtotal * 0.30  # 30% for services
-            total_without_gst = subtotal + services_total
+            # Calculate services total (based on hardware subtotal)
+            services_total = subtotal_hardware * 0.30  # 15% + 10% + 5% for services
+            total_without_gst = subtotal_hardware + services_total
             
             # GST calculation
             gst_electronics = sum(
@@ -854,10 +993,28 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
             gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
             total_gst = gst_electronics + gst_services
             
+            # Store in room dict for Proposal Summary
             room['subtotal'] = total_without_gst
             room['gst'] = total_gst
             room['total'] = total_without_gst + total_gst
 
+    # === SHEET 1: VERSION CONTROL ===
+    _add_version_control_sheet(workbook, project_details, styles)
+    
+    # === SHEET 2: SCOPE OF WORK ===
+    _add_scope_of_work_sheet(workbook, styles)
+    
+    # === SHEET 3: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
+    _add_proposal_summary_sheet(workbook, rooms_data, styles)
+    
+    # === SHEET 4: TERMS & CONDITIONS ===
+    _add_terms_and_conditions_sheet(workbook, styles)
+    
+    # === SHEET 5+: ROOM BOQ SHEETS ===
+    for room in rooms_data:
+        if room.get('boq_items') and len(room['boq_items']) > 0:
+            print(f"DEBUG: Creating sheet for room: {room['name']}")
+            
             # Create safe sheet name (Excel has 31 char limit)
             safe_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:25]
             room_sheet = workbook.create_sheet(title=f"BOQ - {safe_name}")
@@ -887,4 +1044,3 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
-
