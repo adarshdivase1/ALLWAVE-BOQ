@@ -34,12 +34,12 @@ def _define_styles():
     return {
         "header_green_fill": PatternFill(start_color="A9D08E", end_color="A9D08E", fill_type="solid"),
         "header_light_green_fill": PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
-        "table_header_blue_fill": PatternFill(start_color="9BC2E6", end_color="9BC2E6", fill_type="solid"),
+        "table_header_blue_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"), # CHANGED COLOR
         "boq_category_fill": PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
         "black_bold_font": Font(color="000000", bold=True),
         "bold_font": Font(bold=True),
         "thin_border": thin_border,
-        "currency_format": "₹ #,##0.00"
+        "currency_format": "₹#,##0.00" # CHANGED - Removed space
     }
 
 
@@ -409,6 +409,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         row = i + 3
         sheet[f'A{row}'].value = label
         sheet[f'A{row}'].font = styles['bold_font']
+        sheet[f'A{row}'].fill = styles['header_light_green_fill'] # ADDED THIS LINE
         sheet.merge_cells(f'B{row}:C{row}')
         sheet[f'B{row}'].value = value
         for col in ['A', 'B', 'C']:
@@ -447,6 +448,9 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     # Merge GST header cells
     sheet.merge_cells(f'K{header_start_row}:L{header_start_row}')
     sheet.merge_cells(f'M{header_start_row}:N{header_start_row}')
+    # ADDED - Explicit alignment for merged cells
+    sheet[f'K{header_start_row}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    sheet[f'M{header_start_row}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Style headers
     for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row):
@@ -476,7 +480,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         sheet.merge_cells(f'B{cat_row_idx}:Q{cat_row_idx}')  # Extended to include new column
         for cell in sheet[cat_row_idx]:
             cell.fill = styles['boq_category_fill']
-            cell.font = styles['bold_font']
+            cell.font = Font(bold=True, color="000000") # CHANGED - Explicit font color
             cell.border = styles['thin_border']
         
         # Individual items
@@ -555,7 +559,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                     sheet.add_image(excel_img, cell_anchor)
                     
                     # CRITICAL: Set row height AFTER adding image
-                    sheet.row_dimensions[current_row].height = 80  # Increased from 75
+                    sheet.row_dimensions[current_row].height = 85 # INCREASED from 80
                     
                     print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
                 else:
@@ -619,12 +623,17 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 service_reasons.get(service_name, "Standard professional service")
             ]
             sheet.append(row_data)
+            # ADDED - Styling for service reasons column
+            current_service_row = sheet.max_row
+            sheet[f'Q{current_service_row}'].alignment = Alignment(wrap_text=True, vertical='top')
+            sheet.row_dimensions[current_service_row].height = 60
+            
             item_s_no += 1
     
     # === SET COLUMN WIDTHS ===
     column_widths = {
         'A': 8,   # Sr. No
-        'B': 22,  # Reference Image (wider for image)
+        'B': 25,  # Reference Image (wider for image) - INCREASED
         'C': 45,  # Description
         'D': 20,  # Make
         'E': 30,  # Model No
@@ -885,7 +894,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     total_label_cell = sheet[f'A{row_cursor}']
     total_label_cell.value = "GRAND TOTAL"
     total_label_cell.font = Font(bold=True, size=12)
-    total_label_cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    total_label_cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid") # CHANGED COLOR
     total_label_cell.alignment = Alignment(horizontal='center', vertical='center')
     total_label_cell.border = styles['thin_border']
     
@@ -901,7 +910,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
         cell = sheet.cell(row=row_cursor, column=col_idx)
         cell.value = value
         cell.font = Font(bold=True, size=11)
-        cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid") # CHANGED COLOR
         cell.border = styles['thin_border']
         
         if value:  # Only format if not empty
