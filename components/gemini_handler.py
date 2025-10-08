@@ -1,5 +1,4 @@
 # components/gemini_handler.py
-
 import streamlit as st
 import google.generativeai as genai
 import time
@@ -19,8 +18,20 @@ def setup_gemini():
         st.error(f"Gemini API configuration failed: {e}")
         return None
 
-def generate_with_retry(model, prompt, max_retries=3):
-    """Generate content with retry logic and error handling."""
+
+def generate_with_retry(model, prompt, max_retries=3, return_text_only=True):
+    """
+    Generate content with retry logic and error handling.
+    
+    Args:
+        model: Gemini model instance
+        prompt: Text prompt for generation
+        max_retries: Number of retry attempts
+        return_text_only: If True, returns plain text string. If False, returns full response object.
+    
+    Returns:
+        String (if return_text_only=True) or GenerateContentResponse object
+    """
     for attempt in range(max_retries):
         try:
             safety_settings = [
@@ -29,39 +40,88 @@ def generate_with_retry(model, prompt, max_retries=3):
                 {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
+            
             response = model.generate_content(prompt, safety_settings=safety_settings)
-            return response
+            
+            # CRITICAL FIX: Extract text if requested
+            if return_text_only:
+                if hasattr(response, 'text'):
+                    return response.text
+                elif hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    return response.candidates[0].content.parts[0].text
+                else:
+                    st.warning(f"⚠️ Unexpected Gemini response structure: {type(response)}")
+                    return None
+            else:
+                # Return full response object for backward compatibility
+                return response
+                
         except Exception as e:
             if attempt == max_retries - 1:
                 st.error(f"AI generation failed after {max_retries} attempts: {e}")
-                raise e
+                return None  # Don't raise, return None for graceful fallback
             time.sleep(2 ** attempt)  # Exponential backoff
+    
     return None
+
 
 def validate_against_avixa(model, guidelines, boq_items):
     """Use AI to validate the BOQ against AVIXA standards."""
     if not guidelines or not boq_items or not model:
         return []
-
+    
     prompt = f"""
     You are an AVIXA Certified Technology Specialist (CTS). Review the following BOQ against the provided AVIXA standards.
     List any potential non-compliance issues, missing items (like accessibility components), or areas for improvement.
     If no issues are found, respond with 'No specific compliance issues found.'
-
+    
     **AVIXA Standards Summary:**
     {guidelines}
-
+    
     **Bill of Quantities to Review:**
     {json.dumps(boq_items, indent=2)}
-
+    
     **Your Compliance Review:**
     """
+    
     try:
-        response = generate_with_retry(model, prompt)
-        if response and response.text:
-            if "no specific compliance issues" in response.text.lower():
+        # Use return_text_only=True to get plain text
+        response_text = generate_with_retry(model, prompt, return_text_only=True)
+        
+        if response_text:
+            if "no specific compliance issues" in response_text.lower():
                 return []
-            return [line.strip() for line in response.text.split('\n') if line.strip()]
+            return [line.strip() for line in response_text.split('\n') if line.strip()]
         return []
+        
     except Exception as e:
         return [f"AVIXA compliance check failed: {str(e)}"]
+
+
+def extract_text_from_response(response):
+    """
+    Helper function to extract text from Gemini response object.
+    Handles multiple response formats gracefully.
+    
+    Args:
+        response: Gemini GenerateContentResponse object or string
+    
+    Returns:
+        Plain text string or None
+    """
+    if response is None:
+        return None
+    
+    if isinstance(response, str):
+        return response
+    
+    if hasattr(response, 'text'):
+        return response.text
+    
+    if hasattr(response, 'candidates') and len(response.candidates) > 0:
+        try:
+            return response.candidates[0].content.parts[0].text
+        except (AttributeError, IndexError):
+            return None
+    
+    return None
