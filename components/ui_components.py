@@ -263,13 +263,22 @@ def update_boq_content_with_current_items():
         return
 
     boq_content = "## Bill of Quantities\n\n"
-    boq_content += "| Category | Sub-Category | Brand | Model | Name | Qty | Unit Price (USD) | Remarks |\n"
+    boq_content += "| Category | Sub-Category | Brand | Model | Name | Qty | Unit Price (USD) | Top 3 Reasons |\n"  # ← Changed header
     boq_content += "|---|---|---|---|---|---|---|---|\n"
 
     for item in st.session_state.boq_items:
-        remarks = item.get('justification', '')
+        # Get top 3 reasons (already formatted during BOQ generation)
+        top_3_reasons = item.get('top_3_reasons', [])
+        
+        # Format as numbered list for display
+        if top_3_reasons:
+            reasons_text = '<br>'.join([f"{i+1}. {reason[:80]}" for i, reason in enumerate(top_3_reasons)])
+        else:
+            reasons_text = "Standard component for this room type"
+        
+        # Add warning if not matched
         if not item.get('matched'):
-            remarks = f"⚠️ **VERIFY**<br>{remarks}"
+            reasons_text = f"⚠️ **VERIFY PRODUCT**<br>{reasons_text}"
 
         boq_content += (
             f"| {item.get('category', 'N/A')} "
@@ -279,7 +288,7 @@ def update_boq_content_with_current_items():
             f"| {item.get('name', 'N/A')} "
             f"| {item.get('quantity', 1)} "
             f"| ${item.get('price', 0):,.2f} "
-            f"| {remarks} |\n"
+            f"| {reasons_text} |\n"  # ← Now shows formatted reasons
         )
 
     st.session_state.boq_content = boq_content
@@ -483,12 +492,22 @@ def edit_current_boq(product_df, currency):
                 if st.button("Remove", key=f"remove_{i}", type="secondary"):
                     items_to_remove.append(i)
 
-            # Justification
+            # Show Top 3 Reasons (read-only display)
+            st.markdown("**Top 3 Reasons for This Product:**")
+            reasons = item.get('top_3_reasons', [])
+            if reasons:
+                for idx, reason in enumerate(reasons, 1):
+                    st.markdown(f"{idx}. {reason}")
+            else:
+                st.info("No reasons generated yet")
+            
+            # Technical justification (editable)
             item['justification'] = st.text_area(
-                "Justification",
+                "Technical Justification (Internal Notes)",
                 value=item.get('justification', ''),
                 height=60,
-                key=f"just_{i}"
+                key=f"just_{i}",
+                help="Internal technical notes - not shown to client"
             )
 
     if items_to_remove:
