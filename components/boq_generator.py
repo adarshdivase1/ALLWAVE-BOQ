@@ -360,7 +360,7 @@ def _get_fallback_product_legacy(category, sub_category, product_df, equipment_r
         
         # Additional check: if "warranty" or "service" in name but price < $100, likely a service contract
         matches = matches[~((matches['name'].str.contains(r'\b(warranty|service)\b', case=False, regex=True)) & 
-                              (matches['price'] < 100))]
+                                  (matches['price'] < 100))]
 
     if matches.empty:
         return None
@@ -604,19 +604,57 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                     min_price=1000  # NEW - Professional PTZ minimum price
                 )
 
-    # === CONTROL SYSTEM (MANDATORY) ===
+    # === CONTROL SYSTEM (MANDATORY) - BRAND MATCHED ===
+    # NEW: Detect video conferencing brand for ecosystem matching
+    vc_brand = None
+    if 'video_system' in equipment_reqs:
+        video_reqs = equipment_reqs['video_system']
+        vc_brand = video_reqs.get('brand', '').lower()
+
+    # Build touch panel requirement with brand preference
+    touch_panel_keywords = ['touch', 'controller', 'panel', 'control']
+    touch_panel_blacklist = [
+        'room kit', 'codec', 'bar', 'camera', 'display',
+        'monitor', 'ess', 'system', 'video bar'
+    ]
+
+    # **NEW**: Add brand-specific keywords for ecosystem match
+    if vc_brand:
+        if 'cisco' in vc_brand:
+            touch_panel_keywords.append('cisco')
+            touch_panel_keywords.append('touch 10')
+            st.info(f"🔗 Matching touch panel to Cisco ecosystem")
+        elif 'poly' in vc_brand:
+            touch_panel_keywords.append('poly')
+            touch_panel_keywords.append('tc8')
+            st.info(f"🔗 Matching touch panel to Poly ecosystem")
+        elif 'yealink' in vc_brand:
+            touch_panel_keywords.append('yealink')
+            touch_panel_keywords.append('ctp')
+
     blueprint['touch_control_panel'] = ProductRequirement(
         category='Video Conferencing',
         sub_category='Touch Controller / Panel',
         quantity=1,
         priority=3,
-        justification='Touch control panel for system control and meeting management',
-        required_keywords=['touch', 'controller', 'panel', 'control'],
-        blacklist_keywords=[
-            'room kit', 'codec', 'bar', 'camera', 'display',
-            'monitor', 'ess', 'system', 'video bar'
-        ]
+        justification=f'Touch control panel for system control (brand-matched to {vc_brand or "video system"})',
+        required_keywords=touch_panel_keywords,
+        blacklist_keywords=touch_panel_blacklist,
+        compatibility_requirements=[vc_brand] if vc_brand else []  # **NEW**
     )
+    
+    # === ROOM SCHEDULING PANEL (Executive/Large Conference Rooms) ===
+    if technical_reqs.get('room_type') in ['Executive Boardroom', 'Large Conference', 'Board Room'] or room_area > 500:
+        blueprint['room_scheduling_panel'] = ProductRequirement(
+            category='Control Systems',
+            sub_category='Room Scheduling Display',
+            quantity=1,
+            priority=13,
+            justification='Wall-mounted room scheduling panel with calendar integration',
+            required_keywords=['scheduling', 'panel', 'room', 'calendar', 'booking'],
+            blacklist_keywords=['software only', 'license']
+        )
+        st.info("📅 Adding room scheduling panel (executive room detected)")
 
     # === AUDIO SYSTEM WITH REDUNDANCY CHECK ===
     if 'audio_system' in equipment_reqs:
@@ -730,24 +768,67 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             blacklist_keywords=['mounting frame only', 'blank plate', 'housing only', 'trim ring']
         )
     
-    # === MODIFIED CABLE LOGIC ===
-    # Calculate cables based on room size and equipment count
-    if room_area < 150:  # Small huddle
-        cable_count = 3
-    elif room_area < 400:  # Medium rooms
-        cable_count = 5
-    else:  # Large rooms
-        cable_count = 8
+    # === VIDEO SWITCHING (For rooms with multiple sources) ===
+    num_displays = equipment_reqs.get('displays', {}).get('quantity', 1)
+    has_presentation = 'wireless presentation' in technical_reqs.get('features', '').lower()
+    has_multiple_sources = technical_reqs.get('video_sources', 0) > 2
     
+    # Add switcher if:
+    # - Multiple displays OR
+    # - Multiple video sources OR  
+    # - Large room (>600 sqft)
+    if num_displays > 1 or has_multiple_sources or room_area > 600:
+        blueprint['video_switcher'] = ProductRequirement(
+            category='Signal Management',
+            sub_category='Video Matrix / Switcher',
+            quantity=1,
+            priority=4,
+            justification=f'Video matrix switcher for routing {num_displays} displays and multiple sources',
+            required_keywords=['switcher', 'matrix', 'hdmi', 'routing'],
+            blacklist_keywords=['cable', 'adapter', 'extender only']
+        )
+        st.info(f"📺 Adding video switcher (multi-display or large room detected)")
+    
+    # === WIRELESS PRESENTATION ===
+    if any(term in technical_reqs.get('features', '').lower() for term in 
+           ['wireless', 'byod', 'bring your own', 'clickshare', 'airmedia', 'content sharing']):
+        blueprint['wireless_presentation'] = ProductRequirement(
+            category='Signal Management',
+            sub_category='Wireless Presentation',
+            quantity=1,
+            priority=9,
+            justification='Wireless presentation system for BYOD content sharing',
+            required_keywords=['wireless', 'presentation', 'clickshare', 'airmedia', 'wePresent'],
+            blacklist_keywords=['cable', 'adapter', 'receiver only']
+        )
+        st.info("📡 Adding wireless presentation system")
+        
+    # === CABLE CALCULATION (More realistic) ===
+    # Base cables: 2 per major component
+    component_count = len([k for k in blueprint.keys() if k not in ['network_cables']])
+    base_cables = component_count * 2
+    
+    # Room size factor
+    if room_area < 150:  # Small huddle
+        size_multiplier = 1.0
+    elif room_area < 400:  # Medium rooms
+        size_multiplier = 1.5
+    else:  # Large rooms
+        size_multiplier = 2.0
+
+    cable_count = max(5, int(base_cables * size_multiplier))  # Minimum 5 cables
+
     blueprint['network_cables'] = ProductRequirement(
         category='Cables & Connectivity',
         sub_category='AV Cable',
         quantity=cable_count,
         priority=10,
-        justification=f'{cable_count}x network patch cables for equipment connectivity',
+        justification=f'{cable_count}x Cat6/Cat7 cables for equipment connectivity (calculated: {component_count} components × 2 × {size_multiplier:.1f})',
         required_keywords=['cat6', 'cat7', 'ethernet', 'network'],
         blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo']
     )
+
+    st.info(f"🔌 Cable quantity: {cable_count} (based on {component_count} components and {room_area} sqft room)")
 
     # === INFRASTRUCTURE ===
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
@@ -816,6 +897,10 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     # ========== STEP 3: EQUIPMENT REQUIREMENTS ==========
     st.info("🔧 Step 3: Determining equipment requirements...")
     
+    # Add features and room_type to technical_reqs for use in _build_component_blueprint
+    technical_reqs['features'] = features
+    technical_reqs['room_type'] = room_type
+
     base_equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     equipment_reqs = merge_equipment_requirements(base_equipment_reqs, equipment_overrides)
     
@@ -872,6 +957,25 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         product = selector.select_product(comp_spec)
         
         if product:
+            # === AFTER MICROPHONE SELECTION ===
+            if 'microphone' in product.get('sub_category', '').lower():
+                mic_price = product.get('price', 0)
+                mic_qty = comp_spec.quantity
+                
+                # Validate pricing makes sense
+                if mic_price > 2000 and mic_qty > 1:
+                    # Likely an array or system - adjust quantity
+                    st.warning(
+                        f"⚠️ High-priced microphone detected (${mic_price:.0f}). "
+                        f"This may be a complete array system. Consider setting quantity to 1."
+                    )
+                    
+                    # Auto-correct if it's clearly an array
+                    if any(term in product.get('name', '').lower() for term in 
+                           ['array', 'kit', 'system', 'bundle', 'package']):
+                        comp_spec.quantity = 1
+                        st.info(f"✅ Auto-corrected quantity to 1 (array/system product)")
+
             # === NEW: Generate AI-powered justification ===
             ai_justification = generate_ai_product_justification(
                 model=model,
