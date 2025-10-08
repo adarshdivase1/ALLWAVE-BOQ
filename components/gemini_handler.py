@@ -20,18 +20,7 @@ def setup_gemini():
 
 
 def generate_with_retry(model, prompt, max_retries=3, return_text_only=True):
-    """
-    Generate content with retry logic and error handling.
-    
-    Args:
-        model: Gemini model instance
-        prompt: Text prompt for generation
-        max_retries: Number of retry attempts
-        return_text_only: If True, returns plain text string. If False, returns full response object.
-    
-    Returns:
-        String (if return_text_only=True) or GenerateContentResponse object
-    """
+    """Generate content with retry logic and error handling."""
     for attempt in range(max_retries):
         try:
             safety_settings = [
@@ -43,24 +32,38 @@ def generate_with_retry(model, prompt, max_retries=3, return_text_only=True):
             
             response = model.generate_content(prompt, safety_settings=safety_settings)
             
-            # CRITICAL FIX: Extract text if requested
+            # ENHANCED: More robust text extraction
             if return_text_only:
-                if hasattr(response, 'text'):
-                    return response.text
-                elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                    return response.candidates[0].content.parts[0].text
-                else:
-                    st.warning(f"⚠️ Unexpected Gemini response structure: {type(response)}")
-                    return None
+                # Method 1: Direct text attribute
+                if hasattr(response, 'text') and response.text:
+                    return str(response.text).strip()
+                
+                # Method 2: Candidates path
+                if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    try:
+                        text = response.candidates[0].content.parts[0].text
+                        if text:
+                            return str(text).strip()
+                    except (AttributeError, IndexError):
+                        pass
+                
+                # Method 3: String conversion fallback
+                try:
+                    return str(response).strip()
+                except:
+                    pass
+                
+                # If all methods fail
+                st.warning(f"⚠️ Could not extract text from Gemini response")
+                return None
             else:
-                # Return full response object for backward compatibility
                 return response
                 
         except Exception as e:
             if attempt == max_retries - 1:
                 st.error(f"AI generation failed after {max_retries} attempts: {e}")
-                return None  # Don't raise, return None for graceful fallback
-            time.sleep(2 ** attempt)  # Exponential backoff
+                return None
+            time.sleep(2 ** attempt)
     
     return None
 
@@ -125,3 +128,4 @@ def extract_text_from_response(response):
             return None
     
     return None
+
