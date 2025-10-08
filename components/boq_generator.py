@@ -110,14 +110,10 @@ def extract_top_3_reasons(justification, category='General'):
     return reasons[:3]
 
 
-# ==================== NEW AI JUSTIFICATION FUNCTIONS ====================
+# ==================== NEW AI JUSTIFICATION FUNCTIONS (MODIFIED) ====================
 def generate_ai_product_justification(model, product_info, room_context, avixa_calcs):
-    """
-    Generate intelligent, context-aware product justification using Gemini AI.
-    Returns both detailed justification and top 3 client-facing reasons.
-    """
+    """Generate intelligent, context-aware product justification using Gemini AI."""
     
-    # Build context-rich prompt
     prompt = f"""You are an AV systems design expert. Generate a professional product justification for a client proposal.
 
 **Room Context:**
@@ -140,33 +136,27 @@ def generate_ai_product_justification(model, product_info, room_context, avixa_c
 - Audio Coverage: {avixa_calcs.get('audio_coverage', 'Adequate')}
 
 **Task:**
-Generate a concise, professional justification explaining WHY this specific product was selected. Focus on:
-1. How it meets AVIXA standards for this room
-2. Technical advantages for the stated use case
-3. Value proposition (performance, reliability, ROI)
+Generate a concise, professional justification explaining WHY this specific product was selected.
 
-**Output Format:**
-Return ONLY a JSON object with this structure:
+**Output Format (JSON only):**
 {{
   "technical_justification": "2-3 sentence internal technical explanation",
   "top_3_reasons": [
     "First client-facing reason (10-15 words max)",
-    "Second client-facing reason (10-15 words max)",
+    "Second client-facing reason (10-15 words max)", 
     "Third client-facing reason (10-15 words max)"
   ],
   "confidence": 0.95
 }}
 
-Be specific to THIS product and room. Avoid generic statements. Use actual numbers from context."""
+Be specific to THIS product and room. Use actual numbers from context."""
 
     try:
-        response = generate_with_retry(model, prompt)
+        # SIMPLIFIED: generate_with_retry now returns plain text by default
+        response_text = generate_with_retry(model, prompt)
         
-        if not response:
+        if not response_text:
             return _get_fallback_justification(product_info, room_context)
-        
-        # Parse JSON response
-        response_text = response.strip()
         
         # Extract JSON from markdown code blocks if present
         if '```json' in response_text:
@@ -178,20 +168,24 @@ Be specific to THIS product and room. Avoid generic statements. Use actual numbe
         
         # Validate structure
         if not all(k in result for k in ['technical_justification', 'top_3_reasons', 'confidence']):
+            st.warning("⚠️ AI response missing required fields. Using fallback.")
             return _get_fallback_justification(product_info, room_context)
         
         # Ensure exactly 3 reasons
         if len(result['top_3_reasons']) < 3:
-            # Pad with generic reasons if needed
+            fallback = extract_top_3_reasons('', product_info.get('category', 'General'))
             while len(result['top_3_reasons']) < 3:
-                result['top_3_reasons'].append("Professional-grade component selected for reliability")
+                result['top_3_reasons'].append(fallback[len(result['top_3_reasons'])])
         
         result['top_3_reasons'] = result['top_3_reasons'][:3]
         
         return result
         
+    except json.JSONDecodeError as e:
+        st.warning(f"⚠️ AI returned invalid JSON: {str(e)[:50]}. Using fallback.")
+        return _get_fallback_justification(product_info, room_context)
     except Exception as e:
-        st.warning(f"⚠️ AI justification generation failed: {e}. Using fallback.")
+        st.warning(f"⚠️ AI justification generation failed: {str(e)[:50]}. Using fallback.")
         return _get_fallback_justification(product_info, room_context)
 
 
@@ -623,7 +617,7 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     return blueprint
 
 
-# ==================== MAIN BOQ GENERATION (MODIFIED) ====================
+# ==================== MAIN BOQ GENERATION ====================
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """
     PRODUCTION-READY BOQ generation with AI-powered justifications.
@@ -777,7 +771,7 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     return processed_boq, avixa_calcs, equipment_reqs, validation_results
 
 
-# ==================== POST-PROCESSING (MODIFIED) ====================
+# ==================== POST-PROCESSING ====================
 def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_type, required_components):
     """Enhanced validation with AI justifications for auto-added items."""
     validation_results = {'issues': [], 'warnings': []}
