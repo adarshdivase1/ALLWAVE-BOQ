@@ -862,49 +862,55 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
     """Enhanced validation with AI justifications for auto-added items."""
     validation_results = {'issues': [], 'warnings': []}
     
-    has_control = any('Touch Controller' in item.get('sub_category', '') or 
-                      'Control' in item.get('category', '') 
-                      for item in boq_items)
+    # Check for a control system (touch panel)
+    has_control = any(
+        'Touch Controller / Panel' in item.get('sub_category', '') 
+        for item in boq_items
+    )
     
+    # If no touch controller is found, create a requirement for one and select it.
     if not has_control:
-        validation_results['warnings'].append("⚠️ No control system found - adding touch controller as a fallback.")
+        validation_results['warnings'].append("⚠️ No control system found - adding a fallback touch controller.")
         
-        # Using IntelligentProductSelector for better fallback selection
-        selector = IntelligentProductSelector(product_df, {}, 'Standard')
+        # Create a complete ProductRequirement with all mandatory fields
         control_req = ProductRequirement(
-            category='Video Conferencing', sub_category='Touch Controller / Panel', quantity=1,
-            required_keywords=['touch', 'controller', 'panel'],
-            blacklist_keywords=['room kit', 'codec', 'bar', 'camera', 'display'],
-            min_price=300, max_price=5000
+            category='Video Conferencing',
+            sub_category='Touch Controller / Panel',
+            quantity=1,
+            priority=3,  # <-- ADDED
+            justification='Auto-added: A touch controller is essential for system usability.', # <-- ADDED
+            min_price=300,
+            max_price=5000,
+            strict_category_match=True
         )
-        control_product = selector.select_product(control_req)
 
+        # Use the selector to find a suitable product
+        # Note: We create a temporary selector here for this specific task
+        temp_selector = IntelligentProductSelector(product_df)
+        control_product = temp_selector.select_product(control_req)
+        
         if control_product:
-            control_reasons = [
-                "Centralized control simplifies meeting operations for non-technical users",
-                "Touch interface provides intuitive system management and scheduling",
-                "Essential for professional meeting room functionality and user adoption"
-            ]
             control_product.update({
                 'quantity': 1,
-                'justification': 'Touch controller provides centralized system control (Auto-added for complete system functionality)',
-                'top_3_reasons': control_reasons,
-                'justification_confidence': 0.9,
+                'justification': 'Touch controller provides centralized system control and is essential for a professional user experience (Auto-added).',
+                'top_3_reasons': [
+                    "Simplifies meeting operations for all users",
+                    "Provides an intuitive touch interface for system management",
+                    "Ensures complete and professional room functionality"
+                ],
+                'justification_confidence': 0.95,
                 'matched': True
             })
             boq_items.append(control_product)
+        else:
+            validation_results['issues'].append("🚨 CRITICAL: No control system in BOQ, and could not find a fallback product.")
+
+    # Validate display mounts
+    display_count = sum(item.get('quantity', 0) for item in boq_items if item.get('category') == 'Displays')
+    mount_count = sum(item.get('quantity', 0) for item in boq_items if item.get('sub_category') == 'Display Mount / Cart')
     
-    display_count = sum(1 for item in boq_items if item.get('category') == 'Displays')
-    mount_count = sum(1 for item in boq_items if item.get('category') == 'Mounts' and 
-                      'Display Mount' in item.get('sub_category', ''))
-    
-    if display_count > 0 and mount_count == 0:
-        validation_results['issues'].append("🚨 CRITICAL: Display present but NO proper mount found")
-    elif mount_count > 0:
-        for item in boq_items:
-            if item.get('category') == 'Mounts':
-                if any(word in item.get('name', '').lower() for word in ['ring', 'bezel', 'trim', 'spacer']):
-                    validation_results['issues'].append(f"🚨 INVALID MOUNT: {item.get('name')} is not a proper display mount")
+    if display_count > mount_count:
+        validation_results['issues'].append(f"🚨 CRITICAL: Mismatch - {display_count} displays found but only {mount_count} mounts.")
     
     return boq_items, validation_results
 
