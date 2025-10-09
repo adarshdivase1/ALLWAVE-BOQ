@@ -101,13 +101,14 @@ class IntelligentProductSelector:
                 }
             },
             'Video Conferencing': {
-                'must_contain': ['video', 'camera', 'codec', 'conference', 'conferencing', 'bar', 'room kit', 'ptz'],
+                'must_contain': ['video', 'camera', 'codec', 'conference', 'conferencing', 'bar', 'room kit', 'ptz', 'touch', 'controller', 'panel'], # ADDED touch/controller/panel
                 'must_not_contain': ['audio only', 'speaker only'],
                 'price_range': (300, 20000),
                 'sub_category_validators': {
                     'Touch Controller / Panel': {
-                        'must_contain': ['touch', 'panel', 'controller', 'control'],
-                        'must_not_contain': ['receiver', 'transmitter', 'extender', 'scaler', 'switcher', 'camera', 'codec']
+                        'must_contain': ['touch', 'controller', 'panel'], # REMOVED 'control' (too generic)
+                        'must_not_contain': ['receiver', 'transmitter', 'extender', 'scaler', 'switcher', 'matrix', 'room kit', 'codec', 'bar', 'camera system'], # ADDED more exclusions
+                        'override_category_validation': True # NEW FLAG: Skip parent category validation
                     },
                     'PTZ Camera': {
                         'must_contain': ['camera', 'ptz', 'pan', 'tilt', 'zoom'],
@@ -164,21 +165,25 @@ class IntelligentProductSelector:
         product_category = product.get('category', '')
         product_subcategory = product.get('sub_category', '')
         
-        # Get validation rules
         validators = self.category_validators.get(req.category, {})
         
-        # Check if product is in correct category
+        # NEW: Check if sub-category has override flag
+        sub_validators = validators.get('sub_category_validators', {}).get(req.sub_category, {})
+        skip_parent_validation = sub_validators.get('override_category_validation', False)
+        
+        # Check category match
         if product_category != req.category and req.strict_category_match:
             issues.append(f"Category mismatch: Expected '{req.category}', got '{product_category}'")
             return False, issues
         
-        # Check must_contain keywords
-        must_contain = validators.get('must_contain', [])
-        if must_contain:
-            has_required = any(keyword in product_name for keyword in must_contain)
-            if not has_required:
-                issues.append(f"Missing required keywords for {req.category}: {must_contain}")
-                return False, issues
+        # Check parent category keywords ONLY if not overridden
+        if not skip_parent_validation: # NEW CONDITION
+            must_contain = validators.get('must_contain', [])
+            if must_contain:
+                has_required = any(keyword in product_name for keyword in must_contain)
+                if not has_required:
+                    issues.append(f"Missing required keywords for {req.category}: {must_contain}")
+                    return False, issues
         
         # Check must_not_contain keywords (contamination check)
         must_not_contain = validators.get('must_not_contain', [])
@@ -190,7 +195,6 @@ class IntelligentProductSelector:
                 return False, issues
         
         # Check sub-category specific validators
-        sub_validators = validators.get('sub_category_validators', {}).get(req.sub_category, {})
         if sub_validators:
             sub_must_contain = sub_validators.get('must_contain', [])
             if sub_must_contain:
@@ -496,17 +500,30 @@ class IntelligentProductSelector:
             specs = str(product.get('specifications', '')).lower()
             combined = f"{name} {specs}"
             
+            # ENHANCED: More flexible large display indicators
             has_large_support = any(term in combined for term in [
-                f'{int(req.size_requirement)}"', f'{int(req.size_requirement)-2}"', 
-                'large format', 'video wall', '150 lbs', '200 lbs', '250 lbs',
-                'vesa 800', 'vesa 1000'
+                f'{int(req.size_requirement)}"', 
+                f'{int(req.size_requirement)-5}"', # Wider tolerance
+                f'{int(req.size_requirement)+5}"', # Cover range
+                'large format', 'video wall', 'videowall',
+                '150 lbs', '175 lbs', '200 lbs', '225 lbs', '250 lbs',
+                'vesa 800', 'vesa 1000', 'vesa 900',
+                'up to 98"', 'up to 100"', 'up to 110"', # NEW
+                '85" and above', '90" and above', # NEW
+                'xlarge', 'x-large', 'xxl' # NEW
             ])
             
-            is_small_mount = any(term in combined for term in [
-                'up to 80"', 'max 70"', 'vesa 400 max', 'medium', 'small', 'compact'
+            # STRICT: Only reject if explicitly too small
+            is_explicitly_small = any(term in combined for term in [
+                'up to 55"', 'up to 60"', 'up to 65"', 'up to 70"',
+                'max 55"', 'max 60"', 'max 65"', 'max 70"',
+                'small format', 'compact only', 'lightweight only'
             ])
             
-            if has_large_support and not is_small_mount:
+            # Accept if large support OR (not explicitly small AND not video wall mount)
+            is_video_wall_mount = 'video wall' in combined or 'videowall' in combined
+            
+            if has_large_support or (not is_explicitly_small and is_video_wall_mount):
                 validated_mounts.append(product)
         
         if validated_mounts:
