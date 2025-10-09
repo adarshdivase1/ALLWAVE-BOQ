@@ -168,17 +168,23 @@ def create_multi_room_interface():
         st.write("")
         st.write("")
         if st.button("➕ Add Room to Project", type="primary", use_container_width=True):
-            new_room = {
-                'name': room_name,
-                'type': st.session_state.get('room_type_select', list(ROOM_SPECS.keys())[0]),
-                'area': st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
-                'boq_items': [],
-                'features': st.session_state.get('features_text_area', ''),
-                'technical_reqs': {}
-            }
-            st.session_state.project_rooms.append(new_room)
-            st.success(f"✅ Added '{room_name}' to project")
-            st.rerun()
+            # VALIDATION: Check for duplicate room names
+            existing_room_names = [room['name'].lower() for room in st.session_state.project_rooms]
+            
+            if room_name.lower() in existing_room_names:
+                st.error(f"⛔ Room named '{room_name}' already exists. Please use a unique name.")
+            else:
+                new_room = {
+                    'name': room_name,
+                    'type': st.session_state.get('room_type_select', list(ROOM_SPECS.keys())[0]),
+                    'area': st.session_state.get('room_length_input', 24) * st.session_state.get('room_width_input', 16),
+                    'boq_items': [],
+                    'features': st.session_state.get('features_text_area', ''),
+                    'technical_reqs': {}
+                }
+                st.session_state.project_rooms.append(new_room)
+                st.success(f"✅ Added '{room_name}' to project")
+                st.rerun()
 
     with col3:
         st.write("")
