@@ -763,10 +763,10 @@ def _add_scope_of_work_sheet(workbook, styles):
 
 
 # ==================== PROPOSAL SUMMARY SHEET (FIXED VERSION) ====================
-def _add_proposal_summary_sheet(workbook, project_details, styles):
+def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     """
     Creates the Proposal Summary sheet with FULL CALCULATIONS from BOQ sheets.
-    Now includes: Rate w/o TAX, Amount w/o TAX, Total TAX Amount, Amount with Tax
+    Now includes PSNI/Client Type highlights.
     """
     sheet = workbook.create_sheet(title="Proposal Summary", index=2)
     _create_sheet_header(sheet)
@@ -1044,7 +1044,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     _add_scope_of_work_sheet(workbook, styles)
     
     # === SHEET 3: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
-    _add_proposal_summary_sheet(workbook, project_details, styles)
+    _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles)
     
     # === SHEET 4: TERMS & CONDITIONS ===
     _add_terms_and_conditions_sheet(workbook, styles)
