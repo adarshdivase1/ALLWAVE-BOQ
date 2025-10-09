@@ -4,6 +4,42 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import re
 
+# ==============================================================================
+# === FIX: ADDED THE MISSING HELPER FUNCTION ===================================
+# ==============================================================================
+def extract_display_size(product_name):
+    """
+    Extracts the screen size in inches from a product name using regex.
+    
+    Args:
+        product_name (str): The full name of the product.
+    
+    Returns:
+        int or None: The extracted size in inches, or None if not found.
+    """
+    if not isinstance(product_name, str):
+        return None
+        
+    # Regex to find numbers (typically 2 digits) followed by inch symbols or words.
+    # Examples it matches: "85-inch", "75in", "65\"", "98' '", " 85 "
+    patterns = [
+        r'(\d{2,3})[\s-]?("|\'\'|inch|in)\b',  # e.g., 85", 75-inch, 65in
+        r'\b(\d{2,3})[\s-]?inch\b'              # e.g., 85 inch
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, product_name, re.IGNORECASE)
+        if match:
+            try:
+                return int(match.group(1))
+            except (ValueError, IndexError):
+                continue
+    return None
+# ==============================================================================
+# === END OF FIX ===============================================================
+# ==============================================================================
+
+
 def generate_category_icon(draw, icon_area, category, sub_category):
     """
     Draws a simple iconic representation of the product category.
@@ -561,3 +597,16 @@ if __name__ == "__main__":
     print("Generating sample product cards...")
     cards = create_sample_cards()
     print(f"Generated {len(cards)} product cards successfully!")
+
+    # Test the new function
+    test_names = [
+        "Samsung 85-inch 4K Display",
+        "LG 75\" Commercial Screen",
+        "Sony 65in Bravia",
+        "NEC Display 98' '",
+        "Generic 55 inch monitor",
+        "Projector Screen (120-inch)"
+    ]
+    for name in test_names:
+        size = extract_display_size(name)
+        print(f"'{name}' -> Size: {size}")
