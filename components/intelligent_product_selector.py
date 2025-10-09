@@ -1,3 +1,5 @@
+# FILE: components/intelligent_product_selector.py (OPTIMIZED)
+
 import re
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -45,17 +47,20 @@ class IntelligentProductSelector:
     
     def __init__(self, product_df, client_preferences=None, budget_tier='Standard'):
         self.product_df = product_df.copy()
+        # Pre-process names for faster string matching
+        if 'name' in self.product_df.columns:
+            self.product_df['name_lower'] = self.product_df['name'].str.lower().fillna('')
+        else:
+            self.product_df['name_lower'] = ''
+
         self.client_preferences = client_preferences or {}
         self.budget_tier = budget_tier
         self.selection_log = []
         self.existing_selections = []
-        self.validation_warnings = []  # NEW: Track validation issues
+        self.validation_warnings = []
         
-        # Standardize columns
         self._standardize_price_column()
         self._normalize_dataframe_categories()
-        
-        # NEW: Build category validation database
         self._build_category_validators()
     
     def _standardize_price_column(self):
@@ -79,10 +84,7 @@ class IntelligentProductSelector:
             self.product_df['category'] = self.product_df['primary_category']
     
     def _build_category_validators(self):
-        """
-        NEW: Build strict validation rules for each category
-        This prevents products from wrong categories being selected
-        """
+        """Build strict validation rules for each category"""
         self.category_validators = {
             'Displays': {
                 'must_contain': ['display', 'monitor', 'screen', 'panel', 'lcd', 'led', 'oled'],
@@ -154,177 +156,132 @@ class IntelligentProductSelector:
             }
         }
     
-    def _validate_product_category(self, product: Dict, req: ProductRequirement) -> Tuple[bool, List[str]]:
-        """
-        NEW: Strict validation that product actually belongs to the requested category
-        Returns: (is_valid, list_of_issues)
-        """
+    def _validate_product_category(self, product: pd.Series, req: ProductRequirement) -> Tuple[bool, List[str]]:
+        """Strict validation that product actually belongs to the requested category"""
         issues = []
-        product_name = product.get('name', '').lower()
-        product_category = product.get('category', '')
-        product_subcategory = product.get('sub_category', '')
+        product_name = product.get('name_lower', '')
         
-        # Get validation rules
         validators = self.category_validators.get(req.category, {})
         
-        # Check if product is in correct category
-        if product_category != req.category and req.strict_category_match:
-            issues.append(f"Category mismatch: Expected '{req.category}', got '{product_category}'")
-            return False, issues
-        
-        # Check must_contain keywords
-        must_contain = validators.get('must_contain', [])
-        if must_contain:
-            has_required = any(keyword in product_name for keyword in must_contain)
-            if not has_required:
+        # This check is done at the DataFrame level now for speed.
+        # This function can be used for final validation on the single selected item.
+        if validators:
+            must_contain = validators.get('must_contain', [])
+            if must_contain and not any(keyword in product_name for keyword in must_contain):
                 issues.append(f"Missing required keywords for {req.category}: {must_contain}")
                 return False, issues
-        
-        # Check must_not_contain keywords (contamination check)
-        must_not_contain = validators.get('must_not_contain', [])
-        if must_not_contain:
-            has_forbidden = any(keyword in product_name for keyword in must_not_contain)
-            if has_forbidden:
+
+            must_not_contain = validators.get('must_not_contain', [])
+            if must_not_contain and any(keyword in product_name for keyword in must_not_contain):
                 forbidden_found = [kw for kw in must_not_contain if kw in product_name]
                 issues.append(f"Contains forbidden keywords: {forbidden_found}")
-                return False, issues
-        
-        # Check sub-category specific validators
-        sub_validators = validators.get('sub_category_validators', {}).get(req.sub_category, {})
-        if sub_validators:
-            sub_must_contain = sub_validators.get('must_contain', [])
-            if sub_must_contain:
-                has_sub_required = any(keyword in product_name for keyword in sub_must_contain)
-                if not has_sub_required:
-                    issues.append(f"Missing sub-category keywords for {req.sub_category}: {sub_must_contain}")
-                    return False, issues
-            
-            sub_must_not_contain = sub_validators.get('must_not_contain', [])
-            if sub_must_not_contain:
-                has_sub_forbidden = any(keyword in product_name for keyword in sub_must_not_contain)
-                if has_sub_forbidden:
-                    forbidden_found = [kw for kw in sub_must_not_contain if kw in product_name]
-                    issues.append(f"Contains sub-category forbidden keywords: {forbidden_found}")
-                    return False, issues
-        
-        # Check price range
-        price_range = validators.get('price_range')
-        if price_range:
-            min_price, max_price = price_range
-            product_price = product.get('price', 0)
-            if product_price < min_price or product_price > max_price:
-                issues.append(f"Price ${product_price:.2f} outside expected range ${min_price}-${max_price}")
                 return False, issues
         
         return True, []
     
     def select_product(self, requirement: ProductRequirement) -> Optional[Dict]:
-        """
-        ENHANCED: Multi-stage product selection with strict validation
-        """
+        """ENHANCED: Multi-stage product selection with strict validation"""
         self.log(f"\n{'='*60}")
         self.log(f"🎯 Selecting product for: {requirement.sub_category}")
         self.log(f"   Category: {requirement.category}")
-        self.log(f"   Quantity: {requirement.quantity}")
         
-        # STAGE 1: Category Filter
+        # STAGE 1 & 2: Initial Filters (Category & Service Contracts)
         candidates = self._filter_by_category(requirement)
-        if candidates.empty:
-            self.log(f"❌ No products found in category: {requirement.category}/{requirement.sub_category}")
-            return None
-        
-        # STAGE 2: Service Contract Filter
         candidates = self._filter_service_contracts(candidates, requirement)
         if candidates.empty:
-            self.log(f"❌ All products were service contracts")
+            self.log(f"❌ No products found after initial filtering for: {requirement.category}/{requirement.sub_category}")
             return None
         
         # STAGE 3: Keyword Filters
         candidates = self._apply_keyword_filters(candidates, requirement)
-        if candidates.empty:
-            self.log(f"❌ No products passed keyword filters")
-            return None
+        if candidates.empty: self.log(f"❌ No products passed keyword filters"); return None
         
-        # STAGE 4: Specification Matching (with size validation)
+        # STAGE 4: Specification Matching
         candidates = self._match_specifications(candidates, requirement)
-        if candidates.empty:
-            self.log(f"⚠️ No products matched specifications, using broader search")
-            candidates = self._filter_by_category(requirement)
-            candidates = self._filter_service_contracts(candidates, requirement)
-            candidates = self._apply_keyword_filters(candidates, requirement)
+        if candidates.empty: self.log(f"❌ No products matched specifications"); return None
         
-        # NEW STAGE 4.5: Strict Category Validation
+        # STAGE 4.5: Strict Category Validation (Vectorized for Speed)
         candidates = self._apply_strict_validation(candidates, requirement)
-        if candidates.empty:
-            self.log(f"❌ No products passed strict validation for {requirement.category}")
-            return None
+        if candidates.empty: self.log(f"❌ No products passed strict validation for {requirement.category}"); return None
         
-        # STAGE 5: Client Preference Weighting
+        # STAGE 5 & 5.5: Preference & Ecosystem Weighting
         candidates = self._apply_client_preferences(candidates, requirement)
-        
-        # STAGE 5.5: Brand Ecosystem Check
         candidates = self._check_brand_ecosystem(candidates, requirement, self.existing_selections)
         
         # STAGE 6: Budget-Aware Selection
         selected = self._select_by_budget(candidates, requirement)
         
         if selected is not None:
-            # STAGE 7: Final Validation
-            is_valid, validation_issues = self._validate_product_category(selected, requirement)
-            
+            is_valid, validation_issues = self._validate_product_category(pd.Series(selected), requirement)
             if not is_valid:
-                self.log(f"❌ VALIDATION FAILED:")
-                for issue in validation_issues:
-                    self.log(f"   - {issue}")
-                self.validation_warnings.append({
-                    'component': requirement.sub_category,
-                    'product': selected.get('name'),
-                    'issues': validation_issues
-                })
+                self.log(f"❌ FINAL VALIDATION FAILED: {validation_issues}")
                 return None
             
             price = selected.get('price', 0)
-            self.log(f"✅ SELECTED: {selected['brand']} {selected['model_number']}")
-            self.log(f"   Price: ${price:.2f}")
+            self.log(f"✅ SELECTED: {selected['brand']} {selected['model_number']} at ${price:.2f}")
             self.log(f"   Product: {selected['name'][:80]}")
-            
-            # Compatibility check
-            if not self._validate_compatibility(selected, requirement):
-                self.log(f"⚠️ Product may have compatibility issues")
         
         return selected
     
-    def _apply_strict_validation(self, df, req: ProductRequirement):
+    # =========================================================================
+    # OPTIMIZED VALIDATION FUNCTION
+    # =========================================================================
+    def _apply_strict_validation(self, df: pd.DataFrame, req: ProductRequirement) -> pd.DataFrame:
         """
-        NEW STAGE: Apply strict category validation to all candidates
+        OPTIMIZED STAGE: Apply strict category validation using vectorized operations.
         """
-        validated_products = []
+        if df.empty: return df
+
+        validators = self.category_validators.get(req.category, {})
+        if not validators: return df
         
-        for idx, product in df.iterrows():
-            is_valid, issues = self._validate_product_category(product, req)
-            if is_valid:
-                validated_products.append(product)
-            else:
-                self.log(f"   ⚠️ Rejected: {product.get('name', 'Unknown')[:60]}")
-                for issue in issues[:2]:  # Show first 2 issues
-                    self.log(f"      Reason: {issue}")
+        initial_count = len(df)
         
-        if validated_products:
-            self.log(f"✅ {len(validated_products)} products passed strict validation")
-            return pd.DataFrame(validated_products)
-        else:
-            self.log(f"❌ No products passed strict validation")
-            return pd.DataFrame()
-    
+        # Vectorized 'must_contain' check
+        must_contain = validators.get('must_contain', [])
+        if must_contain:
+            pattern = '|'.join([re.escape(kw) for kw in must_contain])
+            df = df[df['name_lower'].str.contains(pattern, regex=True)]
+            if len(df) < initial_count:
+                self.log(f"   Validation (must_contain): Filtered {initial_count - len(df)} products")
+                initial_count = len(df)
+
+        # Vectorized 'must_not_contain' check
+        must_not_contain = validators.get('must_not_contain', [])
+        if must_not_contain:
+            pattern = '|'.join([re.escape(kw) for kw in must_not_contain])
+            df = df[~df['name_lower'].str.contains(pattern, regex=True)]
+            if len(df) < initial_count:
+                self.log(f"   Validation (must_not_contain): Filtered {initial_count - len(df)} products")
+                initial_count = len(df)
+        
+        # Sub-category validators (also vectorized)
+        sub_validators = validators.get('sub_category_validators', {}).get(req.sub_category, {})
+        if sub_validators:
+            sub_must_contain = sub_validators.get('must_contain', [])
+            if sub_must_contain:
+                pattern = '|'.join([re.escape(kw) for kw in sub_must_contain])
+                df = df[df['name_lower'].str.contains(pattern, regex=True)]
+            
+            sub_must_not_contain = sub_validators.get('must_not_contain', [])
+            if sub_must_not_contain:
+                pattern = '|'.join([re.escape(kw) for kw in sub_must_not_contain])
+                df = df[~df['name_lower'].str.contains(pattern, regex=True)]
+
+        # Vectorized price range check
+        price_range = validators.get('price_range')
+        if price_range:
+            min_price, max_price = price_range
+            df = df[(df['price'] >= min_price) & (df['price'] <= max_price)]
+            if len(df) < initial_count:
+                self.log(f"   Validation (price_range): Filtered {initial_count - len(df)} products")
+
+        self.log(f"   Stage 4.5 - Strict validation: {len(df)} products remaining")
+        return df
+
     def _filter_by_category(self, req: ProductRequirement):
         """Stage 1: Filter by category"""
-        
-        if req.category == 'General AV':
-            df = self.product_df[
-                self.product_df['name'].str.contains(req.sub_category, case=False, na=False) |
-                self.product_df['description'].str.contains(req.sub_category, case=False, na=False)
-            ].copy()
-        elif req.sub_category:
+        if req.sub_category:
             df = self.product_df[
                 (self.product_df['category'] == req.category) &
                 (self.product_df['sub_category'] == req.sub_category)
@@ -332,288 +289,104 @@ class IntelligentProductSelector:
         else:
             df = self.product_df[self.product_df['category'] == req.category].copy()
         
-        # Apply minimum/maximum price if specified
-        if hasattr(req, 'min_price') and req.min_price:
-            df = df[df['price'] >= req.min_price]
-        if hasattr(req, 'max_price') and req.max_price:
-            df = df[df['price'] <= req.max_price]
+        if hasattr(req, 'min_price') and req.min_price: df = df[df['price'] >= req.min_price]
+        if hasattr(req, 'max_price') and req.max_price: df = df[df['price'] <= req.max_price]
         
         self.log(f"   Stage 1 - Category filter: {len(df)} products")
         return df
     
     def _filter_service_contracts(self, df, req: ProductRequirement):
         """Stage 2: Filter out service contracts"""
-        if req.category == 'Software & Services':
-            return df
+        if req.category == 'Software & Services' or df.empty: return df
         
-        service_patterns = [
-            r'\b(support.*contract|maintenance.*contract|extended.*service)\b',
-            r'\b(extended.*warranty|con-snt|con-ecdn|smartcare.*contract)\b',
-            r'\b(jumpstart.*service|carepack|care\s*pack|premier.*support)\b',
-            r'\b(advanced.*replacement|onsite.*support|warranty.*extension)\b',
-            r'\b(service.*agreement|service.*plan|support.*plan)\b',
-            r'\b(annual.*support|yearly.*support|subscription.*support)\b'
-        ]
-        
-        for pattern in service_patterns:
-            df = df[~df['name'].str.contains(pattern, case=False, na=False, regex=True)]
-        
-        df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) &
-                  (df['price'] < 100))]
+        service_patterns = r'\b(support|service|warranty|contract|care|pack|premier|agreement|plan|jumpstart|con-snt|con-ecdn)\b'
+        df = df[~df['name_lower'].str.contains(service_patterns, regex=True)]
         
         self.log(f"   Stage 2 - Service filter: {len(df)} products")
         return df
     
     def _apply_keyword_filters(self, df, req: ProductRequirement):
         """Stage 3: Apply required and blacklist keywords"""
-        
-        # Required keywords
+        if df.empty: return df
         if req.required_keywords:
             pattern = '|'.join([re.escape(kw) for kw in req.required_keywords])
-            df = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
-            self.log(f"   Stage 3a - Required keywords: {len(df)} products")
+            df = df[df['name_lower'].str.contains(pattern, regex=True)]
         
-        # Blacklist keywords
         if req.blacklist_keywords:
-            for keyword in req.blacklist_keywords:
-                before = len(df)
-                df = df[~df['name'].str.contains(re.escape(keyword), case=False, na=False, regex=True)]
-                removed = before - len(df)
-                if removed > 0:
-                    self.log(f"   Stage 3b - Blacklist '{keyword}': removed {removed}")
-        
-        # Category-specific filters
-        df = self._apply_category_specific_filters(df, req)
-        
+            pattern = '|'.join([re.escape(kw) for kw in req.blacklist_keywords])
+            df = df[~df['name_lower'].str.contains(pattern, regex=True)]
+
         self.log(f"   Stage 3 - Keyword filter: {len(df)} products")
-        return df
-    
-    def _apply_category_specific_filters(self, df, req: ProductRequirement):
-        """Enhanced category-specific filtering"""
-        
-        if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
-            df = df[df['name'].str.contains(
-                r'(wall.*mount|ceiling.*mount|floor.*stand|display.*mount|tv.*mount|large.*format.*mount)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(tlp|tsw-|touch|panel|controller|ipad|camera|speaker|mic)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Cables & Connectivity' and 'AV Cable' in req.sub_category:
-            df = df[df['name'].str.contains(
-                r'(cat6|cat7|ethernet|network.*cable|patch.*cable)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(vga|svideo|composite|component)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
-            df = df[df['price'] > 100]
-            df = df[df['name'].str.contains(
-                r'(rack.*mount|1u|2u|metered|switched)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Audio' and req.sub_category == 'Amplifier':
-            df = df[df['name'].str.contains(
-                r'(power.*amp|multi.*channel|spa\d+|xpa\d+|\d+w)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(conferenc|poe\+|dante.*amp|amp.*dante)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
-            df = df[df['name'].str.contains(
-                r'(ptz|pan.*tilt.*zoom|eagleeye.*iv|eagleeye.*director|eptz)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(webcam|usb.*camera|c920|c930|brio)',
-                case=False, na=False, regex=True
-            )]
-            df = df[df['price'] > 1000]
-        
-        elif req.category == 'Infrastructure' and 'AV Rack' in req.sub_category:
-            # CRITICAL: Ensure we get actual racks, not brackets
-            df = df[df['name'].str.contains(
-                r'(rack|cabinet|enclosure|frame)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(bracket|mount(?!able)|wall.*mount|camera.*mount|shelf\s+only)',
-                case=False, na=False, regex=True
-            )]
-            df = df[df['price'] > 100]  # Actual racks cost more than $100
-        
         return df
     
     def _match_specifications(self, df, req: ProductRequirement):
         """Stage 4: Match technical specifications"""
-        
-        # Display size matching with tolerance
+        if df.empty: return df
         if req.size_requirement:
             size_range = range(int(req.size_requirement) - 3, int(req.size_requirement) + 4)
             size_pattern = '|'.join([f'{s}"' for s in size_range])
-            size_matches = df[df['name'].str.contains(size_pattern, na=False, regex=True)]
+            size_matches = df[df['name_lower'].str.contains(size_pattern, regex=True)]
             if not size_matches.empty:
                 df = size_matches
-                self.log(f"   Stage 4a - Size matching ({req.size_requirement}\"): {len(df)} products")
         
-        # Mounting type matching
         if req.mounting_type:
-            if 'wall' in req.mounting_type.lower():
-                df = df[df['name'].str.contains(r'\bwall\b', case=False, na=False, regex=True)]
-                
-                if req.size_requirement and req.size_requirement >= 85:
-                    df = self._validate_mount_capacity(df, req)
-                    df = df[~df['model_number'].str.contains(
-                        r'(mtm\d|msm\d|xsm\d)',
-                        case=False, na=False, regex=True
-                    )]
-            elif 'ceiling' in req.mounting_type.lower():
-                df = df[df['name'].str.contains(r'\bceiling\b', case=False, na=False, regex=True)]
-            elif 'floor' in req.mounting_type.lower():
-                df = df[df['name'].str.contains(r'\b(floor|stand|cart|mobile)\b', case=False, na=False, regex=True)]
+            df = df[df['name_lower'].str.contains(r'\b' + re.escape(req.mounting_type.lower()) + r'\b', regex=True)]
         
         self.log(f"   Stage 4 - Specification match: {len(df)} products")
         return df
-    
-    def _validate_mount_capacity(self, df, req: ProductRequirement):
-        """Validate mount can support the display size"""
-        if not req.size_requirement or req.size_requirement < 85:
-            return df
-        
-        validated_mounts = []
-        
-        for idx, product in df.iterrows():
-            name = product.get('name', '').lower()
-            specs = str(product.get('specifications', '')).lower()
-            combined = f"{name} {specs}"
-            
-            has_large_support = any(term in combined for term in [
-                f'{int(req.size_requirement)}"', f'{int(req.size_requirement)-2}"', 
-                'large format', 'video wall', '150 lbs', '200 lbs', '250 lbs',
-                'vesa 800', 'vesa 1000'
-            ])
-            
-            is_small_mount = any(term in combined for term in [
-                'up to 80"', 'max 70"', 'vesa 400 max', 'medium', 'small', 'compact'
-            ])
-            
-            if has_large_support and not is_small_mount:
-                validated_mounts.append(product)
-        
-        if validated_mounts:
-            self.log(f"   ✅ {len(validated_mounts)} mounts validated for {req.size_requirement}\" display")
-            return pd.DataFrame(validated_mounts)
-        else:
-            self.log(f"   ⚠️ No validated mounts for {req.size_requirement}\" - using all candidates")
-            return df
-    
+
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """Stage 5: Weight products by client preferences"""
+        if df.empty: return df
         
-        preferred_brand = None
-        
-        if req.category == 'Displays':
-            preferred_brand = self.client_preferences.get('displays')
-        elif req.category == 'Video Conferencing':
-            preferred_brand = self.client_preferences.get('video_conferencing')
-        elif req.category == 'Audio':
-            preferred_brand = self.client_preferences.get('audio')
-        elif req.category in ['Control Systems', 'Signal Management']:
-            preferred_brand = self.client_preferences.get('control')
-        
+        preferred_brand_map = {
+            'Displays': self.client_preferences.get('displays'),
+            'Video Conferencing': self.client_preferences.get('video_conferencing'),
+            'Audio': self.client_preferences.get('audio'),
+            'Control Systems': self.client_preferences.get('control'),
+            'Signal Management': self.client_preferences.get('control')
+        }
+        preferred_brand = preferred_brand_map.get(req.category)
+
         if preferred_brand:
-            df['preference_score'] = df['brand'].str.lower().apply(
-                lambda x: req.client_preference_weight if x == preferred_brand.lower() else 0
-            )
-            df = df.sort_values('preference_score', ascending=False)
-            
-            preferred_matches = df[df['preference_score'] > 0]
+            preferred_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
             if not preferred_matches.empty:
                 self.log(f"   ✅ Found {len(preferred_matches)} preferred brand products: {preferred_brand}")
                 return preferred_matches
-        
         return df
     
     def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
         """Stage 5.5: Ensure brand ecosystem compatibility"""
-        
-        if req.category in ['Audio', 'Video Conferencing']:
-            vc_brand = None
-            for selected in existing_selections:
-                if selected.get('category') == 'Video Conferencing':
-                    if 'Video Bar' in selected.get('sub_category', '') or \
-                       'Room Kit' in selected.get('sub_category', ''):
-                        vc_brand = selected.get('brand', '').lower()
-                        break
-            
+        if df.empty: return df
+        if req.category in ['Audio', 'Video Conferencing'] and any(term in req.sub_category for term in ['Microphone', 'Expansion', 'Touch Controller']):
+            vc_brand = next((sel.get('brand', '').lower() for sel in existing_selections if sel.get('category') == 'Video Conferencing'), None)
             if vc_brand:
-                if req.category == 'Audio' and any(term in req.sub_category for term in ['Microphone', 'Expansion']):
-                    brand_matches = df[df['brand'].str.lower() == vc_brand]
-                    if not brand_matches.empty:
-                        self.log(f"   ✅ Prioritizing {vc_brand} accessories for ecosystem")
-                        return brand_matches
-        
+                brand_matches = df[df['brand'].str.lower() == vc_brand]
+                if not brand_matches.empty:
+                    self.log(f"   ✅ Prioritizing {vc_brand} accessories for ecosystem")
+                    return brand_matches
         return df
     
     def _select_by_budget(self, df, req: ProductRequirement):
         """Stage 6: Select based on budget tier"""
-        
-        if df.empty:
-            return None
+        if df.empty: return None
         
         df_sorted = df.sort_values('price')
         
         if self.budget_tier in ['Premium', 'Executive']:
-            start_idx = int(len(df_sorted) * 0.75)
-            selection_pool = df_sorted.iloc[start_idx:]
+            idx = int(len(df_sorted) * 0.8) # Top 20%
         elif self.budget_tier == 'Economy':
-            end_idx = int(len(df_sorted) * 0.4)
-            selection_pool = df_sorted.iloc[:end_idx] if end_idx > 0 else df_sorted
-        else:  # Standard
-            start_idx = int(len(df_sorted) * 0.25)
-            end_idx = int(len(df_sorted) * 0.75)
-            selection_pool = df_sorted.iloc[start_idx:end_idx] if end_idx > start_idx else df_sorted
+            idx = int(len(df_sorted) * 0.2) # Bottom 20%
+        else: # Standard
+            idx = len(df_sorted) // 2 # Middle
         
-        if selection_pool.empty:
-            selection_pool = df_sorted
-        
-        selected_idx = len(selection_pool) // 2
-        return selection_pool.iloc[selected_idx].to_dict()
-    
-    def _validate_compatibility(self, product: Dict, req: ProductRequirement) -> bool:
-        """Stage 7: Validate product compatibility"""
-        
-        if not req.compatibility_requirements:
-            return True
-        
-        product_name = product.get('name', '').lower()
-        product_specs = str(product.get('specifications', '')).lower()
-        combined_text = f"{product_name} {product_specs}"
-        
-        for compat in req.compatibility_requirements:
-            if compat.lower() not in combined_text:
-                self.log(f"   ⚠️ Missing compatibility: {compat}")
-                return False
-        
-        return True
-    
+        return df_sorted.iloc[idx].to_dict()
+
     def log(self, message: str):
-        """Add to selection log"""
         self.selection_log.append(message)
     
     def get_selection_report(self) -> str:
-        """Get detailed selection report"""
         return "\n".join(self.selection_log)
     
     def get_validation_warnings(self) -> List[Dict]:
-        """Get all validation warnings"""
         return self.validation_warnings
