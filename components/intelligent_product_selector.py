@@ -228,8 +228,8 @@ class IntelligentProductSelector:
         """
         self.log(f"\n{'='*60}")
         self.log(f"🎯 Selecting product for: {requirement.sub_category}")
-        self.log(f"   Category: {requirement.category}")
-        self.log(f"   Quantity: {requirement.quantity}")
+        self.log(f"    Category: {requirement.category}")
+        self.log(f"    Quantity: {requirement.quantity}")
         
         # STAGE 1: Category Filter
         candidates = self._filter_by_category(requirement)
@@ -279,7 +279,7 @@ class IntelligentProductSelector:
             if not is_valid:
                 self.log(f"❌ VALIDATION FAILED:")
                 for issue in validation_issues:
-                    self.log(f"   - {issue}")
+                    self.log(f"    - {issue}")
                 self.validation_warnings.append({
                     'component': requirement.sub_category,
                     'product': selected.get('name'),
@@ -289,12 +289,38 @@ class IntelligentProductSelector:
             
             price = selected.get('price', 0)
             self.log(f"✅ SELECTED: {selected['brand']} {selected['model_number']}")
-            self.log(f"   Price: ${price:.2f}")
-            self.log(f"   Product: {selected['name'][:80]}")
+            self.log(f"    Price: ${price:.2f}")
+            self.log(f"    Product: {selected['name'][:80]}")
             
             # Compatibility check
             if not self._validate_compatibility(selected, requirement):
                 self.log(f"⚠️ Product may have compatibility issues")
+        
+        # NEW STAGE 8: Fallback for hard-to-find items
+        if selected is None and requirement.sub_category in ['Room Scheduling Display', 'Touch Controller / Panel']:
+            self.log(f"    🔄 Attempting fallback search for {requirement.sub_category}")
+            
+            # Try broader category search
+            fallback_candidates = self.product_df[
+                self.product_df['category'].isin(['Control Systems', 'Video Conferencing', 'Displays'])
+            ].copy()
+            
+            # Apply relaxed keywords
+            fallback_keywords = {
+                'Room Scheduling Display': ['scheduling', 'calendar', 'room panel', 'booking'],
+                'Touch Controller / Panel': ['touch', 'panel', 'controller', '10"', 'ipad']
+            }
+            
+            keywords = fallback_keywords.get(requirement.sub_category, [])
+            if keywords:
+                pattern = '|'.join([re.escape(kw) for kw in keywords])
+                fallback_candidates = fallback_candidates[
+                    fallback_candidates['name'].str.contains(pattern, case=False, na=False, regex=True)
+                ]
+                
+                if not fallback_candidates.empty:
+                    self.log(f"    ✅ Found {len(fallback_candidates)} fallback candidates")
+                    selected = self._select_by_budget(fallback_candidates, requirement)
         
         return selected
     
@@ -309,9 +335,9 @@ class IntelligentProductSelector:
             if is_valid:
                 validated_products.append(product)
             else:
-                self.log(f"   ⚠️ Rejected: {product.get('name', 'Unknown')[:60]}")
+                self.log(f"    ⚠️ Rejected: {product.get('name', 'Unknown')[:60]}")
                 for issue in issues[:2]:  # Show first 2 issues
-                    self.log(f"      Reason: {issue}")
+                    self.log(f"         Reason: {issue}")
         
         if validated_products:
             self.log(f"✅ {len(validated_products)} products passed strict validation")
@@ -342,7 +368,7 @@ class IntelligentProductSelector:
         if hasattr(req, 'max_price') and req.max_price:
             df = df[df['price'] <= req.max_price]
         
-        self.log(f"   Stage 1 - Category filter: {len(df)} products")
+        self.log(f"    Stage 1 - Category filter: {len(df)} products")
         return df
     
     def _filter_service_contracts(self, df, req: ProductRequirement):
@@ -365,7 +391,7 @@ class IntelligentProductSelector:
         df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) &
                   (df['price'] < 100))]
         
-        self.log(f"   Stage 2 - Service filter: {len(df)} products")
+        self.log(f"    Stage 2 - Service filter: {len(df)} products")
         return df
     
     def _apply_keyword_filters(self, df, req: ProductRequirement):
@@ -375,7 +401,7 @@ class IntelligentProductSelector:
         if req.required_keywords:
             pattern = '|'.join([re.escape(kw) for kw in req.required_keywords])
             df = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
-            self.log(f"   Stage 3a - Required keywords: {len(df)} products")
+            self.log(f"    Stage 3a - Required keywords: {len(df)} products")
         
         # Blacklist keywords
         if req.blacklist_keywords:
@@ -384,12 +410,12 @@ class IntelligentProductSelector:
                 df = df[~df['name'].str.contains(re.escape(keyword), case=False, na=False, regex=True)]
                 removed = before - len(df)
                 if removed > 0:
-                    self.log(f"   Stage 3b - Blacklist '{keyword}': removed {removed}")
+                    self.log(f"    Stage 3b - Blacklist '{keyword}': removed {removed}")
         
         # Category-specific filters
         df = self._apply_category_specific_filters(df, req)
         
-        self.log(f"   Stage 3 - Keyword filter: {len(df)} products")
+        self.log(f"    Stage 3 - Keyword filter: {len(df)} products")
         return df
     
     def _apply_category_specific_filters(self, df, req: ProductRequirement):
@@ -467,7 +493,7 @@ class IntelligentProductSelector:
             size_matches = df[df['name'].str.contains(size_pattern, na=False, regex=True)]
             if not size_matches.empty:
                 df = size_matches
-                self.log(f"   Stage 4a - Size matching ({req.size_requirement}\"): {len(df)} products")
+                self.log(f"    Stage 4a - Size matching ({req.size_requirement}\"): {len(df)} products")
         
         # Mounting type matching
         if req.mounting_type:
@@ -485,7 +511,7 @@ class IntelligentProductSelector:
             elif 'floor' in req.mounting_type.lower():
                 df = df[df['name'].str.contains(r'\b(floor|stand|cart|mobile)\b', case=False, na=False, regex=True)]
         
-        self.log(f"   Stage 4 - Specification match: {len(df)} products")
+        self.log(f"    Stage 4 - Specification match: {len(df)} products")
         return df
     
     def _validate_mount_capacity(self, df, req: ProductRequirement):
@@ -527,10 +553,10 @@ class IntelligentProductSelector:
                 validated_mounts.append(product)
         
         if validated_mounts:
-            self.log(f"   ✅ {len(validated_mounts)} mounts validated for {req.size_requirement}\" display")
+            self.log(f"    ✅ {len(validated_mounts)} mounts validated for {req.size_requirement}\" display")
             return pd.DataFrame(validated_mounts)
         else:
-            self.log(f"   ⚠️ No validated mounts for {req.size_requirement}\" - using all candidates")
+            self.log(f"    ⚠️ No validated mounts for {req.size_requirement}\" - using all candidates")
             return df
     
     def _apply_client_preferences(self, df, req: ProductRequirement):
@@ -555,7 +581,7 @@ class IntelligentProductSelector:
             
             preferred_matches = df[df['preference_score'] > 0]
             if not preferred_matches.empty:
-                self.log(f"   ✅ Found {len(preferred_matches)} preferred brand products: {preferred_brand}")
+                self.log(f"    ✅ Found {len(preferred_matches)} preferred brand products: {preferred_brand}")
                 return preferred_matches
         
         return df
@@ -576,7 +602,7 @@ class IntelligentProductSelector:
                 if req.category == 'Audio' and any(term in req.sub_category for term in ['Microphone', 'Expansion']):
                     brand_matches = df[df['brand'].str.lower() == vc_brand]
                     if not brand_matches.empty:
-                        self.log(f"   ✅ Prioritizing {vc_brand} accessories for ecosystem")
+                        self.log(f"    ✅ Prioritizing {vc_brand} accessories for ecosystem")
                         return brand_matches
         
         return df
@@ -618,7 +644,7 @@ class IntelligentProductSelector:
         
         for compat in req.compatibility_requirements:
             if compat.lower() not in combined_text:
-                self.log(f"   ⚠️ Missing compatibility: {compat}")
+                self.log(f"    ⚠️ Missing compatibility: {compat}")
                 return False
         
         return True
