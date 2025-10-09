@@ -96,7 +96,7 @@ def _add_version_control_sheet(workbook, project_details, styles):
     vc_header.value = "Version"
     vc_header.fill = styles['header_green_fill']
     vc_header.font = styles['black_bold_font']
-    vc_header.alignment = Alignment(horizontal='center')
+    vc_header.alignment = Alignment(horizontal='center', vertical='center') # ADDED vertical='center'
     vc_header.border = styles['thin_border']
     sheet['B3'].border = styles['thin_border']
 
@@ -113,7 +113,9 @@ def _add_version_control_sheet(workbook, project_details, styles):
             sheet[f'{col_letter}{row}'].border = styles['thin_border']
         sheet[f'A{row}'].value = label
         sheet[f'A{row}'].fill = styles['header_light_green_fill']
+        sheet[f'A{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
         sheet[f'B{row}'].value = value
+        sheet[f'B{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
 
     # === CONTACT DETAILS TABLE ===
     sheet.merge_cells('E3:F3')
@@ -121,7 +123,7 @@ def _add_version_control_sheet(workbook, project_details, styles):
     cd_header.value = "Contact Details"
     cd_header.fill = styles['header_green_fill']
     cd_header.font = styles['black_bold_font']
-    cd_header.alignment = Alignment(horizontal='center')
+    cd_header.alignment = Alignment(horizontal='center', vertical='center') # ADDED vertical='center'
     cd_header.border = styles['thin_border']
     sheet['F3'].border = styles['thin_border']
 
@@ -142,10 +144,13 @@ def _add_version_control_sheet(workbook, project_details, styles):
             sheet[f'{col_letter}{row}'].border = styles['thin_border']
         sheet[f'E{row}'].value = label
         sheet[f'E{row}'].fill = styles['header_light_green_fill']
+        sheet[f'E{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
         sheet[f'F{row}'].value = value
         if label == "Key Comments for this version":
             sheet.row_dimensions[row].height = 40
             sheet[f'F{row}'].alignment = Alignment(wrap_text=True, vertical='top')
+        else:
+            sheet[f'F{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
 
 
 # ==================== TERMS & CONDITIONS SHEET ====================
@@ -179,9 +184,12 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "A. Delivery, Installations & Site Schedule"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
-    section_cell.alignment = Alignment(horizontal='left')
+    section_cell.font = Font(bold=True, color="FFFFFF") # ADDED color="FFFFFF"
+    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADDED vertical='center'
     section_cell.border = styles['thin_border']
+    # ADD BORDERS TO ALL MERGED CELLS
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     delivery_terms = [
@@ -192,7 +200,6 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         "• Implementation: Within 12 weeks of advance payment receipt",
         "",
         "Delivery Terms:",
-        "• Duty Paid INR: Free delivery at site",
         "• All deliveries within 6-8 weeks of commercially clear Purchase Order",
         "• Equipment delivered in phased manner (max 3 shipments)",
         "",
@@ -203,8 +210,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
+        cell.alignment = Alignment(wrap_text=True, vertical='center') # CHANGED from 'top' to 'center'
         cell.border = styles['thin_border']
+        # ADD BORDERS TO ALL MERGED CELLS
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         if term and not term.startswith('•'):
             cell.font = styles['bold_font']
             sheet.row_dimensions[row_cursor].height = 20
@@ -219,8 +229,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "B. Payment Terms"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF") # ADDED color="FFFFFF"
+    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADDED
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     payment_terms = [
@@ -234,8 +247,10 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = styles['thin_border']
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         if not term.startswith('•'):
             cell.font = styles['bold_font']
         sheet.row_dimensions[row_cursor].height = 15
@@ -248,15 +263,20 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "C. Offer Validity"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
     cell = sheet[f'A{row_cursor}']
     cell.value = "Offer Valid for 30 Days from date of quotation"
-    cell.alignment = Alignment(wrap_text=True)
+    cell.alignment = Alignment(wrap_text=True, vertical='center')
     cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 2
     
     # === SECTION D: PURCHASE ORDER DETAILS ===
@@ -264,8 +284,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "D. Placing a Purchase Order"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     po_details = [
@@ -283,6 +306,9 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         cell = sheet[f'A{row_cursor}']
         cell.value = detail
         cell.border = styles['thin_border']
+        cell.alignment = Alignment(vertical='center') # ADD THIS
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         if detail and not detail.startswith(' '):
             cell.font = styles['bold_font']
         row_cursor += 1
@@ -294,8 +320,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "E. Cable Estimates"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     cable_terms = [
@@ -307,8 +336,10 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = styles['thin_border']
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         sheet.row_dimensions[row_cursor].height = 20
         row_cursor += 1
     
@@ -319,8 +350,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "F. Order Changes"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     change_terms = [
@@ -333,8 +367,10 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = styles['thin_border']
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         sheet.row_dimensions[row_cursor].height = 20
         row_cursor += 1
     
@@ -345,15 +381,20 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "G. Restocking / Cancellation Fees"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
     cell = sheet[f'A{row_cursor}']
     cell.value = "Cancellation may involve charges up to 50% restocking/cancellation fees + shipping costs"
-    cell.alignment = Alignment(wrap_text=True)
+    cell.alignment = Alignment(wrap_text=True, vertical='center')
     cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     sheet.row_dimensions[row_cursor].height = 20
     row_cursor += 2
     
@@ -362,8 +403,11 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "H. Warranty"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
+    for col in ['B', 'C', 'D', 'E', 'F']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     warranty_terms = [
@@ -382,8 +426,10 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = styles['thin_border']
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         if term and not term.startswith('•'):
             cell.font = styles['bold_font']
             sheet.row_dimensions[row_cursor].height = 15
@@ -714,11 +760,13 @@ def _add_scope_of_work_sheet(workbook, styles):
     
     for idx, item in enumerate(scope_items, 1):
         sheet[f'A{row_cursor}'] = idx
-        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center', vertical='center')
         sheet[f'A{row_cursor}'].border = styles['thin_border']
+        sheet[f'A{row_cursor}'].fill = styles['header_light_green_fill']
         
         sheet[f'B{row_cursor}'] = item
         sheet[f'B{row_cursor}'].border = styles['thin_border']
+        sheet[f'B{row_cursor}'].alignment = Alignment(vertical='center', wrap_text=True)
         sheet.row_dimensions[row_cursor].height = 30
         row_cursor += 1
     
@@ -729,14 +777,18 @@ def _add_scope_of_work_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "Exclusions and Dependencies"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = styles['bold_font']
+    section_cell.font = Font(bold=True, color="FFFFFF") # ADD color="FFFFFF"
+    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADD vertical='center'
     section_cell.border = styles['thin_border']
+    sheet[f'B{row_cursor}'].border = styles['thin_border'] # ADD THIS
     row_cursor += 1
     
     sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
     cell = sheet[f'A{row_cursor}']
     cell.value = "The following items need to be arranged by the client on site:"
     cell.border = styles['thin_border']
+    cell.alignment = Alignment(vertical='center') # ADD THIS
+    sheet[f'B{row_cursor}'].border = styles['thin_border'] # ADD THIS
     sheet.row_dimensions[row_cursor].height = 20
     row_cursor += 1
     
@@ -752,12 +804,13 @@ def _add_scope_of_work_sheet(workbook, styles):
     
     for idx, item in enumerate(exclusions, 1):
         sheet[f'A{row_cursor}'] = idx
-        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center')
+        sheet[f'A{row_cursor}'].alignment = Alignment(horizontal='center', vertical='center')
         sheet[f'A{row_cursor}'].border = styles['thin_border']
+        sheet[f'A{row_cursor}'].fill = styles['header_light_green_fill']
         
         sheet[f'B{row_cursor}'] = item
         sheet[f'B{row_cursor}'].border = styles['thin_border']
-        sheet[f'B{row_cursor}'].alignment = Alignment(wrap_text=True, vertical='top')
+        sheet[f'B{row_cursor}'].alignment = Alignment(wrap_text=True, vertical='center')
         sheet.row_dimensions[row_cursor].height = 25
         row_cursor += 1
 
@@ -847,8 +900,6 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
                 room_tax = summary.get('total_gst', 0)
                 room_total = summary.get('grand_total', 0)
             except ImportError:
-                # This block will run if the boq_generator isn't available
-                # It duplicates the logic from the main function as a safety net
                 pass
 
         grand_subtotal += room_subtotal
@@ -874,18 +925,20 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
             cell = sheet.cell(row=row_cursor, column=col_idx)
             cell.value = value
             cell.border = styles['thin_border']
+            cell.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") # ADD THIS LINE
             
             # Apply number formatting to currency columns
-            if col_idx >= 4:  # Rate and all amount columns
+            if col_idx >= 4: # Rate and all amount columns
                 cell.number_format = styles['currency_format']
                 cell.alignment = Alignment(horizontal='right', vertical='center')
-            elif col_idx == 1:  # Sr. No
+            elif col_idx == 1: # Sr. No
                 cell.alignment = Alignment(horizontal='center', vertical='center')
-            elif col_idx == 3:  # Qty
+            elif col_idx == 3: # Qty
                 cell.alignment = Alignment(horizontal='center', vertical='center')
-            else:  # Description
+            else: # Description
                 cell.alignment = Alignment(horizontal='left', vertical='center')
         
+        sheet.row_dimensions[row_cursor].height = 20 # ADD THIS LINE for consistency
         row_cursor += 1
     
     # === GRAND TOTAL ROW ===
@@ -959,26 +1012,28 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     ct_header.fill = PatternFill(start_color="2563eb", end_color="2563eb", fill_type="solid")
     ct_header.alignment = Alignment(horizontal='center', vertical='center')
     ct_header.border = styles['thin_border']
+    # ADD BORDERS TO MERGED CELLS
+    for col in ['B', 'C', 'D', 'E', 'F', 'G']:
+        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     # Add basic commercial terms
     commercial_terms = [
-        ("A. Delivery, Installations & Site Schedule", ""),
-        ("All Wave AV Systems undertake to ensure it's best efforts to complete the assignment for Client within the shortest timelines possible.", ""),
-        ("", ""),
-        ("1. Project Schedule & Site Requirements", ""),
-        ("Week 1-3", ""),
-        ("All Wave AV Systems", "Design & Procurement"),
-        ("Client", "Site Preparations"),
-        ("", ""),
-        ("2. Delivery Terms", ""),
-        ("Duty Paid INR- Free delivery at site", ""),
-        ("Direct Import- FOB OR Ex-works of CIF", "")
+        ("A. Delivery, Installations & Site Schedule", "", True),
+        ("All Wave AV Systems undertake to ensure it's best efforts to complete the assignment for Client within the shortest timelines possible.", "", False),
+        ("", "", False),
+        ("1. Project Schedule & Site Requirements", "", True),
+        ("Week 1-3", "", False),
+        ("All Wave AV Systems", "Design & Procurement", False),
+        ("Client", "Site Preparations", False),
+        ("", "", False),
+        ("2. Delivery Terms", "", True),
+        ("Duty Paid INR- Free delivery at site", "", False),
+        ("Direct Import- FOB OR Ex-works of CIF", "", False)
     ]
     
-    for term_label, term_value in commercial_terms:
+    for term_label, term_value, is_header in commercial_terms:
         if not term_label and not term_value:
-            # Blank row for spacing
             row_cursor += 1
             continue
         
@@ -986,9 +1041,12 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
         label_cell = sheet[f'A{row_cursor}']
         label_cell.value = term_label
         label_cell.border = styles['thin_border']
-        label_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        label_cell.alignment = Alignment(wrap_text=True, vertical='center')
+        # ADD BORDERS TO MERGED CELLS
+        for col in ['B', 'C', 'D', 'E']:
+            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         
-        if term_label.startswith(('A.', 'B.', 'C.', 'D.', '1.', '2.')):
+        if is_header:
             label_cell.font = styles['bold_font']
             label_cell.fill = styles['header_light_green_fill']
         
@@ -996,7 +1054,8 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
         value_cell = sheet[f'F{row_cursor}']
         value_cell.value = term_value
         value_cell.border = styles['thin_border']
-        value_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        value_cell.alignment = Alignment(wrap_text=True, vertical='center')
+        sheet[f'G{row_cursor}'].border = styles['thin_border'] # ADD THIS
         
         sheet.row_dimensions[row_cursor].height = 20 if len(term_label) < 50 else 30
         row_cursor += 1
