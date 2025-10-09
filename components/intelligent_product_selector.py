@@ -35,6 +35,7 @@ class ProductRequirement:
 class IntelligentProductSelector:
     """
     Advanced product selection with multi-stage filtering and validation
+    Compatible with new dataset generation script categories
     """
     
     def __init__(self, product_df, client_preferences=None, budget_tier='Standard'):
@@ -43,6 +44,25 @@ class IntelligentProductSelector:
         self.budget_tier = budget_tier
         self.selection_log = []  # For debugging/reporting
         self.existing_selections = [] # For ecosystem checks
+        
+        # Normalize category names in the dataframe
+        self._normalize_dataframe_categories()
+    
+    def _normalize_dataframe_categories(self):
+        """Ensure consistent category naming"""
+        if 'category' in self.product_df.columns:
+            # Map any variations to standard names
+            category_mapping = {
+                'primary_category': 'category',
+                'main_category': 'category'
+            }
+            for old_col, new_col in category_mapping.items():
+                if old_col in self.product_df.columns and new_col not in self.product_df.columns:
+                    self.product_df.rename(columns={old_col: new_col}, inplace=True)
+        
+        # If using 'primary_category' from dataset generation script
+        if 'primary_category' in self.product_df.columns and 'category' not in self.product_df.columns:
+            self.product_df['category'] = self.product_df['primary_category']
     
     def select_product(self, requirement: ProductRequirement) -> Optional[Dict]:
         """
@@ -87,7 +107,7 @@ class IntelligentProductSelector:
         selected = self._select_by_budget(candidates, requirement)
         
         if selected is not None:
-            self.log(f"✅ Selected: {selected['brand']} {selected['model_number']} - ${selected['price']:.2f}")
+            self.log(f"✅ Selected: {selected['brand']} {selected['model_number']} - ${selected['price_usd']:.2f}")
             # STAGE 7: Compatibility Validation
             if not self._validate_compatibility(selected, requirement):
                 self.log(f"⚠️ Product may have compatibility issues")
@@ -95,18 +115,28 @@ class IntelligentProductSelector:
         return selected
     
     def _filter_by_category(self, req: ProductRequirement):
-        """Stage 1: Filter by category"""
-        if req.sub_category:
+        """Stage 1: Filter by category - ENHANCED for new dataset structure"""
+        
+        # Handle "General AV" category - try to match by sub_category keywords
+        if req.category == 'General AV':
+            # Search across all products using sub_category as keyword
+            df = self.product_df[
+                self.product_df['name'].str.contains(req.sub_category, case=False, na=False) |
+                self.product_df['description'].str.contains(req.sub_category, case=False, na=False)
+            ].copy()
+        elif req.sub_category:
+            # Standard category + sub_category filtering
             df = self.product_df[
                 (self.product_df['category'] == req.category) &
                 (self.product_df['sub_category'] == req.sub_category)
             ].copy()
         else:
+            # Category only filtering
             df = self.product_df[self.product_df['category'] == req.category].copy()
         
         # ADD: Apply minimum price if specified
         if hasattr(req, 'min_price') and req.min_price:
-            df = df[df['price'] >= req.min_price]
+            df = df[df['price_usd'] >= req.min_price]
             self.log(f"Applied minimum price filter (${req.min_price}): {len(df)} products")
         
         return df
@@ -131,7 +161,7 @@ class IntelligentProductSelector:
         
         # Additional heuristic: if "warranty" or "service" in name AND price < $100
         df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) &
-                  (df['price'] < 100))]
+                  (df['price_usd'] < 100))]
         
         return df
     
@@ -163,7 +193,7 @@ class IntelligentProductSelector:
             )]
             # MUST NOT contain touch panel terms
             df = df[~df['name'].str.contains(
-                r'(tlp|tswâ€|touch|panel|controller|ipad)',
+                r'(tlp|tsw-|touch|panel|controller|ipad)',
                 case=False, na=False, regex=True
             )]
             self.log(f"Display mount specific filter: {len(df)} products")
@@ -183,7 +213,7 @@ class IntelligentProductSelector:
         
         elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
             # EXCLUDE low-cost consumer PDUs
-            df = df[df['price'] > 100]
+            df = df[df['price_usd'] > 100]
             # REQUIRE rackmount
             df = df[df['name'].str.contains(
                 r'(rack.*mount|1u|2u|metered|switched)',
@@ -219,9 +249,27 @@ class IntelligentProductSelector:
             )]
             
             # MINIMUM PRICE for professional PTZ
-            df = df[df['price'] > 1000]  # Professional PTZ cameras cost $1000+
+            df = df[df['price_usd'] > 1000]  # Professional PTZ cameras cost $1000+
             
             self.log(f"Professional PTZ camera filter: {len(df)} products")
+        
+        # ADD: Handle Peripherals & Accessories category
+        elif req.category == 'Peripherals & Accessories':
+            if 'Input Devices' in req.sub_category:
+                df = df[df['name'].str.contains(
+                    r'(keyboard|mouse|trackpad|presenter|remote)',
+                    case=False, na=False, regex=True
+                )]
+            elif 'Document Camera' in req.sub_category:
+                df = df[df['name'].str.contains(
+                    r'(document.*camera|visualizer|overhead.*camera)',
+                    case=False, na=False, regex=True
+                )]
+            elif 'KVM' in req.sub_category or 'USB Hub' in req.sub_category:
+                df = df[df['name'].str.contains(
+                    r'(kvm|usb.*hub|docking.*station|port.*replicator)',
+                    case=False, na=False, regex=True
+                )]
         
         return df
     
@@ -245,8 +293,8 @@ class IntelligentProductSelector:
                 if req.size_requirement and req.size_requirement >= 85:
                     self.log(f"Large display ({req.size_requirement}\") - filtering for heavy-duty mounts")
                     
-                    # **NEW**: Validate actual capacity
-                    df = self._validate_mount_capacity(df, req) # ADD THIS LINE
+                    # Validate actual capacity
+                    df = self._validate_mount_capacity(df, req)
                     
                     # EXCLUDE small/medium mounts by model number
                     df = df[~df['model_number'].str.contains(
@@ -271,12 +319,18 @@ class IntelligentProductSelector:
             return df  # Standard validation sufficient for smaller displays
         
         # For 85"+ displays, require explicit large format capability
-        # Extract weight capacity from product specs
         validated_mounts = []
         
         for idx, product in df.iterrows():
             name = product.get('name', '').lower()
-            specs = product.get('specifications', '').lower()
+            
+            # Check both 'specifications' and 'full_specifications' columns
+            specs = ''
+            if 'specifications' in product:
+                specs = str(product.get('specifications', '')).lower()
+            elif 'full_specifications' in product:
+                specs = str(product.get('full_specifications', '')).lower()
+            
             combined = f"{name} {specs}"
             
             # Check for large format indicators
@@ -366,8 +420,9 @@ class IntelligentProductSelector:
         if df.empty:
             return None
         
-        # Sort by price
-        df_sorted = df.sort_values('price')
+        # Sort by price - handle both 'price' and 'price_usd' columns
+        price_col = 'price_usd' if 'price_usd' in df.columns else 'price'
+        df_sorted = df.sort_values(price_col)
         
         # Budget tier selection logic
         if self.budget_tier in ['Premium', 'Executive']:
@@ -398,7 +453,14 @@ class IntelligentProductSelector:
             return True
         
         product_name = product.get('name', '').lower()
-        product_specs = product.get('specifications', '').lower()
+        
+        # Check both possible specification column names
+        product_specs = ''
+        if 'specifications' in product:
+            product_specs = str(product.get('specifications', '')).lower()
+        elif 'full_specifications' in product:
+            product_specs = str(product.get('full_specifications', '')).lower()
+        
         combined_text = f"{product_name} {product_specs}"
         
         # Check if product mentions any required compatibility
