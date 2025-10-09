@@ -30,6 +30,7 @@ except ImportError as e:
         def __init__(self, *args, **kwargs): pass
         def select_product(self, req): return None
         def get_selection_report(self): return "Fallback mode: No report available."
+        def get_validation_warnings(self): return [] # Fallback for new function
     class NLPRequirementsParser:
         def parse(self, text): return {}
     def extract_room_specific_requirements(text): return {'equipment_overrides': {}, 'client_preferences': {}}
@@ -544,6 +545,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             client_preference_weight=0.8
         )
 
+        # ===========================================================================
+        # CHANGE 1: Update Display Mount Section
+        # ===========================================================================
         blueprint['display_mount'] = ProductRequirement(
             category='Mounts',
             sub_category='Display Mount / Cart',
@@ -557,9 +561,12 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
                 'ring', 'bezel', 'trim', 'spacer', 'adapter plate',
                 'x70', 'x50', 'x30', 'rally', 'studio', 'camera',
                 'accessory', 'bracket kit', 'finishing',
-                'tlp', 'tsw', 'touch', 'panel', 'controller', 'ipad' # NEW: Exclude touch panel mounts
+                'tlp', 'tsw', 'touch', 'panel', 'controller', 'ipad'
             ],
-            compatibility_requirements=[f'{size}"'] if size >= 85 else []
+            compatibility_requirements=[f'{size}"'] if size >= 85 else [],
+            min_price=200,  # NEW: Professional mounts start at $200
+            max_price=2000, # NEW: Prevent selecting video wall systems
+            strict_category_match=True  # NEW: Enforce strict validation
         )
 
     # === VIDEO SYSTEM ===
@@ -611,28 +618,29 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         video_reqs = equipment_reqs['video_system']
         vc_brand = video_reqs.get('brand', '').lower()
 
+    # ===========================================================================
+    # CHANGE 2: Update Touch Controller Section
+    # ===========================================================================
     # Build touch panel requirement with brand preference
-    touch_panel_keywords = ['touch', 'controller', 'panel', 'control']
+    touch_panel_keywords = ['touch', 'controller', 'panel', 'control', 'room controller']
     touch_panel_blacklist = [
         'room kit', 'codec', 'bar', 'camera', 'display',
-        'monitor', 'ess', 'system', 'video bar'
+        'monitor', 'ess', 'system', 'video bar',
+        'receiver', 'transmitter', 'scaler', 'switcher',  # NEW: Prevent selecting AV equipment
+        'dm-', 'hdmi', 'extender', 'matrix'  # NEW: Prevent selecting signal processors
     ]
 
-    # **NEW**: Add brand-specific keywords for ecosystem match
+    # Brand-specific keywords for ecosystem match
     if vc_brand:
         if 'cisco' in vc_brand:
-            touch_panel_keywords.append('cisco')
-            touch_panel_keywords.append('touch 10')
+            touch_panel_keywords.extend(['cisco', 'touch 10'])
             st.info(f"🔗 Matching touch panel to Cisco ecosystem")
             touch_panel_blacklist.extend(['poly', 'yealink', 'crestron tss'])
-            st.info(f"🔒 Restricting touch panel to Cisco ecosystem")
         elif 'poly' in vc_brand:
-            touch_panel_keywords.append('poly')
-            touch_panel_keywords.append('tc8')
+            touch_panel_keywords.extend(['poly', 'tc8'])
             st.info(f"🔗 Matching touch panel to Poly ecosystem")
         elif 'yealink' in vc_brand:
-            touch_panel_keywords.append('yealink')
-            touch_panel_keywords.append('ctp')
+            touch_panel_keywords.extend(['yealink', 'ctp'])
 
     blueprint['touch_control_panel'] = ProductRequirement(
         category='Video Conferencing',
@@ -642,7 +650,10 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         justification=f'Touch control panel for system control (brand-matched to {vc_brand or "video system"})',
         required_keywords=touch_panel_keywords,
         blacklist_keywords=touch_panel_blacklist,
-        compatibility_requirements=[vc_brand] if vc_brand else []  # **NEW**
+        compatibility_requirements=[vc_brand] if vc_brand else [],
+        min_price=300,  # NEW: Touch panels start at $300
+        max_price=5000, # NEW: Prevent selecting full control systems
+        strict_category_match=True  # NEW: Enforce strict validation
     )
     
     # === ROOM SCHEDULING PANEL (Executive/Large Conference Rooms) ===
@@ -775,6 +786,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     has_presentation = 'wireless presentation' in technical_reqs.get('features', '').lower()
     has_multiple_sources = technical_reqs.get('video_sources', 0) > 2
     
+    # ===========================================================================
+    # CHANGE 4: Update Video Switcher Section
+    # ===========================================================================
     # Add switcher if:
     # - Multiple displays OR
     # - Multiple video sources OR  
@@ -786,8 +800,11 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             quantity=1,
             priority=4,
             justification=f'Video matrix switcher for routing {num_displays} displays and multiple sources',
-            required_keywords=['switcher', 'matrix', 'hdmi', 'routing'],
-            blacklist_keywords=['cable', 'adapter', 'extender only']
+            required_keywords=['switcher', 'matrix', 'hdmi', 'routing', 'scaler', 'presentation'],
+            blacklist_keywords=['cable', 'adapter', 'extender only', 'receiver only', 'mount', 'bracket'],
+            min_price=500,  # NEW: Professional switchers start at $500
+            max_price=15000, # NEW: Reasonable upper limit
+            strict_category_match=True  # NEW: Enforce strict validation
         )
         st.info(f"📺 Adding video switcher (multi-display or large room detected)")
     
@@ -820,6 +837,9 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
 
     cable_count = max(5, int(base_cables * size_multiplier))  # Minimum 5 cables
 
+    # ===========================================================================
+    # CHANGE 7: Update Network Cables Section
+    # ===========================================================================
     blueprint['network_cables'] = ProductRequirement(
         category='Cables & Connectivity',
         sub_category='AV Cable',
@@ -827,12 +847,18 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
         priority=10,
         justification=f'{cable_count}x Cat6/Cat7 cables for equipment connectivity (calculated: {component_count} components × 2 × {size_multiplier:.1f})',
         required_keywords=['cat6', 'cat7', 'ethernet', 'network'],
-        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo']
+        blacklist_keywords=['bulk', 'spool', 'reel', 'vga', 'svideo'],
+        min_price=10,  # NEW: Individual cables should be at least $10
+        max_price=150, # NEW: Prevent selecting cable bundles or spools
+        strict_category_match=True  # NEW: Enforce strict validation
     )
 
     st.info(f"🔌 Cable quantity: {cable_count} (based on {component_count} components and {room_area} sqft room)")
 
     # === INFRASTRUCTURE ===
+    # ===========================================================================
+    # CHANGE 3: Update Equipment Rack Section
+    # ===========================================================================
     if equipment_reqs.get('housing', {}).get('type') == 'AV Rack':
         blueprint['equipment_rack'] = ProductRequirement(
             category='Infrastructure',
@@ -840,8 +866,14 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             quantity=1,
             priority=12,
             justification='Equipment rack for AV components',
-            required_keywords=['rack', 'enclosure', 'cabinet'],
-            blacklist_keywords=['shelf', 'mount kit', 'accessory']
+            required_keywords=['rack', 'enclosure', 'cabinet', 'frame'],
+            blacklist_keywords=[
+                'shelf only', 'mount kit', 'accessory', 'bracket',
+                'wall mount', 'camera', 'display', 'speaker'  # NEW: Prevent accessories
+            ],
+            min_price=100,  # NEW: Real racks cost more than $100
+            max_price=3000, # NEW: Reasonable upper limit
+            strict_category_match=True  # NEW: Enforce strict validation
         )
 
     if equipment_reqs.get('power_management', {}).get('type') == 'Rackmount PDU':
@@ -906,7 +938,38 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     base_equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     equipment_reqs = merge_equipment_requirements(base_equipment_reqs, equipment_overrides)
     
-    # In generate_boq_from_ai, after equipment_reqs definition
+    # ===========================================================================
+    # CHANGE 8: Add Display Quantity Validation
+    # ===========================================================================
+    # NEW: Validate display quantity for room size
+    if 'displays' in equipment_reqs:
+        display_qty = equipment_reqs['displays'].get('quantity', 1)
+        display_size = equipment_reqs['displays'].get('size_inches', 65)
+        
+        # Warn if multiple large displays in standard room
+        if display_qty > 1 and room_area < 800:
+            st.warning(
+                f"⚠️ Room size ({room_area} sqft) may not require {display_qty}x {display_size}\" displays. "
+                f"Standard rooms typically use 1 display. Verify with client requirements."
+            )
+            
+            # Show confirmation
+            with st.expander("🔍 Multiple Display Configuration", expanded=True):
+                st.info(f"""
+                **Current Configuration:**
+                - Room Size: {room_area} sqft
+                - Displays: {display_qty}x {display_size}"
+                - Estimated Cost: ${display_qty * 6347:.2f}
+                
+                **Typical Configurations:**
+                - Small Rooms (<200 sqft): 1x 55-65" display
+                - Medium Rooms (200-500 sqft): 1x 65-75" display
+                - Large Rooms (500-800 sqft): 1x 75-98" display
+                - Very Large Rooms (>800 sqft): 2x displays or video wall
+                
+                If this is a video wall configuration, ensure appropriate mounting and processing equipment is included.
+                """)
+    
     st.write("🔍 **DEBUG: Equipment Requirements**")
     st.json(equipment_reqs) # This will show you what's being passed to blueprint
     
@@ -968,6 +1031,49 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         product = selector.select_product(comp_spec)
         
         if product:
+            # ===========================================================================
+            # CHANGE 6: Add Post-Selection Validation
+            # ===========================================================================
+            # NEW: Additional validation for specific categories
+            if comp_spec.category == 'Mounts' and 'Display Mount' in comp_spec.sub_category:
+                # Validate mount is appropriate for display size
+                if hasattr(comp_spec, 'size_requirement') and comp_spec.size_requirement:
+                    mount_name = product.get('name', '').lower()
+                    size_indicators = [f'{s}"' for s in range(int(comp_spec.size_requirement) - 5, int(comp_spec.size_requirement) + 5)]
+                    has_size_match = any(indicator in mount_name for indicator in size_indicators)
+                    
+                    if not has_size_match and comp_spec.size_requirement >= 85:
+                        st.warning(
+                            f"⚠️ Mount '{product.get('brand')} {product.get('model_number')}' "
+                            f"may not explicitly support {comp_spec.size_requirement}\" displays. "
+                            f"Verify compatibility before ordering."
+                        )
+            
+            if comp_spec.category == 'Infrastructure' and 'AV Rack' in comp_spec.sub_category:
+                # Validate this is actually a rack, not a bracket
+                rack_name = product.get('name', '').lower()
+                if 'bracket' in rack_name or 'mount' in rack_name:
+                    st.error(
+                        f"❌ CRITICAL: '{product.get('name')}' is not an equipment rack. "
+                        f"This is a {product.get('sub_category')}. Product selection failed validation."
+                    )
+                    product = None  # Reject this product
+            
+            if comp_spec.category == 'Video Conferencing' and 'Touch Controller' in comp_spec.sub_category:
+                # Validate this is actually a touch panel, not a receiver/scaler
+                controller_name = product.get('name', '').lower()
+                if any(term in controller_name for term in ['receiver', 'transmitter', 'scaler', 'switcher', 'extender']):
+                    st.error(
+                        f"❌ CRITICAL: '{product.get('name')}' is not a touch controller. "
+                        f"This is video processing equipment. Product selection failed validation."
+                    )
+                    product = None  # Reject this product
+            
+            # Only proceed if product passed validation
+            if product is None:
+                selection_summary.append(f"❌ {comp_key}: FAILED VALIDATION")
+                continue
+
             # === AFTER MICROPHONE SELECTION ===
             if 'microphone' in product.get('sub_category', '').lower():
                 mic_price = product.get('price', 0)
@@ -1068,6 +1174,24 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         # Show AI justification quality
         avg_confidence = sum(item.get('justification_confidence', 0) for item in boq_items) / len(boq_items) if boq_items else 0
         st.metric("Average AI Justification Quality", f"{avg_confidence*100:.1f}%")
+
+    # ===========================================================================
+    # CHANGE 5: Add Validation Report Display
+    # ===========================================================================
+    # NEW: Display validation warnings if any
+    validation_warnings = selector.get_validation_warnings()
+    if validation_warnings:
+        with st.expander("⚠️ Product Validation Warnings", expanded=True):
+            st.warning(f"Found {len(validation_warnings)} products that failed validation:")
+            for warning in validation_warnings:
+                st.error(f"""
+                **Component**: {warning['component']}
+                **Product**: {warning['product']}
+                **Issues**:
+                """)
+                for issue in warning['issues']:
+                    st.write(f"  - {issue}")
+            st.info("💡 These products were automatically rejected and alternatives were selected.")
     
     if not boq_items:
         st.error("❌ No products could be selected. Please check your requirements.")
