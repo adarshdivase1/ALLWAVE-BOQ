@@ -967,21 +967,24 @@ label,
     transition: all var(--animation-fast) ease;
 }
 
+/* === FIX: Product Name Visibility on Hover === */
 .streamlit-expanderHeader:hover {
-    background: var(--widget-bg-hover) !important;
+    background: rgba(255, 255, 255, 0.1) !important; /* Semi-transparent on hover */
     border-color: var(--border-color-strong) !important;
     box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2);
 }
 
-/* Ensure expander header text stays visible on hover */
+/* Ensure ALL text stays visible on hover */
 .streamlit-expanderHeader:hover p,
-.streamlit-expanderHeader:hover div {
+.streamlit-expanderHeader:hover div,
+.streamlit-expanderHeader:hover span {
     color: var(--text-primary) !important;
     font-weight: 600 !important;
 }
 
-/* Fix for the product name specifically */
-.streamlit-expanderHeader:hover strong {
+/* Make product brand/model stand out on hover */
+.streamlit-expanderHeader:hover strong,
+.streamlit-expanderHeader:hover b {
     color: var(--glow-primary) !important;
     text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
 }
