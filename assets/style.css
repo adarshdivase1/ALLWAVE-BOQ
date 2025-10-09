@@ -1200,3 +1200,83 @@ div[data-testid="stWidgetLabel"] p {
     letter-spacing: 0.75px;
     margin-bottom: var(--spacing-sm) !important;
 }
+
+/* ========================================================================= */
+/* ULTIMATE EXPANDER FIX - MAXIMUM SPECIFICITY                               */
+/* ========================================================================= */
+
+/* Target ALL possible wrapper divs and states with maximum specificity */
+div[data-testid="stExpander"] details summary,
+div[data-testid="stExpander"] details summary:hover,
+div[data-testid="stExpander"] details summary:focus,
+div[data-testid="stExpander"] details summary:active,
+div[data-testid="stExpander"] .streamlit-expanderHeader,
+div[data-testid="stExpander"] .streamlit-expanderHeader:hover,
+div[data-testid="stExpander"] .streamlit-expanderHeader:focus,
+div[data-testid="stExpander"] .streamlit-expanderHeader:active {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    background-image: none !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Force dark background on hover with higher specificity */
+div[data-testid="stExpander"] details summary:hover,
+div[data-testid="stExpander"] .streamlit-expanderHeader:hover {
+    background-color: rgba(0, 0, 0, 0.65) !important;
+    background: rgba(0, 0, 0, 0.65) !important;
+}
+
+/* Target the actual clickable button inside summary */
+div[data-testid="stExpander"] details summary button,
+div[data-testid="stExpander"] details summary button:hover,
+div[data-testid="stExpander"] details summary button:focus,
+div[data-testid="stExpander"] details summary button:active {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+/* Force text visibility in ALL states - ultra aggressive */
+div[data-testid="stExpander"] details summary *,
+div[data-testid="stExpander"] details summary:hover *,
+div[data-testid="stExpander"] .streamlit-expanderHeader *,
+div[data-testid="stExpander"] .streamlit-expanderHeader:hover *,
+div[data-testid="stExpander"] details summary p,
+div[data-testid="stExpander"] details summary:hover p,
+div[data-testid="stExpander"] details summary div,
+div[data-testid="stExpander"] details summary:hover div,
+div[data-testid="stExpander"] details summary span,
+div[data-testid="stExpander"] details summary:hover span {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+/* Remove any transitions on background that might cause flashing */
+div[data-testid="stExpander"] details summary,
+div[data-testid="stExpander"] .streamlit-expanderHeader {
+    transition: border-color var(--animation-fast) ease, 
+                box-shadow var(--animation-fast) ease !important;
+    transition-property: border-color, box-shadow !important;
+}
+
+/* Override Streamlit's default background on ANY child div */
+div[data-testid="stExpander"] > div,
+div[data-testid="stExpander"] > div > div,
+div[data-testid="stExpander"] details,
+div[data-testid="stExpander"] details > div {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+/* Prevent any white/light colors from appearing ANYWHERE */
+div[data-testid="stExpander"] *:not(svg):not(path) {
+    background-color: transparent !important;
+}
+
+/* Special handling for the details element itself */
+div[data-testid="stExpander"] details[open] summary,
+div[data-testid="stExpander"] details:not([open]) summary {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+}
