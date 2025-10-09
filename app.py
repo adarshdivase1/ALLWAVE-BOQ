@@ -100,6 +100,24 @@ def create_header(main_logo, partner_logos):
         """, unsafe_allow_html=True)
 
 
+def validate_required_fields():
+    """Validates that all required project fields are filled"""
+    required_fields = {
+        'project_name_input': 'Project Name',
+        'client_name_input': 'Client Name',
+        'location_input': 'Location',
+        'design_engineer_input': 'Design Engineer',
+        'account_manager_input': 'Account Manager'
+    }
+    
+    missing = []
+    for key, label in required_fields.items():
+        if not st.session_state.get(key, '').strip():
+            missing.append(label)
+    
+    return missing
+
+
 def show_login_page(logo_b64, page_icon_path):
     """Displays the login page for user authentication."""
     st.set_page_config(page_title="AllWave AV - Login", page_icon=page_icon_path, layout="centered")
@@ -125,9 +143,29 @@ def show_login_page(logo_b64, page_icon_path):
         
         st.markdown("<hr style='border-color: var(--border-color); margin: 1rem 0;'>", unsafe_allow_html=True)
         
-        is_psni = st.radio("Are you part of a PSNI Global Alliance certified company?", ("Yes", "No"), horizontal=True, key="is_psni_radio")
-        location_type = st.radio("What is your operational region?", ("Local (India)", "Global"), horizontal=True, key="location_type_radio")
-        existing_customer = st.radio("Have you worked with AllWave AV before?", ("Yes", "No"), horizontal=True, key="existing_customer_radio")
+        is_psni = st.radio(
+            "Is this project referred/sourced through PSNI Global Alliance?", 
+            ("Yes - PSNI Referral", "No - Direct Client"), 
+            horizontal=True, 
+            key="is_psni_radio",
+            help="Select 'Yes' if PSNI recommended your company for this project"
+        )
+
+        client_location = st.radio(
+            "Client Location & Currency", 
+            ("Local (India) - INR", "International - USD"), 
+            horizontal=True, 
+            key="client_location_radio",
+            help="This determines the currency used throughout the proposal"
+        )
+
+        existing_customer = st.radio(
+            "Client Relationship Status", 
+            ("Existing Client", "New Client"), 
+            horizontal=True, 
+            key="existing_customer_radio",
+            help="Existing clients receive preferential pricing"
+        )
         submitted = st.form_submit_button("Engage", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -136,9 +174,17 @@ def show_login_page(logo_b64, page_icon_path):
             show_animated_loader("Authenticating...", 1.5)
             st.session_state.authenticated = True
             st.session_state.user_email = email
-            st.session_state.is_psni_certified = (is_psni == "Yes")
-            st.session_state.user_location_type = location_type
-            st.session_state.is_existing_customer = (existing_customer == "Yes")
+            
+            # UPDATED: Store PSNI referral status
+            st.session_state.is_psni_referral = (is_psni == "Yes - PSNI Referral")
+            
+            # UPDATED: Store client location and set currency
+            st.session_state.client_is_local = ("Local" in client_location)
+            st.session_state.currency_select = "INR" if st.session_state.client_is_local else "USD"
+            
+            # Store customer status
+            st.session_state.is_existing_customer = (existing_customer == "Existing Client")
+            
             show_success_message("Authentication Successful. Welcome.")
             time.sleep(1)
             st.rerun()
@@ -218,12 +264,11 @@ def main():
         st.session_state.gst_rates['Electronics'] = int(st.session_state.gst_rates.get('Electronics', 18))
         st.session_state.gst_rates['Services'] = int(st.session_state.gst_rates.get('Services', 18))
     
-    # Set currency based on location
-    if st.session_state.get('user_location_type') == 'Local (India)':
-        if 'currency_select' not in st.session_state:
+    # Set currency based on location - This is now set at login, but keep a fallback
+    if 'currency_select' not in st.session_state:
+        if st.session_state.get('client_is_local'):
             st.session_state.currency_select = "INR"
-    else:
-        if 'currency_select' not in st.session_state:
+        else:
             st.session_state.currency_select = "USD"
     
     # Room dimensions
@@ -279,10 +324,15 @@ def main():
         </div>
         ''', unsafe_allow_html=True)
         
-        if st.session_state.get('is_psni_certified', False):
-            st.success("✅ PSNI Global Alliance Member")
+        if st.session_state.get('is_psni_referral', False):
+            st.success("✅ PSNI Global Alliance Referral")
         else:
-            st.info("ℹ️ Not a PSNI Member")
+            st.info("ℹ️ Direct Client Project")
+
+        if st.session_state.get('client_is_local', False):
+            st.info("🇮🇳 Local Client (India) - INR Currency")
+        else:
+            st.info("🌍 International Client - USD Currency")
         
         if st.button("🚪 Logout", use_container_width=True):
             show_animated_loader("De-authorizing...", 1)
@@ -314,9 +364,10 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>⚙️ Financial Config</h3>', unsafe_allow_html=True)
         
-        st.text_input("Currency", value=st.session_state.currency_select, disabled=True)
+        currency_display = "INR (₹)" if st.session_state.get('client_is_local') else "USD ($)"
+        st.text_input("Currency (Auto-set)", value=currency_display, disabled=True, 
+                      help="Currency is automatically set based on client location")
         
-        # --- CHANGE 1: MODIFIED GST NUMBER INPUTS ---
         st.session_state.gst_rates['Electronics'] = st.number_input(
             "Hardware GST (%)", 
             value=int(st.session_state.gst_rates.get('Electronics', 18)),
@@ -458,7 +509,17 @@ def main():
     with tab4:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         
-        if st.button("✨ Generate & Validate Production-Ready BOQ", type="primary", use_container_width=True, key="generate_boq_btn"):
+        missing_fields = validate_required_fields()
+        if missing_fields:
+            st.warning(f"⚠️ Please fill required fields: {', '.join(missing_fields)}")
+            generate_disabled = True
+        else:
+            generate_disabled = False
+
+        if st.button("✨ Generate & Validate Production-Ready BOQ", 
+                      type="primary", use_container_width=True, 
+                      key="generate_boq_btn",
+                      disabled=generate_disabled):
             if not model:
                 show_error_message("AI Model is not available. Please check API key.")
             else:
@@ -511,9 +572,12 @@ def main():
                 'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
                 'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {}),
-                'PSNI Certified': "Yes" if st.session_state.get('is_psni_certified') else "No",
+                
+                # NEW FIELDS
+                'PSNI Referral': "Yes" if st.session_state.get('is_psni_referral', False) else "No",
+                'Client Type': "Local (India)" if st.session_state.get('client_is_local', False) else "International",
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
-                'Region': st.session_state.get('user_location_type', 'Global')
+                'Currency': st.session_state.get('currency_select', 'USD')
             }
             display_boq_results(product_df, project_details)
         else:
