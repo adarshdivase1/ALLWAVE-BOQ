@@ -967,28 +967,6 @@ label,
     transition: all var(--animation-fast) ease;
 }
 
-/* === FIX: Product Name Visibility on Hover === */
-.streamlit-expanderHeader:hover {
-    background: rgba(255, 255, 255, 0.1) !important; /* Semi-transparent on hover */
-    border-color: var(--border-color-strong) !important;
-    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2);
-}
-
-/* Ensure ALL text stays visible on hover */
-.streamlit-expanderHeader:hover p,
-.streamlit-expanderHeader:hover div,
-.streamlit-expanderHeader:hover span {
-    color: var(--text-primary) !important;
-    font-weight: 600 !important;
-}
-
-/* Make product brand/model stand out on hover */
-.streamlit-expanderHeader:hover strong,
-.streamlit-expanderHeader:hover b {
-    color: var(--glow-primary) !important;
-    text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
-}
-
 /* ============================================
     TABLES & DATAFRAMES
     ============================================ */
@@ -1136,4 +1114,33 @@ div[data-testid="stWidgetLabel"] p {
     text-transform: uppercase;
     letter-spacing: 0.75px;
     margin-bottom: var(--spacing-sm) !important;
+}
+
+/* === CRITICAL FIX: Force Text Visibility on Hover === */
+.streamlit-expanderHeader:hover {
+    background: rgba(0, 0, 0, 0.5) !important; /* Dark background instead of light */
+    border-color: var(--border-color-strong) !important;
+    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2);
+}
+
+/* Force ALL text elements to remain visible */
+.streamlit-expanderHeader:hover,
+.streamlit-expanderHeader:hover *,
+.streamlit-expanderHeader:hover p,
+.streamlit-expanderHeader:hover div,
+.streamlit-expanderHeader:hover span,
+.streamlit-expanderHeader:hover strong,
+.streamlit-expanderHeader:hover b {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important; /* Override any gradient fills */
+    opacity: 1 !important;
+}
+
+/* Extra emphasis for bold text on hover */
+.streamlit-expanderHeader:hover strong,
+.streamlit-expanderHeader:hover b {
+    color: var(--glow-primary) !important;
+    -webkit-text-fill-color: var(--glow-primary) !important;
+    text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
+    font-weight: 700 !important;
 }
