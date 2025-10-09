@@ -660,15 +660,15 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     if technical_reqs.get('room_type') in ['Executive Boardroom', 'Large Conference', 'Board Room'] or room_area > 500:
         blueprint['room_scheduling_panel'] = ProductRequirement(
             category='Control Systems',
-            sub_category='Room Scheduling Display',
+            sub_category='Touch Panel',  # ✅ CHANGED: Use existing category
             quantity=1,
             priority=13,
-            justification='Wall-mounted room scheduling panel with calendar integration',
-            required_keywords=['scheduling', 'panel', 'room', 'calendar', 'booking'],
-            blacklist_keywords=['software only', 'license'],
-            min_price=300,  # NEW
-            max_price=3000,  # NEW
-            strict_category_match=False  # NEW: Allow broader matching if not found
+            justification='Touch panel for room scheduling and calendar integration',
+            required_keywords=['touch', 'panel', 'scheduling', 'room', '10"', 'wall mount'],
+            blacklist_keywords=['video conferencing', 'codec', 'camera'],
+            min_price=300,
+            max_price=2000,
+            strict_category_match=False  # Allow broader matching
         )
         st.info("📅 Adding room scheduling panel (executive room detected)")
 
