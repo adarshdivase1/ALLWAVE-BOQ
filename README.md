@@ -1,5 +1,4 @@
-# AllWave AV BOQ Generator - Complete Documentation
-
+# AllWave AV BOQ Generator 
 ## 📋 Project Overview
 
 The **AllWave AV BOQ Generator** is an enterprise-grade, AI-powered Bill of Quantities (BOQ) generation system for professional audio-visual system design. Built with Streamlit and integrated with Google's Gemini AI, it automates the complex process of AV system design while ensuring AVIXA standards compliance.
