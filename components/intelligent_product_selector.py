@@ -1,4 +1,4 @@
-# FILE: components/intelligent_product_selector.py (OPTIMIZED)
+# FILE: components/intelligent_product_selector.py
 
 import re
 from typing import Dict, List, Optional, Tuple
@@ -107,9 +107,15 @@ class IntelligentProductSelector:
                 'must_not_contain': ['audio only', 'speaker only'],
                 'price_range': (300, 20000),
                 'sub_category_validators': {
+                    # ✅ FIXED: Relaxed the must_contain rule. Model numbers (like TSW, TSS) are now sufficient.
                     'Touch Controller / Panel': {
-                        'must_contain': ['touch', 'panel', 'controller', 'control'],
-                        'must_not_contain': ['receiver', 'transmitter', 'extender', 'scaler', 'switcher', 'camera', 'codec']
+                        'must_contain': ['touch', 'panel', 'controller', 'control', 'tsw-', 'tss-', 'tap', 'navigator'],
+                        'must_not_contain': ['receiver', 'transmitter', 'extender', 'scaler', 'switcher', 'camera', 'codec', 'mount kit']
+                    },
+                    # ✅ ADDED: A new, specific validator for Scheduling Panels
+                    'Scheduling Panel': {
+                        'must_contain': ['schedul', 'booking', 'panel', 'tss-', 'tap'],
+                        'must_not_contain': ['license', 'software', 'camera', 'codec', 'video bar']
                     },
                     'PTZ Camera': {
                         'must_contain': ['camera', 'ptz', 'pan', 'tilt', 'zoom'],
@@ -143,9 +149,10 @@ class IntelligentProductSelector:
                 'must_not_contain': ['display', 'monitor', 'camera'],
                 'price_range': (50, 5000),
                 'sub_category_validators': {
+                    # ✅ FIXED: Added 'shelf' to the blacklist to prevent selecting accessories.
                     'AV Rack': {
                         'must_contain': ['rack', 'cabinet', 'enclosure', 'frame'],
-                        'must_not_contain': ['mount', 'bracket', 'shelf only', 'camera', 'display']
+                        'must_not_contain': ['mount', 'bracket', 'shelf', 'camera', 'display']
                     }
                 }
             },
