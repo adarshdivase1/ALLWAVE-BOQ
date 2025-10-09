@@ -470,16 +470,22 @@ class IntelligentProductSelector:
             df = df[df['price'] > 1000]
         
         elif req.category == 'Infrastructure' and 'AV Rack' in req.sub_category:
-            # CRITICAL: Ensure we get actual racks, not brackets
+            # CRITICAL: Ensure we get actual racks, not shelves
             df = df[df['name'].str.contains(
-                r'(rack|cabinet|enclosure|frame)',
+                r'(\d+u.*rack|\d+u.*cabinet|\d+u.*enclosure|equipment.*rack|relay.*rack|wall.*mount.*rack|open.*frame.*rack)',
                 case=False, na=False, regex=True
             )]
+            
+            # NEW: Explicitly exclude shelves and small accessories
             df = df[~df['name'].str.contains(
-                r'(bracket|mount(?!able)|wall.*mount|camera.*mount|shelf\s+only)',
+                r'(shelf|bracket|mount(?!.*rack)|camera|wall.*mount(?!.*rack)|1u(?!.*rack)|2u(?!.*rack))',
                 case=False, na=False, regex=True
             )]
-            df = df[df['price'] > 100]  # Actual racks cost more than $100
+            
+            # NEW: Price validation - real racks cost more
+            df = df[df['price'] > 300]  # Minimum $300 for actual rack
+            
+            self.log(f"    🔍 Filtered for actual racks (not shelves): {len(df)} products")
         
         return df
     
@@ -642,6 +648,29 @@ class IntelligentProductSelector:
         product_specs = str(product.get('specifications', '')).lower()
         combined_text = f"{product_name} {product_specs}"
         
+        # NEW: Special handling for display mounts
+        if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
+            # Video wall mounts are inherently compatible with large displays
+            if any(term in combined_text for term in ['video wall', 'videowall', 'large format']):
+                self.log(f"    ✅ Video wall mount - compatible with large displays")
+                return True
+            
+            # Check for explicit size compatibility
+            for compat in req.compatibility_requirements:
+                if str(compat) in combined_text or f'up to {compat}' in combined_text:
+                    return True
+            
+            # If mount doesn't explicitly exclude the size, assume compatible
+            size_req = req.size_requirement if hasattr(req, 'size_requirement') else 0
+            if size_req:
+                exclusion_patterns = [f'up to {s}"' for s in range(40, int(size_req)-10)]
+                is_explicitly_incompatible = any(pattern in combined_text for pattern in exclusion_patterns)
+                
+                if not is_explicitly_incompatible:
+                    self.log(f"    ✅ No size exclusions found - assuming compatible")
+                    return True
+        
+        # Original compatibility check for other categories
         for compat in req.compatibility_requirements:
             if compat.lower() not in combined_text:
                 self.log(f"    ⚠️ Missing compatibility: {compat}")
