@@ -1,11 +1,12 @@
 # components/boq_generator.py
-# PRODUCTION-READY VERSION - FULLY FIXED & ENHANCED WITH AI JUSTIFICATIONS
+# PRODUCTION-READY VERSION - FULLY FIXED & ENHANCED WITH AI JUSTIFICATIONS & PARALLEL PROCESSING
 
 import streamlit as st
 import pandas as pd
 import re
 import json
 import time
+import concurrent.futures
 
 # --- Component Imports ---
 try:
@@ -322,10 +323,10 @@ Be specific to THIS product and room. Use actual numbers from context."""
         return _get_fallback_justification(product_info, room_context)
 
 
-def _get_fallback_justification(product_info, room_context):
+def _get_fallback_justification(product_info, room_context=None):
     """Fallback justification when AI generation fails."""
     category = product_info.get('category', 'General')
-    room_type = room_context.get('room_type', 'conference room')
+    room_type = room_context.get('room_type', 'conference room') if room_context else 'conference room'
     
     fallback_reasons = extract_top_3_reasons('', category)
     
@@ -334,186 +335,6 @@ def _get_fallback_justification(product_info, room_context):
         'top_3_reasons': fallback_reasons,
         'confidence': 0.7
     }
-
-
-# ==================== ENHANCED FALLBACK WITH CLIENT PREFERENCES ====================
-def _get_fallback_product_legacy(category, sub_category, product_df, equipment_reqs=None, budget_tier='Standard', client_preferences=None):
-    """
-    LEGACY fallback - kept for backward compatibility
-    Now we use IntelligentProductSelector instead
-    """
-    if sub_category:
-        matches = product_df[
-            (product_df['category'] == category) &
-            (product_df['sub_category'] == sub_category)
-        ].copy()
-    else:
-        matches = product_df[product_df['category'] == category].copy()
-
-    if matches.empty:
-        return None
-
-    # === CRITICAL: STRICT SERVICE CONTRACT FILTER ===
-    if category not in ['Software & Services']:
-        # More aggressive pattern to catch all service contracts
-        service_pattern = r'\b(support.*contract|maintenance.*contract|extended.*service|extended.*warranty|con-snt|con-ecdn|smartcare.*contract|jumpstart.*service|carepack|care\s*pack|premier.*support|advanced.*replacement|onsite.*support|warranty.*extension|service.*agreement)\b'
-        matches = matches[~matches['name'].str.contains(service_pattern, case=False, na=False, regex=True)]
-        
-        # Additional check: if "warranty" or "service" in name but price < $100, likely a service contract
-        matches = matches[~((matches['name'].str.contains(r'\b(warranty|service)\b', case=False, regex=True)) & 
-                                  (matches['price'] < 100))]
-
-    if matches.empty:
-        return None
-
-    # === APPLY CLIENT PREFERENCES FIRST ===
-    if client_preferences:
-        preferred_brand = None
-        
-        if category == 'Displays':
-            preferred_brand = client_preferences.get('displays')
-        elif category == 'Video Conferencing':
-            preferred_brand = client_preferences.get('video_conferencing')
-        elif category == 'Audio':
-            preferred_brand = client_preferences.get('audio')
-        elif category in ['Control Systems', 'Signal Management']:
-            preferred_brand = client_preferences.get('control')
-        
-        if preferred_brand:
-            brand_matches = matches[matches['brand'].str.lower() == preferred_brand.lower()]
-            if not brand_matches.empty:
-                matches = brand_matches
-                st.info(f"✅ Using client-preferred brand: {preferred_brand} for {category}")
-
-    # === DISPLAY MOUNT FIX ===
-    if category == 'Mounts' and sub_category == 'Display Mount / Cart':
-        # CRITICAL: Exclude ALL non-mount items
-        MOUNT_BLACKLIST = [
-            'finishing ring', 'trim ring', 'bezel', 'spacer', 'adapter plate',
-            'x70 vesa', 'x50 vesa', 'x30 vesa', 'rally mount', 'studio mount',
-            'camera mount', 'microphone mount', 'bracket kit', 'accessory'
-        ]
-        
-        for blacklisted in MOUNT_BLACKLIST:
-            matches = matches[~matches['name'].str.contains(blacklisted, case=False, na=False)]
-        
-        # REQUIRE mount-specific keywords
-        mount_keywords = r'(wall.*mount|ceiling.*mount|floor.*stand|mobile.*stand|tv.*mount|display.*mount|fixed.*mount|tilt.*mount|articulating.*mount|cart|trolley)'
-        matches = matches[matches['name'].str.contains(mount_keywords, case=False, na=False, regex=True)]
-        
-        # For large displays (85"+), require heavy-duty
-        if equipment_reqs and 'displays' in equipment_reqs:
-            req_size = equipment_reqs['displays'].get('size_inches', 65)
-            if req_size >= 85:
-                matches = matches[matches['name'].str.contains(
-                    r'(heavy.*duty|large.*format|commercial|85|90|95|98|100)',
-                    case=False, na=False, regex=True
-                )]
-
-    # === TABLE CONNECTIVITY FIX ===
-    if sub_category == 'Wall & Table Plate Module':
-        # Prioritize complete connectivity solutions
-        connectivity_priority = r'(aap|table.*box|connectivity.*box|hdmi.*plate|retractor|tbus|hydraport|floor.*box)'
-        priority_matches = matches[matches['name'].str.contains(connectivity_priority, case=False, na=False, regex=True)]
-        
-        if not priority_matches.empty:
-            matches = priority_matches
-        
-        # Exclude mounting-only hardware
-        matches = matches[~matches['name'].str.contains(
-            r'(mounting.*frame.*only|blank.*plate|housing.*only|bracket.*only|trim.*ring)',
-            case=False, na=False, regex=True
-        )]
-
-    # === TOUCH CONTROLLER FIX ===
-    if 'Touch Controller' in sub_category:
-        # STRICT: Must have touch/panel/controller keywords
-        matches = matches[matches['name'].str.contains(
-            r'(touch.*panel|touch.*controller|control.*panel|scheduling.*panel|room.*panel|tap|navigator)',
-            case=False, na=False, regex=True
-        )]
-        
-        # EXCLUDE video conferencing systems
-        matches = matches[~matches['name'].str.contains(
-            r'\b(room.*kit|codec|bar|camera|ess)\b',
-            case=False, na=False, regex=True
-        )]
-
-    # === DSP SELECTION FIX ===
-    if 'DSP' in sub_category or 'Processor' in sub_category:
-        # EXCLUDE amplifiers completely
-        matches = matches[~matches['name'].str.contains(
-            r'\b(amplifier|amp-|summing|quad.*active|power.*amp)\b',
-            case=False, na=False, regex=True
-        )]
-        
-        # REQUIRE DSP indicators
-        dsp_matches = matches[matches['name'].str.contains(
-            r'(dsp|digital.*signal.*processor|audio.*processor|dante|aec|matrix|tesira|core|q-sys)',
-            case=False, na=False, regex=True
-        )]
-        
-        if not dsp_matches.empty:
-            matches = dsp_matches
-
-    # === AMPLIFIER SELECTION FIX ===
-    if sub_category == 'Amplifier':
-        # Phase 1: Exclude non-amplifier categories
-        matches = matches[matches['sub_category'] == 'Amplifier']
-        
-        # Phase 2: Strict blacklist
-        AMP_BLACKLIST = ['60-552', '60-553', 'summing', 'quad active', 'line driver', 
-                         'audio interface', 'dsp', 'processor', 'mixer']
-        for blacklisted in AMP_BLACKLIST:
-            matches = matches[~matches['name'].str.contains(blacklisted, case=False, na=False, regex=True)]
-        
-        # Phase 3: Require power amp indicators
-        power_amp_matches = matches[matches['name'].str.contains(
-            r'(power.*amp|multi.*channel|70v|100v|watts.*channel|\d+w.*amp|spa\d+|xpa\d+|amplifier)',
-            case=False, na=False, regex=True
-        )]
-        
-        if not power_amp_matches.empty:
-            matches = power_amp_matches
-        else:
-            st.warning(f"⚠️ No valid power amplifiers found for passive speakers")
-            return None
-
-    # === DISPLAY SIZE MATCHING ===
-    if category == 'Displays' and equipment_reqs and 'displays' in equipment_reqs:
-        req_size = equipment_reqs['displays'].get('size_inches', 65)
-        size_range = range(req_size - 3, req_size + 4)
-        size_pattern = '|'.join([f'{s}"' for s in size_range])
-
-        size_matches = matches[matches['name'].str.contains(size_pattern, na=False, regex=True)]
-        if not size_matches.empty:
-            matches = size_matches
-
-    if matches.empty:
-        return None
-
-    # === BUDGET-AWARE SELECTION ===
-    sorted_matches = matches.sort_values('price')
-
-    if budget_tier in ['Premium', 'Executive']:
-        start_idx = int(len(sorted_matches) * 0.75)
-        selection_pool = sorted_matches.iloc[start_idx:]
-        if not selection_pool.empty:
-            return selection_pool.iloc[len(selection_pool) // 2].to_dict()
-    elif budget_tier == 'Economy':
-        end_idx = int(len(sorted_matches) * 0.4)
-        selection_pool = sorted_matches.iloc[:end_idx] if end_idx > 0 else sorted_matches
-        return selection_pool.iloc[len(selection_pool) // 2].to_dict()
-
-    # Standard: Middle 50%
-    start_idx = int(len(sorted_matches) * 0.25)
-    end_idx = int(len(sorted_matches) * 0.75)
-    selection_pool = sorted_matches.iloc[start_idx:end_idx] if end_idx > start_idx else sorted_matches
-    
-    if selection_pool.empty:
-        return sorted_matches.iloc[len(sorted_matches)//2].to_dict()
-
-    return selection_pool.iloc[len(selection_pool) // 2].to_dict()
 
 
 # ==================== COMPONENT BLUEPRINT WITH CONTROL SYSTEM ====================
@@ -858,10 +679,10 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     return blueprint
 
 
-# ==================== MAIN BOQ GENERATION ====================
+# ==================== MAIN BOQ GENERATION WITH PARALLELIZATION ====================
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """
-    PRODUCTION-READY BOQ generation with AI-powered justifications.
+    PRODUCTION-READY BOQ generation with parallel AI-powered justifications.
     """
     
     # ========== STEP 1: NLP PARSING ==========
@@ -877,12 +698,6 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
                                    for k, v in client_preferences.items() if v])
         if prefs_display:
             st.success(f"✅ Client Preferences Detected: {prefs_display}")
-    
-    if parsed_requirements.get('special_requirements'):
-        st.info(f"⚡ Special Requirements: {', '.join(parsed_requirements['special_requirements'][:3])}")
-    
-    confidence = parsed_requirements.get('confidence_score', 0) * 100
-    st.write(f"📊 NLP Confidence: {confidence:.1f}%")
     
     # ========== STEP 2: AVIXA CALCULATIONS ==========
     st.info("📐 Step 2: Calculating AVIXA-compliant specifications...")
@@ -905,34 +720,6 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     base_equipment_reqs = determine_equipment_requirements(avixa_calcs, room_type, technical_reqs)
     equipment_reqs = merge_equipment_requirements(base_equipment_reqs, equipment_overrides)
     
-    if 'displays' in equipment_reqs:
-        display_qty = equipment_reqs['displays'].get('quantity', 1)
-        display_size = equipment_reqs['displays'].get('size_inches', 65)
-        
-        if display_qty > 1 and room_area < 800:
-            st.warning(
-                f"⚠️ Room size ({room_area} sqft) may not require {display_qty}x {display_size}\" displays. "
-                f"Standard rooms typically use 1 display. Verify with client requirements."
-            )
-            
-            with st.expander("🔍 Multiple Display Configuration", expanded=True):
-                st.info(f"""
-                **Current Configuration:**
-                - Room Size: {room_area} sqft
-                - Displays: {display_qty}x {display_size}"
-                
-                **Typical Configurations:**
-                - Small Rooms (<200 sqft): 1x 55-65" display
-                - Medium Rooms (200-500 sqft): 1x 65-75" display
-                - Large Rooms (500-800 sqft): 1x 75-98" display
-                - Very Large Rooms (>800 sqft): 2x displays or video wall
-                
-                If this is a video wall configuration, ensure appropriate mounting and processing equipment is included.
-                """)
-    
-    st.write("🔍 **DEBUG: Equipment Requirements**")
-    st.json(equipment_reqs)
-    
     # ========== STEP 4: BUILD COMPONENT BLUEPRINT ==========
     st.info("📋 Step 4: Building component blueprint...")
     
@@ -942,15 +729,12 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         budget_tier, 
         room_area
     )
-    
-    st.write("🔍 **DEBUG: Component Blueprint**")
-    for key, req in required_components.items():
-        st.write(f"- {key}: {req.required_keywords} | Blacklist: {req.blacklist_keywords}")
-    
     st.write(f"✅ Blueprint created with {len(required_components)} components")
     
-    # ========== STEP 5: INTELLIGENT PRODUCT SELECTION WITH AI JUSTIFICATIONS ==========
-    st.info("🎯 Step 5: Selecting products and generating justifications...")
+    # =========================================================================
+    # PHASE 1: PRODUCT SELECTION (SEQUENTIAL, CPU-BOUND)
+    # =========================================================================
+    st.info("🎯 Step 5a: Selecting products from database...")
     
     selector = IntelligentProductSelector(
         product_df=product_df,
@@ -958,8 +742,41 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         budget_tier=budget_tier
     )
     
-    boq_items = []
+    boq_items_no_justification = []
     selection_summary = []
+    
+    sorted_components = sorted(
+        required_components.items(),
+        key=lambda x: x[1].priority if hasattr(x[1], 'priority') else 999
+    )
+    
+    progress_bar = st.progress(0, text="Selecting components...")
+    for idx, (comp_key, comp_spec) in enumerate(sorted_components):
+        selector.existing_selections = boq_items_no_justification
+        product = selector.select_product(comp_spec)
+        
+        if product:
+            product['quantity'] = comp_spec.quantity
+            product['component_key'] = comp_key # Keep track of the component it fulfills
+            product['comp_spec'] = comp_spec # Pass spec for later use
+            boq_items_no_justification.append(product)
+            selection_summary.append(f"✅ {comp_key}: {product.get('brand')} {product.get('model_number')}")
+        else:
+            selection_summary.append(f"❌ {comp_key}: NOT FOUND")
+            st.warning(f"⚠️ Could not find suitable product for: {comp_key}")
+        
+        progress_bar.progress((idx + 1) / len(sorted_components))
+        
+    progress_bar.empty()
+
+    if not boq_items_no_justification:
+        st.error("❌ No products could be selected. Please check your requirements.")
+        return [], {}, {}, {}
+
+    # =========================================================================
+    # PHASE 2: AI JUSTIFICATIONS (PARALLEL, I/O-BOUND)
+    # =========================================================================
+    st.info(f"🤖 Step 5b: Generating AI justifications for {len(boq_items_no_justification)} products in parallel...")
     
     room_context = {
         'room_type': room_type,
@@ -970,166 +787,66 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
         'primary_use': features[:100] if features else 'Video conferencing and presentations'
     }
     
-    sorted_components = sorted(
-        required_components.items(),
-        key=lambda x: x[1].priority if hasattr(x[1], 'priority') else 999
-    )
+    boq_items = []
     
-    progress_bar = st.progress(0)
-    for idx, (comp_key, comp_spec) in enumerate(sorted_components):
-        progress = (idx + 1) / len(sorted_components)
-        progress_bar.progress(progress, text=f"Selecting {comp_key}...")
-        
-        selector.existing_selections = boq_items
-        
-        product = selector.select_product(comp_spec)
-        
-        if product:
-            if comp_spec.category == 'Mounts' and 'Display Mount' in comp_spec.sub_category:
-                if hasattr(comp_spec, 'size_requirement') and comp_spec.size_requirement:
-                    mount_name = product.get('name', '').lower()
-                    size_indicators = [f'{s}"' for s in range(int(comp_spec.size_requirement) - 5, int(comp_spec.size_requirement) + 5)]
-                    has_size_match = any(indicator in mount_name for indicator in size_indicators)
-                    
-                    if not has_size_match and comp_spec.size_requirement >= 85:
-                        st.warning(
-                            f"⚠️ Mount '{product.get('brand')} {product.get('model_number')}' "
-                            f"may not explicitly support {comp_spec.size_requirement}\" displays. "
-                            f"Verify compatibility before ordering."
-                        )
+    with st.spinner(f"Contacting AI for {len(boq_items_no_justification)} justifications... This may take a moment."):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Create a future for each justification task
+            future_to_product = {
+                executor.submit(generate_ai_product_justification, model, product, room_context, avixa_calcs): product
+                for product in boq_items_no_justification
+            }
             
-            if comp_spec.category == 'Infrastructure' and 'AV Rack' in comp_spec.sub_category:
-                rack_name = product.get('name', '').lower()
-                if 'bracket' in rack_name or 'mount' in rack_name:
-                    st.error(
-                        f"❌ CRITICAL: '{product.get('name')}' is not an equipment rack. "
-                        f"This is a {product.get('sub_category')}. Product selection failed validation."
-                    )
-                    product = None
-            
-            if comp_spec.category == 'Video Conferencing' and 'Touch Controller' in comp_spec.sub_category:
-                controller_name = product.get('name', '').lower()
-                if any(term in controller_name for term in ['receiver', 'transmitter', 'scaler', 'switcher', 'extender']):
-                    st.error(
-                        f"❌ CRITICAL: '{product.get('name')}' is not a touch controller. "
-                        f"This is video processing equipment. Product selection failed validation."
-                    )
-                    product = None
-            
-            if product is None:
-                selection_summary.append(f"❌ {comp_key}: FAILED VALIDATION")
-                continue
+            for future in concurrent.futures.as_completed(future_to_product):
+                product = future_to_product[future]
+                comp_spec = product.pop('comp_spec', None) # retrieve and remove temp spec
+                try:
+                    ai_justification = future.result()
+                    product.update({
+                        'justification': ai_justification.get('technical_justification', comp_spec.justification if comp_spec else 'N/A'),
+                        'top_3_reasons': ai_justification.get('top_3_reasons', []),
+                        'justification_confidence': ai_justification.get('confidence', 0.7),
+                        'matched': True
+                    })
+                    boq_items.append(product)
+                except Exception as exc:
+                    st.warning(f"AI justification failed for {product['name']}: {exc}")
+                    # Use fallback justification
+                    fallback = _get_fallback_justification(product, room_context)
+                    product.update({
+                        'justification': fallback.get('technical_justification'),
+                        'top_3_reasons': fallback.get('top_3_reasons'),
+                        'justification_confidence': fallback.get('confidence'),
+                        'matched': True
+                    })
+                    boq_items.append(product)
 
-            if 'microphone' in product.get('sub_category', '').lower():
-                mic_price = product.get('price', 0)
-                mic_qty = comp_spec.quantity
-                
-                if mic_price > 2000 and mic_qty > 1:
-                    st.warning(
-                        f"⚠️ High-priced microphone detected (${mic_price:.0f}). "
-                        f"This may be a complete array system. Consider setting quantity to 1."
-                    )
-                    
-                    if any(term in product.get('name', '').lower() for term in 
-                           ['array', 'kit', 'system', 'bundle', 'package']):
-                        comp_spec.quantity = 1
-                        st.info(f"✅ Auto-corrected quantity to 1 (array/system product)")
+    # Re-sort boq_items to match original blueprint priority
+    priority_map = {comp_key: spec.priority for comp_key, spec in required_components.items()}
+    boq_items.sort(key=lambda item: priority_map.get(item.get('component_key'), 999))
 
-            ai_justification = generate_ai_product_justification(
-                model=model,
-                product_info=product,
-                room_context=room_context,
-                avixa_calcs=avixa_calcs
-            )
-            
-            product.update({
-                'quantity': comp_spec.quantity,
-                'justification': ai_justification.get('technical_justification', comp_spec.justification),
-                'top_3_reasons': ai_justification.get('top_3_reasons', []),
-                'justification_confidence': ai_justification.get('confidence', 0.8),
-                'matched': True
-            })
-            
-            boq_items.append(product)
-            
-            confidence_icon = "🟢" if ai_justification.get('confidence', 0) > 0.85 else "🟡" if ai_justification.get('confidence', 0) > 0.7 else "🟠"
-            selection_summary.append(
-                f"{confidence_icon} {comp_key}: {product.get('brand')} {product.get('model_number')} "
-                f"(AI Confidence: {ai_justification.get('confidence', 0)*100:.0f}%)"
-            )
-        else:
-            selection_summary.append(f"❌ {comp_key}: NOT FOUND")
-            st.warning(f"⚠️ Could not find suitable product for: {comp_key}")
-    
-    progress_bar.empty()
-    
-    # ========== NEW: COMPATIBILITY & REDUNDANCY CHECK ==========
+    # ========== COMPATIBILITY & REDUNDANCY CHECK ==========
     st.info("🔍 Step 5.5: Checking brand compatibility and feature redundancy...")
     
-    filtered_blueprint, compat_warnings = check_component_compatibility(
-        required_components, 
-        boq_items
-    )
+    filtered_blueprint, compat_warnings = check_component_compatibility(required_components, boq_items)
     
     if compat_warnings:
         with st.expander("⚠️ Compatibility Analysis", expanded=True):
             for warning in compat_warnings:
-                if '❌' in warning:
-                    st.success(warning)
-                elif 'ℹ️' in warning:
-                    st.info(warning)
-                else:
-                    st.warning(warning)
+                st.info(warning)
     
-    filtered_boq_items = []
-    for item in boq_items:
-        keep_item = True
-        for warning in compat_warnings:
-            if '❌ Removed:' in warning:
-                if any(cat in warning for cat in ['table_microphones', 'audio_dsp']):
-                    if item.get('sub_category') in ['Table/Boundary Microphone', 'DSP / Audio Processor / Mixer']:
-                        if ('Table' in item.get('sub_category', '') and 'microphone' in warning.lower()) or \
-                           ('DSP' in item.get('sub_category', '') and 'dsp' in warning.lower()):
-                            keep_item = False
-                            break
-        
-        if keep_item:
-            filtered_boq_items.append(item)
-    
-    boq_items = filtered_boq_items
+    # ========== STEP 6: VALIDATION & POST-PROCESSING ==========
+    st.info("✅ Step 6: Validating BOQ completeness...")
     
     with st.expander("📊 Product Selection Details", expanded=False):
-        st.markdown("### Selection Results with AI Confidence")
+        st.markdown("### Selection Results")
         for summary_line in selection_summary:
             st.write(summary_line)
-        
         st.write("\n**Detailed Selection Log:**")
         st.code(selector.get_selection_report())
-        
         avg_confidence = sum(item.get('justification_confidence', 0) for item in boq_items) / len(boq_items) if boq_items else 0
         st.metric("Average AI Justification Quality", f"{avg_confidence*100:.1f}%")
 
-    validation_warnings = selector.get_validation_warnings()
-    if validation_warnings:
-        with st.expander("⚠️ Product Validation Warnings", expanded=True):
-            st.warning(f"Found {len(validation_warnings)} products that failed validation:")
-            for warning in validation_warnings:
-                st.error(f"""
-                **Component**: {warning['component']}
-                **Product**: {warning['product']}
-                **Issues**:
-                """)
-                for issue in warning['issues']:
-                    st.write(f"  - {issue}")
-            st.info("💡 These products were automatically rejected and alternatives were selected.")
-    
-    if not boq_items:
-        st.error("❌ No products could be selected. Please check your requirements.")
-        return [], {}, {}, {}
-    
-    # ========== STEP 6: VALIDATION ==========
-    st.info("✅ Step 6: Validating BOQ completeness...")
-    
     processed_boq, validation_results = post_process_boq(
         boq_items, product_df, avixa_calcs,
         equipment_reqs, room_type, required_components
@@ -1150,26 +867,27 @@ def post_process_boq(boq_items, product_df, avixa_calcs, equipment_reqs, room_ty
                       for item in boq_items)
     
     if not has_control:
-        validation_results['warnings'].append("⚠️ No control system found - adding touch controller")
+        validation_results['warnings'].append("⚠️ No control system found - adding touch controller as a fallback.")
         
-        control_product = _get_fallback_product_legacy(
-            'Video Conferencing',
-            'Touch Controller / Panel',
-            product_df,
-            equipment_reqs,
-            'Standard'
+        # Using IntelligentProductSelector for better fallback selection
+        selector = IntelligentProductSelector(product_df, {}, 'Standard')
+        control_req = ProductRequirement(
+            category='Video Conferencing', sub_category='Touch Controller / Panel', quantity=1,
+            required_keywords=['touch', 'controller', 'panel'],
+            blacklist_keywords=['room kit', 'codec', 'bar', 'camera', 'display'],
+            min_price=300, max_price=5000
         )
-        
+        control_product = selector.select_product(control_req)
+
         if control_product:
             control_reasons = [
                 "Centralized control simplifies meeting operations for non-technical users",
                 "Touch interface provides intuitive system management and scheduling",
                 "Essential for professional meeting room functionality and user adoption"
             ]
-            
             control_product.update({
                 'quantity': 1,
-                'justification': 'Touch controller provides centralized system control and meeting room scheduling (Auto-added for complete system functionality)',
+                'justification': 'Touch controller provides centralized system control (Auto-added for complete system functionality)',
                 'top_3_reasons': control_reasons,
                 'justification_confidence': 0.9,
                 'matched': True
