@@ -131,6 +131,8 @@ def _add_version_control_sheet(workbook, project_details, styles):
         ("Client Name", project_details.get("Client Name", "")),
         ("Key Client Personnel", project_details.get("Key Client Personnel", "")),
         ("Location", project_details.get("Location", "")),
+        ("PSNI Referral", "✅ YES" if project_details.get("PSNI Referral") == "Yes" else "No"),
+        ("Client Type", project_details.get("Client Type", "International")),
         ("Key Comments for this version", project_details.get("Key Comments", ""))
     ]
     
@@ -761,7 +763,7 @@ def _add_scope_of_work_sheet(workbook, styles):
 
 
 # ==================== PROPOSAL SUMMARY SHEET (FIXED VERSION) ====================
-def _add_proposal_summary_sheet(workbook, rooms_data, styles):
+def _add_proposal_summary_sheet(workbook, project_details, styles):
     """
     Creates the Proposal Summary sheet with FULL CALCULATIONS from BOQ sheets.
     Now includes: Rate w/o TAX, Amount w/o TAX, Total TAX Amount, Amount with Tax
@@ -919,8 +921,36 @@ def _add_proposal_summary_sheet(workbook, rooms_data, styles):
     
     sheet.row_dimensions[row_cursor].height = 25
     
-    # === COMMERCIAL TERMS SECTION (Below Grand Total) ===
+    # === PROJECT METADATA HIGHLIGHTS ===
     row_cursor += 3
+
+    # PSNI Referral Highlight
+    if project_details.get('PSNI Referral') == 'Yes':
+        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+        psni_cell = sheet[f'A{row_cursor}']
+        psni_cell.value = "✅ PSNI GLOBAL ALLIANCE REFERRED PROJECT"
+        psni_cell.font = Font(size=12, bold=True, color="FFFFFF")
+        psni_cell.fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+        psni_cell.alignment = Alignment(horizontal='center', vertical='center')
+        psni_cell.border = styles['thin_border']
+        sheet.row_dimensions[row_cursor].height = 25
+        row_cursor += 1
+
+    # Client Type Highlight
+    client_type = project_details.get('Client Type', 'International')
+    color = "3B82F6" if client_type == "Local (India)" else "8B5CF6"
+    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
+    client_cell = sheet[f'A{row_cursor}']
+    client_cell.value = f"🌐 CLIENT TYPE: {client_type.upper()}"
+    client_cell.font = Font(size=11, bold=True, color="FFFFFF")
+    client_cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+    client_cell.alignment = Alignment(horizontal='center', vertical='center')
+    client_cell.border = styles['thin_border']
+    sheet.row_dimensions[row_cursor].height = 22
+    row_cursor += 2
+    
+    # === COMMERCIAL TERMS SECTION (Below Grand Total) ===
+    row_cursor += 1
     
     sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
     ct_header = sheet[f'A{row_cursor}']
@@ -1014,7 +1044,7 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     _add_scope_of_work_sheet(workbook, styles)
     
     # === SHEET 3: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
-    _add_proposal_summary_sheet(workbook, rooms_data, styles)
+    _add_proposal_summary_sheet(workbook, project_details, styles)
     
     # === SHEET 4: TERMS & CONDITIONS ===
     _add_terms_and_conditions_sheet(workbook, styles)
