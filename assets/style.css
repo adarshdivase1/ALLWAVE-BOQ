@@ -973,6 +973,19 @@ label,
     box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2);
 }
 
+/* Ensure expander header text stays visible on hover */
+.streamlit-expanderHeader:hover p,
+.streamlit-expanderHeader:hover div {
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+}
+
+/* Fix for the product name specifically */
+.streamlit-expanderHeader:hover strong {
+    color: var(--glow-primary) !important;
+    text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
+}
+
 /* ============================================
     TABLES & DATAFRAMES
     ============================================ */
