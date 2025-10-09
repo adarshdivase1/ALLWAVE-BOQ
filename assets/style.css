@@ -1144,3 +1144,9 @@ div[data-testid="stWidgetLabel"] p {
     text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
     font-weight: 700 !important;
 }
+
+/* === NUCLEAR OPTION: Override ALL Streamlit Expander Styles === */
+div[data-testid="stExpander"] [data-testid="stMarkdownContainer"] * {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+}
