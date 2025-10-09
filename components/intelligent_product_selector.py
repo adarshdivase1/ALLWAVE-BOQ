@@ -39,14 +39,40 @@ class IntelligentProductSelector:
     """
     
     def __init__(self, product_df, client_preferences=None, budget_tier='Standard'):
-        self.product_df = product_df
+        self.product_df = product_df.copy()
         self.client_preferences = client_preferences or {}
         self.budget_tier = budget_tier
         self.selection_log = []  # For debugging/reporting
         self.existing_selections = [] # For ecosystem checks
         
+        # CRITICAL FIX: Detect and standardize price column name
+        self._standardize_price_column()
+        
         # Normalize category names in the dataframe
         self._normalize_dataframe_categories()
+    
+    def _standardize_price_column(self):
+        """CRITICAL: Ensure we have a consistent 'price' column"""
+        # Check what price columns exist
+        price_columns = [col for col in self.product_df.columns if 'price' in col.lower()]
+        
+        if 'price' not in self.product_df.columns:
+            if 'price_usd' in self.product_df.columns:
+                # Rename price_usd to price
+                self.product_df['price'] = self.product_df['price_usd']
+                self.log("✅ Standardized column: 'price_usd' → 'price'")
+            elif 'price_inr' in self.product_df.columns:
+                # Use INR price (convert if needed)
+                self.product_df['price'] = self.product_df['price_inr']
+                self.log("✅ Standardized column: 'price_inr' → 'price'")
+            elif len(price_columns) > 0:
+                # Use the first price column found
+                self.product_df['price'] = self.product_df[price_columns[0]]
+                self.log(f"✅ Standardized column: '{price_columns[0]}' → 'price'")
+            else:
+                # No price column found - critical error
+                self.log("❌ CRITICAL: No price column found in product database!")
+                st.error("Product database is missing price information!")
     
     def _normalize_dataframe_categories(self):
         """Ensure consistent category naming"""
@@ -107,7 +133,9 @@ class IntelligentProductSelector:
         selected = self._select_by_budget(candidates, requirement)
         
         if selected is not None:
-            self.log(f"✅ Selected: {selected['brand']} {selected['model_number']} - ${selected['price_usd']:.2f}")
+            # Use standardized 'price' column for logging
+            price = selected.get('price', 0)
+            self.log(f"✅ Selected: {selected['brand']} {selected['model_number']} - ${price:.2f}")
             # STAGE 7: Compatibility Validation
             if not self._validate_compatibility(selected, requirement):
                 self.log(f"⚠️ Product may have compatibility issues")
@@ -134,9 +162,9 @@ class IntelligentProductSelector:
             # Category only filtering
             df = self.product_df[self.product_df['category'] == req.category].copy()
         
-        # ADD: Apply minimum price if specified
+        # ADD: Apply minimum price if specified (using standardized 'price' column)
         if hasattr(req, 'min_price') and req.min_price:
-            df = df[df['price_usd'] >= req.min_price]
+            df = df[df['price'] >= req.min_price]
             self.log(f"Applied minimum price filter (${req.min_price}): {len(df)} products")
         
         return df
@@ -159,9 +187,10 @@ class IntelligentProductSelector:
         for pattern in service_patterns:
             df = df[~df['name'].str.contains(pattern, case=False, na=False, regex=True)]
         
+        # FIXED: Use standardized 'price' column instead of 'price_usd'
         # Additional heuristic: if "warranty" or "service" in name AND price < $100
         df = df[~((df['name'].str.contains(r'\b(warranty|service|support)\b', case=False, regex=True)) &
-                  (df['price_usd'] < 100))]
+                  (df['price'] < 100))]
         
         return df
     
@@ -212,8 +241,9 @@ class IntelligentProductSelector:
             self.log(f"Network cable filter: {len(df)} products")
         
         elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
+            # FIXED: Use standardized 'price' column
             # EXCLUDE low-cost consumer PDUs
-            df = df[df['price_usd'] > 100]
+            df = df[df['price'] > 100]
             # REQUIRE rackmount
             df = df[df['name'].str.contains(
                 r'(rack.*mount|1u|2u|metered|switched)',
@@ -248,8 +278,9 @@ class IntelligentProductSelector:
                 case=False, na=False, regex=True
             )]
             
+            # FIXED: Use standardized 'price' column
             # MINIMUM PRICE for professional PTZ
-            df = df[df['price_usd'] > 1000]  # Professional PTZ cameras cost $1000+
+            df = df[df['price'] > 1000]  # Professional PTZ cameras cost $1000+
             
             self.log(f"Professional PTZ camera filter: {len(df)} products")
         
@@ -420,9 +451,9 @@ class IntelligentProductSelector:
         if df.empty:
             return None
         
-        # Sort by price - handle both 'price' and 'price_usd' columns
-        price_col = 'price_usd' if 'price_usd' in df.columns else 'price'
-        df_sorted = df.sort_values(price_col)
+        # FIXED: Use standardized 'price' column
+        # Sort by price
+        df_sorted = df.sort_values('price')
         
         # Budget tier selection logic
         if self.budget_tier in ['Premium', 'Executive']:
