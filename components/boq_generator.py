@@ -665,7 +665,10 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
             priority=13,
             justification='Wall-mounted room scheduling panel with calendar integration',
             required_keywords=['scheduling', 'panel', 'room', 'calendar', 'booking'],
-            blacklist_keywords=['software only', 'license']
+            blacklist_keywords=['software only', 'license'],
+            min_price=300,  # NEW
+            max_price=3000,  # NEW
+            strict_category_match=False  # NEW: Allow broader matching if not found
         )
         st.info("📅 Adding room scheduling panel (executive room detected)")
 
@@ -796,15 +799,15 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
     if num_displays > 1 or has_multiple_sources or room_area > 600:
         blueprint['video_switcher'] = ProductRequirement(
             category='Signal Management',
-            sub_category='Video Matrix / Switcher',
+            sub_category='Matrix Switcher',  # ✅ MATCHES process_data.py categorization
             quantity=1,
             priority=4,
             justification=f'Video matrix switcher for routing {num_displays} displays and multiple sources',
-            required_keywords=['switcher', 'matrix', 'hdmi', 'routing', 'scaler', 'presentation'],
+            required_keywords=['switcher', 'matrix', 'hdmi', 'routing', 'presentation'],
             blacklist_keywords=['cable', 'adapter', 'extender only', 'receiver only', 'mount', 'bracket'],
-            min_price=500,  # NEW: Professional switchers start at $500
-            max_price=15000, # NEW: Reasonable upper limit
-            strict_category_match=True  # NEW: Enforce strict validation
+            min_price=500,
+            max_price=15000,
+            strict_category_match=True
         )
         st.info(f"📺 Adding video switcher (multi-display or large room detected)")
     
