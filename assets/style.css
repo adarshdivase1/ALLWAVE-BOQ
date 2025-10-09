@@ -122,7 +122,7 @@
 }
 
 @keyframes spin {
-    100% { transform: rotate(30deg); }
+    100% { transform: rotate(360deg); }
 }
 
 @keyframes spin-reverse {
@@ -955,16 +955,101 @@ label,
 }
 
 /* ============================================
-    EXPANDER
+    EXPANDER - COMPLETE FIX
     ============================================ */
 
+/* DEFAULT STATE: Force dark background always */
 .streamlit-expanderHeader {
+    background: rgba(0, 0, 0, 0.5) !important; /* Dark background in default state */
     color: var(--text-primary) !important;
     font-weight: 600 !important;
-    background: var(--widget-bg) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: var(--border-radius-md) !important;
-    transition: all var(--animation-fast) ease;
+    transition: background var(--animation-fast) ease, border-color var(--animation-fast) ease !important;
+}
+
+/* Force all text to be visible in DEFAULT state */
+.streamlit-expanderHeader,
+.streamlit-expanderHeader *,
+.streamlit-expanderHeader p,
+.streamlit-expanderHeader div,
+.streamlit-expanderHeader span,
+.streamlit-expanderHeader strong,
+.streamlit-expanderHeader b {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    opacity: 1 !important;
+}
+
+/* HOVER STATE: Slightly darker background with glow */
+.streamlit-expanderHeader:hover {
+    background: rgba(0, 0, 0, 0.65) !important; /* Even darker on hover */
+    border-color: var(--border-color-strong) !important;
+    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2) !important;
+}
+
+/* Keep text visible during hover */
+.streamlit-expanderHeader:hover,
+.streamlit-expanderHeader:hover *,
+.streamlit-expanderHeader:hover p,
+.streamlit-expanderHeader:hover div,
+.streamlit-expanderHeader:hover span {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    opacity: 1 !important;
+}
+
+/* Emphasize bold text on hover */
+.streamlit-expanderHeader:hover strong,
+.streamlit-expanderHeader:hover b {
+    color: var(--glow-primary) !important;
+    -webkit-text-fill-color: var(--glow-primary) !important;
+    text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
+    font-weight: 700 !important;
+}
+
+/* ACTIVE/EXPANDED STATE: Maintain dark background */
+.streamlit-expanderHeader[aria-expanded="true"] {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border-color: var(--glow-primary) !important;
+}
+
+/* Override Streamlit's button element inside expander header */
+.streamlit-expanderHeader button {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+}
+
+/* Target the SVG icon specifically */
+.streamlit-expanderHeader svg {
+    fill: var(--text-primary) !important;
+    opacity: 0.8 !important;
+}
+
+.streamlit-expanderHeader:hover svg {
+    fill: var(--glow-primary) !important;
+    opacity: 1 !important;
+}
+
+/* Content inside expander - ensure visibility */
+div[data-testid="stExpander"] [data-testid="stMarkdownContainer"] * {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+}
+
+/* Prevent Streamlit from applying white/light backgrounds */
+[data-testid="stExpander"] > div > div {
+    background: transparent !important;
+}
+
+/* Nuclear option: Override ALL possible Streamlit background combinations */
+.streamlit-expanderHeader,
+.streamlit-expanderHeader:focus,
+.streamlit-expanderHeader:active,
+.streamlit-expanderHeader:focus-visible,
+.streamlit-expanderHeader:focus-within {
+    background: rgba(0, 0, 0, 0.5) !important;
+    outline: none !important;
 }
 
 /* ============================================
@@ -1114,82 +1199,4 @@ div[data-testid="stWidgetLabel"] p {
     text-transform: uppercase;
     letter-spacing: 0.75px;
     margin-bottom: var(--spacing-sm) !important;
-}
-
-/* === CRITICAL FIX: Force Text Visibility on Hover === */
-.streamlit-expanderHeader:hover {
-    background: rgba(0, 0, 0, 0.5) !important; /* Dark background instead of light */
-    border-color: var(--border-color-strong) !important;
-    box-shadow: 0 0 15px rgba(var(--glow-primary-rgb), 0.2);
-}
-
-/* Force ALL text elements to remain visible */
-.streamlit-expanderHeader:hover,
-.streamlit-expanderHeader:hover *,
-.streamlit-expanderHeader:hover p,
-.streamlit-expanderHeader:hover div,
-.streamlit-expanderHeader:hover span,
-.streamlit-expanderHeader:hover strong,
-.streamlit-expanderHeader:hover b {
-    color: var(--text-primary) !important;
-    -webkit-text-fill-color: var(--text-primary) !important; /* Override any gradient fills */
-    opacity: 1 !important;
-}
-
-/* Extra emphasis for bold text on hover */
-.streamlit-expanderHeader:hover strong,
-.streamlit-expanderHeader:hover b {
-    color: var(--glow-primary) !important;
-    -webkit-text-fill-color: var(--glow-primary) !important;
-    text-shadow: 0 0 10px rgba(var(--glow-primary-rgb), 0.5);
-    font-weight: 700 !important;
-}
-
-/* === NUCLEAR OPTION: Override ALL Streamlit Expander Styles === */
-div[data-testid="stExpander"] [data-testid="stMarkdownContainer"] * {
-    color: var(--text-primary) !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-}
-
-/* ========================================================================= */
-/* FINAL FIX: Expander Header Text Visibility                                */
-/* ========================================================================= */
-
-/* Force default state to always show white text */
-.streamlit-expanderHeader,
-.streamlit-expanderHeader *,
-.streamlit-expanderHeader p,
-.streamlit-expanderHeader div,
-.streamlit-expanderHeader span {
-    color: var(--text-primary) !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-    opacity: 1 !important;
-}
-
-/* Ensure hover state maintains visibility with better contrast */
-.streamlit-expanderHeader:hover {
-    background: rgba(0, 0, 0, 0.6) !important; /* Darker background for contrast */
-}
-
-.streamlit-expanderHeader:hover,
-.streamlit-expanderHeader:hover *,
-.streamlit-expanderHeader:hover p,
-.streamlit-expanderHeader:hover div,
-.streamlit-expanderHeader:hover span {
-    color: var(--text-primary) !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-    opacity: 1 !important;
-}
-
-/* Keep bold text emphasized on hover */
-.streamlit-expanderHeader:hover strong,
-.streamlit-expanderHeader:hover b {
-    color: var(--glow-primary) !important;
-    -webkit-text-fill-color: var(--glow-primary) !important;
-}
-
-/* Remove any transition effects that might cause flicker */
-.streamlit-expanderHeader,
-.streamlit-expanderHeader * {
-    transition: background var(--animation-fast) ease !important;
 }
