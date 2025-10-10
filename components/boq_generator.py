@@ -897,12 +897,35 @@ def _build_component_blueprint(equipment_reqs, technical_reqs, budget_tier='Stan
 def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, features, technical_reqs, room_area):
     """
     PRODUCTION-READY BOQ generation with AI-powered justifications.
+    ENHANCED: Check if questionnaire data exists first
     """
     
     # ========== STEP 1: NLP PARSING ==========
     st.info("🧠 Step 1: Parsing client requirements with NLP...")
     
-    nlp_results = extract_room_specific_requirements(features)
+    # NEW: Priority 1 - Use questionnaire data if available
+    if st.session_state.get('questionnaire_complete'):
+        q_data = st.session_state.questionnaire_data
+        
+        # Override with questionnaire data
+        room_type = q_data['room_type']
+        budget_tier = q_data['budget_tier']
+        features = q_data['features']
+        client_preferences = q_data['client_preferences']
+        
+        st.info(f"🎯 Using questionnaire data (Confidence: {q_data['questionnaire_confidence']*100:.0f}%)")
+        
+        # Skip NLP parsing - we already have structured data!
+        nlp_results = {
+            'client_preferences': client_preferences,
+            'equipment_overrides': q_data.get('equipment_overrides', {}),
+            'parsed_requirements': {}, # Add empty dict for compatibility
+            'confidence_score': q_data['questionnaire_confidence']
+        }
+    else:
+        # Fallback to existing NLP parsing
+        nlp_results = extract_room_specific_requirements(features)
+    
     client_preferences = nlp_results.get('client_preferences', {})
     equipment_overrides = nlp_results.get('equipment_overrides', {})
     parsed_requirements = nlp_results.get('parsed_requirements', {})
@@ -916,8 +939,8 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
     if parsed_requirements.get('special_requirements'):
         st.info(f"⚡ Special Requirements: {', '.join(parsed_requirements['special_requirements'][:3])}")
     
-    confidence = parsed_requirements.get('confidence_score', 0) * 100
-    st.write(f"📊 NLP Confidence: {confidence:.1f}%")
+    confidence = nlp_results.get('confidence_score', 0) * 100
+    st.write(f"📊 NLP/Questionnaire Confidence: {confidence:.1f}%")
     
     # ========== STEP 2: AVIXA CALCULATIONS ==========
     st.info("📐 Step 2: Calculating AVIXA-compliant specifications...")
@@ -962,7 +985,6 @@ def generate_boq_from_ai(model, product_df, guidelines, room_type, budget_tier, 
                 **Current Configuration:**
                 - Room Size: {room_area} sqft
                 - Displays: {display_qty}x {display_size}"
-                - Estimated Cost: ${display_qty * 6347:.2f}
                 
                 **Typical Configurations:**
                 - Small Rooms (<200 sqft): 1x 55-65" display
