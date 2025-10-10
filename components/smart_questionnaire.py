@@ -680,7 +680,7 @@ class AVQuestionnaire:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.progress(progress, text=f"Progress: {answered}/{total_questions} questions")
+            st.progress(min(progress, 1.0), text=f"Progress: {answered}/{total_questions} questions")
         with col2:
             if progress == 1.0:
                 st.success("✅ Complete")
