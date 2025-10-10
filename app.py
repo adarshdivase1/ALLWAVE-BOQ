@@ -314,6 +314,16 @@ def main():
             length, width = ROOM_SPECS[room_type]['typical_dims_ft']
             st.session_state.room_length_input = float(length)
             st.session_state.room_width_input = float(width)
+            
+    # Function for the new Questionnaire Tab
+    def show_questionnaire_tab():
+        st.markdown('<h2 class="section-header section-header-requirements">Smart Questionnaire</h2>', unsafe_allow_html=True)
+        st.info("This section will contain a guided questionnaire to help define project requirements. (Content to be added)")
+        # You can add st.radio, st.selectbox, st.text_input, etc., here later.
+        st.write("For example:")
+        st.radio("What is the primary video conferencing platform?", ["Microsoft Teams", "Zoom", "Google Meet", "Other/BYOD"])
+        st.multiselect("What are the key activities in this space?", ["Presentations", "Video Calls", "Audio Calls", "Collaboration", "Training"])
+        st.slider("How important is audio quality for this space?", 1, 5, 3)
 
     # ============= SIDEBAR =============
     with st.sidebar:
@@ -417,8 +427,16 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============= MAIN TABS =============
-    tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+    # --- MODIFIED TAB STRUCTURE ---
+    tab_titles = [
+        "📋 Project Info", 
+        "❓ Smart Questionnaire",
+        "📏 Room Analysis", 
+        "⚙️ Advanced Config",
+        "🛠️ Generate BOQ", 
+        "✨ 3D View"
+    ]
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_titles)
 
     with tab1:
         st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
@@ -491,12 +509,15 @@ def main():
         st.markdown("---")
         create_multi_room_interface()
 
-    with tab2:
+    with tab2: # NEW TAB
+        show_questionnaire_tab()
+
+    with tab3:
         st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
         create_room_calculator()
         
-    with tab3:
-        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
+    with tab4:
+        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Configuration</h2>', unsafe_allow_html=True)
         technical_reqs = {}
         st.text_area(
             "🎯 Specific Client Needs & Features:",
@@ -506,8 +527,8 @@ def main():
         technical_reqs.update(create_advanced_requirements())
         technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
         
-    with tab4:
-        st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
+    with tab5:
+        st.markdown('<h2 class="section-header section-header-boq">BOQ Generation</h2>', unsafe_allow_html=True)
         
         missing_fields = validate_required_fields()
         if missing_fields:
@@ -583,8 +604,8 @@ def main():
         else:
             st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
     
-    with tab5:
-        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+    with tab6:
+        st.markdown('<h2 class="section-header section-header-viz">3D Visualization</h2>', unsafe_allow_html=True)
         
         if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
             with st.spinner("Rendering 3D environment..."):
