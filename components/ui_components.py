@@ -292,6 +292,16 @@ def display_boq_results(product_df, project_details):
 
     st.subheader(f"📋 Generated Bill of Quantities ({item_count} items)")
 
+    # Show data source confidence
+    if st.session_state.get('questionnaire_complete'):
+        q_confidence = st.session_state.questionnaire_data.get('questionnaire_confidence', 0) * 100
+        if q_confidence >= 85:
+            st.success(f"✅ Generated from Smart Questionnaire (Confidence: {q_confidence:.0f}%) - High Accuracy BOQ")
+        else:
+            st.info(f"📊 Generated from Smart Questionnaire (Confidence: {q_confidence:.0f}%)")
+    else:
+        st.warning("⚠️ Generated from text parsing. Use Smart Questionnaire for 85-95% confidence.")
+
     # Display validation results prominently
     if validation_results.get('issues') or validation_results.get('warnings'):
         with st.container(border=True):
