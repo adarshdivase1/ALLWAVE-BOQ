@@ -39,6 +39,13 @@ class OptimizedBOQGenerator:
             room_length, room_width, ceiling_height, room_type
         )
         
+        # NEW: Pass requirements context to selector
+        self.selector.requirements_context = {
+            'vc_platform': self.requirements.vc_platform,
+            'room_type': room_type,
+            'room_area': room_area
+        }
+        
         # Build blueprint
         blueprint = self._build_questionnaire_based_blueprint(
             room_type=room_type,
@@ -48,7 +55,7 @@ class OptimizedBOQGenerator:
             avixa_calcs=avixa_calcs
         )
         
-        # Select products
+        # Select products with strict brand enforcement
         boq_items = []
         for component_key, requirement in blueprint.items():
             product = self.selector.select_product(requirement)
@@ -67,8 +74,17 @@ class OptimizedBOQGenerator:
                 })
                 
                 boq_items.append(product)
+            else:
+                # Log when a required component cannot be found
+                st.warning(f"⚠️ Could not find suitable product for: {requirement.sub_category}")
+                self.selector.log(f"❌ MISSING COMPONENT: {requirement.sub_category} - No suitable product found")
         
+        # Validate complete BOQ
         validation_results = self._validate_boq_completeness(boq_items, room_type, room_area)
+        
+        # NEW: Add selector's validation warnings to results
+        if self.selector.validation_warnings:
+            validation_results['brand_warnings'] = self.selector.validation_warnings
         
         return boq_items, validation_results
     
