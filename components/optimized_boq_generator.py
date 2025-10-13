@@ -157,9 +157,9 @@ class OptimizedBOQGenerator:
         
         # === AUDIO SYSTEM ===
         audio_integrated = 'All-in-One Video Bar' in req.camera_type_preference and room_area < 400
-        
+
         if not audio_integrated:
-            # Microphones
+            # === MICROPHONES (ALWAYS REQUIRED) ===
             if 'Ceiling' in req.microphone_type:
                 mic_count = max(2, int(room_area / 150))
                 blueprint['ceiling_microphones'] = ProductRequirement(
@@ -168,9 +168,10 @@ class OptimizedBOQGenerator:
                     quantity=mic_count,
                     priority=5,
                     justification=f'{mic_count}x ceiling mics for {room_area:.0f} sqft coverage',
-                    required_keywords=['ceiling', 'microphone']
+                    required_keywords=['ceiling', 'microphone', 'array'],
+                    blacklist_keywords=['wireless', 'handheld', 'gooseneck']
                 )
-            elif 'Table' in req.microphone_type:
+            elif 'Table' in req.microphone_type or 'Boundary' in req.microphone_type:
                 mic_count = max(1, int(room_area / 200))
                 blueprint['table_microphones'] = ProductRequirement(
                     category='Audio',
@@ -178,9 +179,22 @@ class OptimizedBOQGenerator:
                     quantity=mic_count,
                     priority=5,
                     justification=f'{mic_count}x table microphones',
-                    required_keywords=['table', 'boundary', 'microphone']
+                    required_keywords=['table', 'boundary', 'microphone'],
+                    blacklist_keywords=['ceiling', 'wireless', 'handheld']
                 )
-            
+            else:
+                # FALLBACK: Always add microphones if none specified
+                mic_count = max(2, int(room_area / 200))
+                blueprint['default_microphones'] = ProductRequirement(
+                    category='Audio',
+                    sub_category='Table/Boundary Microphone',
+                    quantity=mic_count,
+                    priority=5,
+                    justification=f'{mic_count}x microphones for room coverage',
+                    required_keywords=['microphone', 'mic'],
+                    blacklist_keywords=['wireless', 'handheld']
+                )
+
             # DSP for large rooms or complex audio
             if room_area > 400 or req.voice_reinforcement_needed:
                 blueprint['audio_dsp'] = ProductRequirement(
@@ -189,8 +203,10 @@ class OptimizedBOQGenerator:
                     quantity=1,
                     priority=6,
                     justification='DSP for professional audio processing',
-                    required_keywords=['dsp', 'processor'],
-                    blacklist_keywords=['amplifier']
+                    required_keywords=['dsp', 'processor', 'mixer', 'dante', 'tesira', 'biamp', 'qsc', 'core'],
+                    blacklist_keywords=['amplifier', 'speaker', 'loudspeaker', 'portable', 'active', 'powered', 'cp12', 'cp8'],
+                    min_price=800,  # Real DSPs cost more
+                    max_price=8000
                 )
             
             # Speakers
@@ -250,7 +266,8 @@ class OptimizedBOQGenerator:
                 quantity=1,
                 priority=11,
                 justification='Equipment rack for AV components',
-                required_keywords=['rack', 'cabinet'],
+                required_keywords=['rack', 'cabinet', 'enclosure'],
+                blacklist_keywords=['shelf', 'mount', 'bracket'],
                 min_price=300
             )
             
@@ -320,17 +337,44 @@ class OptimizedBOQGenerator:
         
         # Check for essential components
         categories_present = {item.get('category') for item in boq_items}
+        sub_categories = [item.get('sub_category', '') for item in boq_items]
         
+        # === CRITICAL VALIDATIONS ===
         if 'Displays' not in categories_present:
             validation['issues'].append("🚨 No display found")
         
         if 'Video Conferencing' not in categories_present:
             validation['issues'].append("🚨 No video conferencing equipment")
         
+        # === NEW: MICROPHONE VALIDATION ===
+        has_microphones = any(
+            'Microphone' in sub_cat for sub_cat in sub_categories
+        )
+        if not has_microphones:
+            validation['issues'].append("🚨 CRITICAL: No microphones found - system will have no audio input!")
+        
+        # === NEW: DSP VALIDATION ===
+        if room_area > 400:
+            has_dsp = any(
+                'DSP' in sub_cat or 'Processor' in sub_cat or 'Mixer' in sub_cat
+                for sub_cat in sub_categories
+            )
+            
+            # Check if DSP is actually a speaker (common mistake)
+            for item in boq_items:
+                if 'DSP' in item.get('sub_category', '') or 'Processor' in item.get('sub_category', ''):
+                    name = item.get('name', '').lower()
+                    if any(keyword in name for keyword in ['speaker', 'loudspeaker', 'portable', 'cp12', 'cp8']):
+                        validation['issues'].append(f"🚨 CRITICAL: '{item.get('name')}' is a SPEAKER, not a DSP!")
+                        has_dsp = False
+            
+            if not has_dsp:
+                validation['warnings'].append("⚠️ Large room needs DSP for audio processing")
+        
         # Check for control system
         has_control = any(
-            'Touch Controller' in item.get('sub_category', '') 
-            for item in boq_items
+            'Touch Controller' in sub_cat or 'Touch Panel' in sub_cat
+            for sub_cat in sub_categories
         )
         if not has_control:
             validation['warnings'].append("💡 Consider adding touch controller")
@@ -344,5 +388,13 @@ class OptimizedBOQGenerator:
         
         if display_count > mount_count:
             validation['issues'].append(f"🚨 {display_count} displays but only {mount_count} mounts")
+        
+        # === NEW: RACK VALIDATION ===
+        if room_area > 400:
+            has_rack = any(
+                'Rack' in sub_cat for sub_cat in sub_categories
+            )
+            if not has_rack:
+                validation['warnings'].append("💡 Large system needs equipment rack for proper housing")
         
         return validation
