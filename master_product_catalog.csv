@@ -1,4 +1,4 @@
-brand,name,model_number,primary_category,sub_category,price_inr,price_usd,warranty,description,full_specifications,unit_of_measure,min_order_quantity,lead_time_days,gst_rate,image_url,needs_review,source_file,data_quality_score
+brand,name,model_number,category,sub_category,price_inr,price_usd,warranty,description,full_specifications,unit_of_measure,min_order_quantity,lead_time_days,gst_rate,image_url,needs_review,source_file,data_quality_score
 Liberty,Liberty PC6B007BK - wire,PC6B007BK,Computers,Desktop / SFF PC,450.0,5.39,Not Specified,wire,liberty wire,piece,1,14,18,,False,Liberty.csv,80
 Liberty,Liberty PC6B025BK - Cable,PC6B025BK,Cables & Connectivity,AV Cable,950.0,11.38,Not Specified,Cable,Liberty Cable,piece,1,7,18,,False,Liberty.csv,100
 Liberty,Liberty AR4074 - 4K Liberty,AR4074,General AV,Needs Classification,17000.0,203.59,Not Specified,4K Liberty,4K Liberty,piece,1,14,18,,True,Liberty.csv,70
