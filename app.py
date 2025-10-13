@@ -695,7 +695,8 @@ def main():
                     show_error_message(f"Error during BOQ generation: {str(e)}")
                     st.exception(e)
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        # Display BOQ results (same as before)
+        
+        # Display BOQ results
         if st.session_state.get('boq_items'):
             project_details = {
                 'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
@@ -712,6 +713,29 @@ def main():
                 'Currency': st.session_state.get('currency_select', 'USD')
             }
             display_boq_results(product_df, project_details)
+
+            # ======================== NEW CODE: AI OPTIMIZATION ========================
+            if st.session_state.get('boq_items') and model:
+                with st.expander("💡 AI-Powered Cost Optimization Suggestions"):
+                    if st.button("Generate Optimization Suggestions", key="optimize_btn"):
+                        with st.spinner("AI analyzing BOQ for optimization opportunities..."):
+                            from components.gemini_handler import generate_cost_optimization_suggestions
+                            
+                            suggestions = generate_cost_optimization_suggestions(
+                                model=model,
+                                boq_items=st.session_state.boq_items,
+                                room_type=st.session_state.get('room_type_select', 'Conference Room'),
+                                budget_tier=st.session_state.get('budget_tier_slider', 'Standard')
+                            )
+                            
+                            if suggestions:
+                                st.markdown("### 🎯 Optimization Opportunities")
+                                for suggestion in suggestions:
+                                    st.markdown(f"- {suggestion}")
+                            else:
+                                st.info("No optimization opportunities found. Your BOQ is already well-optimized!")
+            # ============================ END OF NEW CODE ===========================
+
         else:
             st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
 
