@@ -417,6 +417,26 @@ def main():
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ============= APPLIED CHANGE HERE =============
+    # Map primary_use_case to room_type
+    use_case_to_room_type = {
+        'Video Conferencing': 'Standard Conference Room (6-8 People)',
+        'Presentations & Training': 'Training Room (15-25 People)',
+        'Hybrid Meetings': 'Large Conference Room (8-12 People)',
+        'Executive Boardroom': 'Executive Boardroom (10-16 People)',
+        'Event & Broadcast': 'Multipurpose Event Room (40+ People)',
+        'Multipurpose': 'Large Training/Presentation Room (25-40 People)'
+    }
+
+    if 'client_requirements' in st.session_state:
+        req = st.session_state.client_requirements
+        mapped_room_type = use_case_to_room_type.get(
+            req.primary_use_case, 
+            'Standard Conference Room (6-8 People)'
+        )
+        st.session_state.room_type_select = mapped_room_type
+    # ===============================================
+
     # ============= MAIN TABS =============
     tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
@@ -516,7 +536,6 @@ def main():
                         if brand != 'No Preference':
                             st.write(f"  • {category.replace('_', ' ').title()}: {brand}")
             
-            # =================== APPLIED CHANGE HERE ===================
             # Get room dimensions from sidebar (already captured)
             room_length = st.session_state.get('room_length_input', 28.0)
             room_width = st.session_state.get('room_width_input', 20.0)
@@ -535,7 +554,6 @@ def main():
             room_area = room_length * room_width
             st.metric("Room Area", f"{room_area:.0f} sq ft")
             st.info(f"📐 Room Type: {room_type}")
-            # ==========================================================
             
             missing_fields = validate_required_fields()
             generate_disabled = bool(missing_fields)
