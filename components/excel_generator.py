@@ -723,7 +723,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
 # ==================== SCOPE OF WORK SHEET ====================
 def _add_scope_of_work_sheet(workbook, styles):
     """Creates the Scope of Work sheet based on AllWave AV standard format."""
-    sheet = workbook.create_sheet(title="Scope of Work", index=1)
+    sheet = workbook.create_sheet(title="Scope of Work", index=2) # CHANGED index from 1 to 2
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
@@ -821,7 +821,7 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     Creates the Proposal Summary sheet with FULL CALCULATIONS from BOQ sheets.
     Now includes PSNI/Client Type highlights.
     """
-    sheet = workbook.create_sheet(title="Proposal Summary", index=2)
+    sheet = workbook.create_sheet(title="Proposal Summary", index=3) # CHANGED index from 2 to 3
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
@@ -1061,11 +1061,142 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
         row_cursor += 1
 
 
+# ==================== EXECUTIVE SUMMARY SHEET (NEW) ====================
+def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles):
+    """
+    Create executive-level budget summary (1-page overview)
+    """
+    
+    sheet = workbook.create_sheet(title="Executive Summary", index=1)
+    _create_sheet_header(sheet)
+    sheet.sheet_view.showGridLines = False
+    
+    row = 4
+    
+    # Project Overview
+    sheet.merge_cells(f'A{row}:F{row}')
+    header = sheet[f'A{row}']
+    header.value = "PROJECT OVERVIEW"
+    header.fill = styles['table_header_blue_fill']
+    header.font = Font(bold=True, color="FFFFFF")
+    header.alignment = Alignment(horizontal='center', vertical='center')
+    row += 2
+    
+    overview_data = [
+        ("Project Name", project_details.get('Project Name', 'N/A')),
+        ("Client", project_details.get('Client Name', 'N/A')),
+        ("Location", project_details.get('Location', 'N/A')),
+        ("Total Rooms", len(rooms_data)),
+        ("Project Date", datetime.now().strftime("%B %d, %Y"))
+    ]
+    
+    for label, value in overview_data:
+        sheet[f'A{row}'] = label
+        sheet[f'A{row}'].font = styles['bold_font']
+        sheet.merge_cells(f'B{row}:F{row}')
+        sheet[f'B{row}'] = value
+        row += 1
+    
+    row += 2
+    
+    # Budget Summary by Room
+    sheet.merge_cells(f'A{row}:F{row}')
+    header = sheet[f'A{row}']
+    header.value = "BUDGET BREAKDOWN BY SPACE"
+    header.fill = styles['table_header_blue_fill']
+    header.font = Font(bold=True, color="FFFFFF")
+    header.alignment = Alignment(horizontal='center', vertical='center')
+    row += 1
+    
+    # Table headers
+    headers = ['Room Name', 'Area (sqft)', 'Equipment Cost', 'Services', 'Tax', 'Total']
+    for col_idx, header_text in enumerate(headers, 1):
+        cell = sheet.cell(row=row, column=col_idx)
+        cell.value = header_text
+        cell.fill = styles['header_light_green_fill']
+        cell.font = styles['bold_font']
+        cell.border = styles['thin_border']
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    row += 1
+    
+    # Room data
+    grand_equipment = 0
+    grand_services = 0
+    grand_tax = 0
+    grand_total = 0
+    
+    for room in rooms_data:
+        # Based on services being 30% of hardware cost, subtotal = 1.3 * hardware
+        # Hardware = subtotal / 1.3 ~= subtotal * 0.77
+        # Services = (subtotal / 1.3) * 0.3 ~= subtotal * 0.23
+        equipment_cost = room.get('subtotal', 0) / 1.30
+        services_cost = equipment_cost * 0.30
+        tax = room.get('gst', 0)
+        total = room.get('total', 0)
+        
+        grand_equipment += equipment_cost
+        grand_services += services_cost
+        grand_tax += tax
+        grand_total += total
+        
+        room_data = [
+            room.get('name', 'Unknown'),
+            f"{room.get('area', 0):.0f}",
+            equipment_cost,
+            services_cost,
+            tax,
+            total
+        ]
+        
+        for col_idx, value in enumerate(room_data, 1):
+            cell = sheet.cell(row=row, column=col_idx)
+            cell.value = value
+            cell.border = styles['thin_border']
+            
+            if col_idx >= 3:
+                cell.number_format = styles['currency_format']
+                cell.alignment = Alignment(horizontal='right', vertical='center')
+            else:
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    
+        row += 1
+    
+    # Grand total row
+    sheet.merge_cells(f'A{row}:B{row}')
+    total_label = sheet[f'A{row}']
+    total_label.value = "TOTAL PROJECT INVESTMENT"
+    total_label.font = Font(bold=True, size=12)
+    total_label.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    total_label.border = styles['thin_border']
+    sheet[f'B{row}'].border = styles['thin_border']
+
+    
+    totals = [grand_equipment, grand_services, grand_tax, grand_total]
+    for col_idx, value in enumerate(totals, 3):
+        cell = sheet.cell(row=row, column=col_idx)
+        if value is not None:
+            cell.value = value
+            cell.number_format = styles['currency_format']
+            cell.alignment = Alignment(horizontal='right', vertical='center')
+        cell.font = Font(bold=True, size=11)
+        cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+        cell.border = styles['thin_border']
+    
+    # Set column widths
+    sheet.column_dimensions['A'].width = 30
+    sheet.column_dimensions['B'].width = 15
+    sheet.column_dimensions['C'].width = 18
+    sheet.column_dimensions['D'].width = 18
+    sheet.column_dimensions['E'].width = 18
+    sheet.column_dimensions['F'].width = 20
+
+
 # ==================== MAIN ENTRY POINT (UPDATED) ====================
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
     Main function to generate the complete Excel workbook.
-    FIXED: Now calculates room totals BEFORE creating Proposal Summary
+    Enhanced with executive summary.
     """
     workbook = openpyxl.Workbook()
     styles = _define_styles()
@@ -1099,16 +1230,19 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     # === SHEET 1: VERSION CONTROL ===
     _add_version_control_sheet(workbook, project_details, styles)
     
-    # === SHEET 2: SCOPE OF WORK ===
+    # === SHEET 2: EXECUTIVE SUMMARY (NEW!) ===
+    generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
+
+    # === SHEET 3: SCOPE OF WORK ===
     _add_scope_of_work_sheet(workbook, styles)
     
-    # === SHEET 3: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
+    # === SHEET 4: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
     _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles)
     
-    # === SHEET 4: TERMS & CONDITIONS ===
+    # === SHEET 5: TERMS & CONDITIONS ===
     _add_terms_and_conditions_sheet(workbook, styles)
     
-    # === SHEET 5+: ROOM BOQ SHEETS ===
+    # === SHEET 6+: ROOM BOQ SHEETS ===
     for room in rooms_data:
         if room.get('boq_items') and len(room['boq_items']) > 0:
             print(f"DEBUG: Creating sheet for room: {room['name']}")
