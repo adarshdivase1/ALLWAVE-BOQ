@@ -266,6 +266,47 @@ def create_multi_room_interface():
 
 # ==================== BOQ DISPLAY AND EDITING ====================
 
+def display_validation_summary(validation_results, selector):
+    """Display comprehensive validation report"""
+    
+    with st.expander("📊 System Validation Report", expanded=bool(validation_results.get('issues'))):
+        
+        # Brand Compliance
+        if validation_results.get('brand_compliance'):
+            st.success("**✅ Brand Compliance**")
+            for item in validation_results['brand_compliance']:
+                st.markdown(f"- {item}")
+            st.markdown("---")
+        
+        # Critical Issues
+        if validation_results.get('issues'):
+            st.error(f"**🚨 Critical Issues ({len(validation_results['issues'])})**")
+            for issue in validation_results['issues']:
+                st.markdown(f"- {issue}")
+            st.markdown("---")
+        
+        # Warnings
+        if validation_results.get('warnings'):
+            st.warning(f"**💡 Recommendations ({len(validation_results['warnings'])})**")
+            for warning in validation_results['warnings']:
+                st.markdown(f"- {warning}")
+            st.markdown("---")
+        
+        # Selector Warnings (Product Selection Issues)
+        if hasattr(selector, 'validation_warnings') and selector.validation_warnings:
+            st.info(f"**ℹ️ Product Selection Notes ({len(selector.validation_warnings)})**")
+            for warning in selector.validation_warnings:
+                severity_emoji = {
+                    'CRITICAL': '🚨',
+                    'HIGH': '⚠️',
+                    'MEDIUM': '💡',
+                    'LOW': 'ℹ️'
+                }.get(warning.get('severity', 'LOW'), 'ℹ️')
+                
+                st.markdown(
+                    f"{severity_emoji} **{warning['component']}**: {warning['issue']}"
+                )
+
 def update_boq_content_with_current_items():
     """Update BOQ content in session state - ensures top_3_reasons exist."""
     if not st.session_state.get('boq_items'):
@@ -287,23 +328,9 @@ def update_boq_content_with_current_items():
 
 def display_boq_results(product_df, project_details):
     """Display BOQ results with EXPANDABLE CARDS showing Top 3 Reasons - PRODUCTION READY."""
-    validation_results = st.session_state.get('validation_results', {})
     item_count = len(st.session_state.get('boq_items', []))
 
     st.subheader(f"📋 Generated Bill of Quantities ({item_count} items)")
-
-    # Display validation results prominently
-    if validation_results.get('issues') or validation_results.get('warnings'):
-        with st.container(border=True):
-            if validation_results.get('issues'):
-                st.error("🚨 **Critical System Gaps Identified**")
-                for issue in validation_results['issues']:
-                    st.write(f"- {issue}")
-
-            if validation_results.get('warnings'):
-                st.warning("💡 **Design Recommendations**")
-                for warning in validation_results['warnings']:
-                    st.write(f"- {warning}")
 
     # === DISPLAY BOQ ===
     if st.session_state.get('boq_items'):
@@ -419,6 +446,13 @@ def display_boq_results(product_df, project_details):
     
     else:
         st.info("No BOQ content generated yet. Use the form above to generate a BOQ.")
+
+    # Call the new validation summary function
+    if st.session_state.get('boq_selector'):
+        display_validation_summary(
+            st.session_state.get('validation_results', {}),
+            st.session_state.boq_selector
+        )
 
     # === SUMMARY METRICS AND DOWNLOAD ===
     if st.session_state.get('boq_items'):
