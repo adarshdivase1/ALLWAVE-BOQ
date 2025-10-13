@@ -26,7 +26,8 @@ try:
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    from components.boq_generator import generate_boq_from_ai
+    from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
+    from components.optimized_boq_generator import OptimizedBOQGenerator
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
@@ -654,3 +655,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
