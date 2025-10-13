@@ -102,6 +102,75 @@ def validate_against_avixa(model, guidelines, boq_items):
         return [f"AVIXA compliance check failed: {str(e)}"]
 
 
+def generate_cost_optimization_suggestions(model, boq_items, room_type, budget_tier):
+    """
+    Use AI to suggest cost optimizations without compromising quality
+    """
+    
+    if not model or not boq_items:
+        return []
+    
+    # Prepare BOQ summary
+    boq_summary = []
+    for item in boq_items:
+        boq_summary.append({
+            'category': item.get('category'),
+            'brand': item.get('brand'),
+            'model': item.get('model_number'),
+            'quantity': item.get('quantity'),
+            'unit_price': item.get('price'),
+            'total': item.get('price', 0) * item.get('quantity', 1)
+        })
+    
+    prompt = f"""
+    You are an AV system design expert. Analyze this BOQ and suggest 3-5 cost optimization opportunities 
+    that maintain system quality and AVIXA compliance.
+    
+    **Room Type:** {room_type}
+    **Budget Tier:** {budget_tier}
+    
+    **Current BOQ:**
+    {json.dumps(boq_summary, indent=2)}
+    
+    Provide specific, actionable suggestions in this format:
+    1. [Component Category]: [Specific suggestion] - Potential savings: $XXX
+    
+    Focus on:
+    - Consolidating similar components
+    - Alternative products with similar specs at lower cost
+    - Quantity optimizations
+    - Bundle opportunities
+    
+    Do NOT suggest:
+    - Removing essential components
+    - Downgrading display sizes below AVIXA standards
+    - Eliminating microphones or critical audio
+    
+    Keep suggestions under 500 words total.
+    """
+    
+    try:
+        response_text = generate_with_retry(model, prompt, return_text_only=True)
+        
+        if response_text:
+            # Parse suggestions
+            suggestions = []
+            lines = response_text.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
+                    suggestions.append(line)
+            
+            return suggestions
+        
+        return []
+        
+    except Exception as e:
+        st.error(f"AI optimization suggestion failed: {e}")
+        return []
+
+
 def extract_text_from_response(response):
     """
     Helper function to extract text from Gemini response object.
@@ -129,4 +198,3 @@ def extract_text_from_response(response):
             return None
     
     return None
-
