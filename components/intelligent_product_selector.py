@@ -458,6 +458,20 @@ class IntelligentProductSelector:
                 case=False, na=False, regex=True
             )]
         
+        elif req.category == 'Audio' and req.sub_category == 'DSP / Audio Processor / Mixer':
+            # CRITICAL: Exclude powered speakers and portable systems
+            df = df[df['name'].str.contains(
+                r'(dsp|processor|mixer|tesira|biamp|qsc.*core|dante|avhub|intellimix)',
+                case=False, na=False, regex=True
+            )]
+            df = df[~df['name'].str.contains(
+                r'(speaker|loudspeaker|portable|active.*speaker|powered.*speaker|cp\d+|k\d+\.\d+)',
+                case=False, na=False, regex=True
+            )]
+            df = df[df['price'] > 800]  # Real DSPs cost more than $800
+            
+            self.log(f"    🔍 Filtered for actual DSP/processors: {len(df)} products")
+        
         elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
             df = df[df['name'].str.contains(
                 r'(ptz|pan.*tilt.*zoom|eagleeye.*iv|eagleeye.*director|eptz)',
