@@ -10,7 +10,7 @@ try:
     from components.utils import convert_currency, format_currency, get_usd_to_inr_rate
     from components.excel_generator import generate_company_excel
     # This specific import is now used in the UI, so it needs to be available
-    from components.boq_generator import extract_top_3_reasons 
+    from components.boq_generator import extract_top_3_reasons
 except ImportError:
     ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
     def get_usd_to_inr_rate(): return 83.5
@@ -203,7 +203,7 @@ def create_multi_room_interface():
 
             # CRITICAL: Validate rooms before passing
             valid_rooms = [
-                room for room in st.session_state.project_rooms 
+                room for room in st.session_state.project_rooms
                 if room.get('boq_items') and len(room['boq_items']) > 0
             ]
             
@@ -356,8 +356,8 @@ def display_boq_results(product_df, project_details):
         
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(
-            summary_df, 
-            use_container_width=True, 
+            summary_df,
+            use_container_width=True,
             hide_index=True,
             height=min(400, len(summary_data) * 35 + 38)  # Auto height
         )
@@ -572,6 +572,21 @@ def edit_current_boq(product_df, currency):
         st.info("No BOQ items loaded. Generate a BOQ or add products manually.")
         return
 
+    # ✅ DEFENSIVE FIX: Verify required columns exist
+    if product_df is None or product_df.empty:
+        st.error("Product catalog is empty or not loaded.")
+        return
+    
+    # Check for category column (handle both 'category' and 'primary_category')
+    if 'category' not in product_df.columns:
+        if 'primary_category' in product_df.columns:
+            product_df = product_df.copy()
+            product_df['category'] = product_df['primary_category']
+        else:
+            st.error("Product catalog is missing 'category' column. Please regenerate the product catalog.")
+            st.write("Available columns:", product_df.columns.tolist())
+            return
+
     st.write(f"**Current BOQ Items ({len(st.session_state.boq_items)} items):**")
 
     items_to_remove = []
@@ -597,6 +612,10 @@ def edit_current_boq(product_df, currency):
                 sub_cats = sorted(list(product_df[
                     product_df['category'] == item['category']
                 ]['sub_category'].unique()))
+                
+                if not sub_cats:
+                    sub_cats = ['General']
+                
                 current_sub = item.get('sub_category', '')
                 try:
                     sub_index = sub_cats.index(current_sub) if current_sub in sub_cats else 0
