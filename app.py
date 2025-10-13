@@ -283,22 +283,27 @@ def main():
         product_df, guidelines, data_issues = load_and_validate_data()
         st.session_state.product_df = product_df
 
-    # --- START OF ADDED DEBUG CODE ---
-    # Debug - Add Column Verification in app.py
+    # --- START OF UPDATED DEBUG CODE ---
     if product_df is not None:
         st.sidebar.write("🔍 DEBUG INFO")
         st.sidebar.write(f"Rows: {len(product_df)}")
-        st.sidebar.write(f"Columns: {', '.join(product_df.columns.tolist()[:10])}")
+        st.sidebar.write(f"Columns: {len(product_df.columns)}")
+        
+        # Show first few column names
+        cols_preview = ', '.join(product_df.columns.tolist()[:8])
+        st.sidebar.write(f"First cols: {cols_preview}...")
         
         # Check for category column
         if 'category' in product_df.columns:
-            st.sidebar.success("✅ 'category' column found")
-            st.sidebar.write(f"Sample: {product_df['category'].head(3).tolist()}")
+            st.sidebar.success("✅ 'category' column exists")
+            categories = product_df['category'].unique()
+            st.sidebar.write(f"Categories: {len(categories)}")
+            st.sidebar.write(f"Sample: {', '.join(categories[:3])}")
         else:
             st.sidebar.error("❌ 'category' column MISSING")
-            if 'primary_category' in product_df.columns:
-                st.sidebar.warning("Found 'primary_category' instead")
-    # --- END OF ADDED DEBUG CODE ---
+            st.sidebar.write("All columns:")
+            st.sidebar.write(product_df.columns.tolist())
+    # --- END OF UPDATED DEBUG CODE ---
     
     if data_issues:
         with st.expander("⚠️ Data Quality Issues Detected", expanded=False):
