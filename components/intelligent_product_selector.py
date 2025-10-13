@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 import streamlit as st
 import pandas as pd
@@ -36,6 +36,98 @@ class ProductRequirement:
     
     # NEW: Strict category validation (prevents cross-category contamination)
     strict_category_match: bool = True
+
+# CRITICAL FIX: Enhanced Brand Compatibility & Ecosystem Logic
+class BrandEcosystemManager:
+    """
+    Manages brand compatibility, ecosystem consistency, and intelligent fallbacks
+    """
+    
+    def __init__(self):
+        # Brand family relationships (ecosystem consistency)
+        self.brand_ecosystems = {
+            'microsoft': {
+                'primary': 'Microsoft',
+                'vc_partners': ['Yealink', 'Poly', 'Cisco', 'Logitech'],
+                'audio_partners': ['Shure', 'QSC', 'Biamp'],
+                'control_partners': ['Crestron', 'Extron', 'AMX'],
+                'ecosystem_score': 0.8  # How much we penalize switching
+            },
+            'zoom': {
+                'primary': 'Zoom',
+                'vc_partners': ['Poly', 'Logitech', 'Yealink'],
+                'audio_partners': ['Bose', 'Shure', 'QSC'],
+                'control_partners': ['Crestron'],
+                'ecosystem_score': 0.75
+            },
+            'cisco': {
+                'primary': 'Cisco',
+                'vc_partners': ['Cisco', 'Polycom'],
+                'audio_partners': ['QSC', 'Shure'],
+                'control_partners': ['Crestron', 'Extron'],
+                'ecosystem_score': 0.85
+            }
+        }
+        
+        # Brand substitution matrix (when preferred brand unavailable)
+        self.brand_substitutions = {
+            'displays': {
+                'Samsung': ['LG', 'Sony', 'NEC'],
+                'LG': ['Samsung', 'Sony'],
+                'Sony': ['Samsung', 'LG', 'NEC'],
+                'NEC': ['Sharp', 'Panasonic']
+            },
+            'video_conferencing': {
+                'Yealink': ['Poly', 'Logitech'],  # Compatible, similar quality tier
+                'Poly': ['Yealink', 'Logitech'],
+                'Cisco': ['Polycom'],
+                'Logitech': ['Poly', 'Yealink']
+            },
+            'audio': {
+                'QSC': ['Biamp', 'Shure'],
+                'Biamp': ['QSC'],
+                'Shure': ['Sennheiser'],
+                'Bose': ['Shure']
+            },
+            'control': {
+                'Crestron': ['Extron', 'AMX'],
+                'Extron': ['Crestron', 'Kramer'],
+                'AMX': ['Crestron']
+            }
+        }
+    
+    def get_substitute_brands(self, category, preferred_brand):
+        """Get ordered list of acceptable substitute brands"""
+        # The category in brand_substitutions might not perfectly match the product category
+        # e.g., 'Control Systems' -> 'control'
+        category_key_map = {
+            'Displays': 'displays',
+            'Video Conferencing': 'video_conferencing',
+            'Audio': 'audio',
+            'Control Systems': 'control',
+            'Signal Management': 'control'
+        }
+        lookup_key = category_key_map.get(category, category.lower())
+        category_subs = self.brand_substitutions.get(lookup_key, {})
+        return category_subs.get(preferred_brand, [])
+    
+    def is_ecosystem_compatible(self, vc_platform, audio_brand, control_brand):
+        """Check if brands form a compatible ecosystem"""
+        vc_lower = vc_platform.lower()
+        
+        for ecosystem_key, ecosystem in self.brand_ecosystems.items():
+            if ecosystem_key in vc_lower:
+                audio_compatible = audio_brand in ecosystem.get('audio_partners', [])
+                control_compatible = control_brand in ecosystem.get('control_partners', [])
+                
+                if audio_compatible and control_compatible:
+                    return True, 1.0  # Perfect match
+                elif audio_compatible or control_compatible:
+                    return True, 0.8  # Partial match
+                else:
+                    return False, 0.5  # Mismatch
+        
+        return True, 0.7  # Default: assume compatible
 
 
 class IntelligentProductSelector:
@@ -270,7 +362,7 @@ class IntelligentProductSelector:
         candidates = self._check_brand_ecosystem(candidates, requirement, self.existing_selections)
         
         # STAGE 6: Budget-Aware Selection
-        selected = self._select_by_budget(candidates, requirement)
+        selected = self._select_by_budget(candidates, requirement, self.existing_selections)
         
         if selected is not None:
             # STAGE 7: Final Validation
@@ -320,7 +412,7 @@ class IntelligentProductSelector:
                 
                 if not fallback_candidates.empty:
                     self.log(f"    ✅ Found {len(fallback_candidates)} fallback candidates")
-                    selected = self._select_by_budget(fallback_candidates, requirement)
+                    selected = self._select_by_budget(fallback_candidates, requirement, self.existing_selections)
         
         return selected
     
@@ -422,7 +514,7 @@ class IntelligentProductSelector:
             alternatives.append(alt)
         
         return alternatives
-    
+
     def _apply_strict_validation(self, df, req: ProductRequirement):
         """
         NEW STAGE: Apply strict category validation to all candidates
@@ -444,7 +536,7 @@ class IntelligentProductSelector:
         else:
             self.log(f"❌ No products passed strict validation")
             return pd.DataFrame()
-    
+
     def _filter_by_category(self, req: ProductRequirement):
         """Stage 1: Filter by category"""
         
@@ -469,7 +561,7 @@ class IntelligentProductSelector:
         
         self.log(f"    Stage 1 - Category filter: {len(df)} products")
         return df
-    
+
     def _filter_service_contracts(self, df, req: ProductRequirement):
         """Stage 2: Filter out service contracts"""
         if req.category == 'Software & Services':
@@ -492,7 +584,7 @@ class IntelligentProductSelector:
         
         self.log(f"    Stage 2 - Service filter: {len(df)} products")
         return df
-    
+
     def _apply_keyword_filters(self, df, req: ProductRequirement):
         """Stage 3: Apply required and blacklist keywords"""
         
@@ -516,7 +608,7 @@ class IntelligentProductSelector:
         
         self.log(f"    Stage 3 - Keyword filter: {len(df)} products")
         return df
-    
+
     def _apply_category_specific_filters(self, df, req: ProductRequirement):
         """Enhanced category-specific filtering"""
         
@@ -601,7 +693,7 @@ class IntelligentProductSelector:
             self.log(f"    🔍 Filtered for actual racks (not shelves): {len(df)} products")
         
         return df
-    
+
     def _match_specifications(self, df, req: ProductRequirement):
         """Stage 4: Match technical specifications"""
         
@@ -632,7 +724,7 @@ class IntelligentProductSelector:
         
         self.log(f"    Stage 4 - Specification match: {len(df)} products")
         return df
-    
+
     def _validate_mount_capacity(self, df, req: ProductRequirement):
         """Validate mount can support the display size"""
         if not req.size_requirement or req.size_requirement < 85:
@@ -677,39 +769,82 @@ class IntelligentProductSelector:
         else:
             self.log(f"    ⚠️ No validated mounts for {req.size_requirement}\" - using all candidates")
             return df
-    
+
     def _apply_client_preferences(self, df, req: ProductRequirement):
-        """Stage 5: STRICTLY ENFORCE client brand preferences"""
+        """
+        ENHANCED: Strictly enforce client brand preferences with intelligent fallbacks.
         
+        Strategy:
+        1. Try exact brand match (highest priority)
+        2. Try substitute brands from same category (80% confidence)
+        3. Log warning and flag for review
+        4. Never silently fall back to random brand
+        """
+        
+        if df.empty:
+            return df
+        
+        # Determine which brand preference applies to this category
         preferred_brand = None
+        category = req.category
         
-        if req.category == 'Displays':
+        if category == 'Displays':
             preferred_brand = self.client_preferences.get('displays')
-        elif req.category == 'Video Conferencing':
+        elif category == 'Video Conferencing':
             preferred_brand = self.client_preferences.get('video_conferencing')
-        elif req.category == 'Audio':
+        elif category == 'Audio':
             preferred_brand = self.client_preferences.get('audio')
-        elif req.category in ['Control Systems', 'Signal Management', 'Lighting']:  # ADDED Lighting
+        elif category in ['Control Systems', 'Signal Management']:
             preferred_brand = self.client_preferences.get('control')
         
-        if preferred_brand and preferred_brand != 'No Preference':
-            # CHANGED: Make this MANDATORY, not optional
-            brand_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
-            
-            if brand_matches.empty:
-                self.log(f"    ⚠️ CRITICAL: No {preferred_brand} products found in {req.category}")
-                self.validation_warnings.append({
-                    'component': req.sub_category,
-                    'issue': f'Client requested {preferred_brand} but no products available',
-                    'severity': 'HIGH'
-                })
-                return df  # Fallback to all products
-            else:
-                self.log(f"    ✅ ENFORCING brand preference: {preferred_brand} ({len(brand_matches)} options)")
-                return brand_matches  # ONLY return preferred brand
+        if not preferred_brand or preferred_brand == 'No Preference':
+            return df  # No preference specified, return all options
         
-        return df
-    
+        # STRATEGY 1: Try exact match
+        brand_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
+        
+        if not brand_matches.empty:
+            self.log(f"    ✅ BRAND MATCH: Found {len(brand_matches)} {preferred_brand} products in {category}")
+            return brand_matches
+        
+        # STRATEGY 2: Try substitute brands
+        ecosystem_mgr = BrandEcosystemManager()
+        substitute_brands = ecosystem_mgr.get_substitute_brands(category, preferred_brand)
+        
+        if substitute_brands:
+            self.log(f"    ✅ BRAND PREFERENCE: {preferred_brand} not available")
+            self.log(f"        Searching substitutes: {', '.join(substitute_brands)}")
+            
+            for substitute in substitute_brands:
+                sub_matches = df[df['brand'].str.lower() == substitute.lower()]
+                
+                if not sub_matches.empty:
+                    self.log(f"    ✅ USING SUBSTITUTE: {substitute} ({len(sub_matches)} options)")
+                    
+                    # Add warning for report
+                    self.validation_warnings.append({
+                        'component': req.sub_category,
+                        'issue': f"Preferred brand '{preferred_brand}' unavailable. Using '{substitute}' (equivalent quality/performance)",
+                        'severity': 'MEDIUM'
+                    })
+                    
+                    return sub_matches
+        
+        # STRATEGY 3: If no substitutes found, log critical issue and still try to find ANY compatible product
+        self.log(f"    ❌ CRITICAL: {preferred_brand} NOT FOUND and no substitutes available")
+        
+        self.validation_warnings.append({
+            'component': req.sub_category,
+            'issue': f"Client requested '{preferred_brand}' but NOT FOUND in catalog. Using best available alternative.",
+            'severity': 'HIGH'
+        })
+        
+        # Return best quality option as fallback
+        if 'data_quality_score' in df.columns:
+            return df.nlargest(1, 'data_quality_score')
+        
+        return df.head(1)  # Last resort: first item
+
     def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
         """Stage 5.5: Ensure brand ecosystem compatibility"""
         
@@ -730,16 +865,34 @@ class IntelligentProductSelector:
                         return brand_matches
         
         return df
-    
-    def _select_by_budget(self, df, req: ProductRequirement):
-        """Stage 6: Select based on budget tier"""
+
+    def _select_by_budget(self, df, req: ProductRequirement, existing_selections=None):
+        """
+        ENHANCED: Select product by budget but also consider ecosystem consistency
+        """
         
         if df.empty:
             return None
         
+        # Check if this brand has already been selected in same category
+        existing_brand_for_category = None
+        if existing_selections:
+            for sel in existing_selections:
+                if sel.get('category') == req.category:
+                    existing_brand_for_category = sel.get('brand')
+                    break
+        
+        # Prefer products from already-selected brands (ecosystem consistency)
+        if existing_brand_for_category:
+            brand_consistency = df[df['brand'].str.lower() == existing_brand_for_category.lower()]
+            if not brand_consistency.empty:
+                df = brand_consistency
+                self.log(f"    ✅ ECOSYSTEM CONSISTENCY: Selecting from {existing_brand_for_category} to match previous selections")
+        
+        # Now apply budget tier selection
         df_sorted = df.sort_values('price')
         
-        if self.budget_tier in ['Premium', 'Executive']:
+        if self.budget_tier in ['Premium', 'Executive', 'Enterprise']:
             start_idx = int(len(df_sorted) * 0.75)
             selection_pool = df_sorted.iloc[start_idx:]
         elif self.budget_tier == 'Economy':
@@ -755,7 +908,7 @@ class IntelligentProductSelector:
         
         selected_idx = len(selection_pool) // 2
         return selection_pool.iloc[selected_idx].to_dict()
-    
+
     def _validate_compatibility(self, product: Dict, req: ProductRequirement) -> bool:
         """Stage 7: Validate product compatibility"""
         
@@ -795,7 +948,50 @@ class IntelligentProductSelector:
                 return False
         
         return True
-    
+
+    def validate_ecosystem_consistency(self, boq_items: List[Dict]) -> Dict[str, Any]:
+        """
+        NEW: Validate that selected brands form a coherent ecosystem
+        """
+        ecosystem_mgr = BrandEcosystemManager()
+        
+        # Extract selected brands by category
+        selected_brands = {}
+        vc_platform = None
+        
+        for item in boq_items:
+            category = item.get('category', '')
+            brand = item.get('brand', '')
+            
+            if category not in selected_brands:
+                selected_brands[category] = brand
+            
+            # This logic assumes self.requirements exists, which might need to be set
+            # during the BOQ generation process.
+            if 'Video Conferencing' in category and hasattr(self, 'requirements') and hasattr(self.requirements, 'vc_platform'):
+                vc_platform = self.requirements.vc_platform
+        
+        # Check ecosystem compatibility
+        audio_brand = selected_brands.get('Audio', '')
+        control_brand = selected_brands.get('Control Systems', '')
+        compatible = True  # Default to true if not enough info
+        
+        if vc_platform and audio_brand and control_brand:
+            compatible, score = ecosystem_mgr.is_ecosystem_compatible(
+                vc_platform, audio_brand, control_brand
+            )
+            
+            if not compatible:
+                self.log(f"    ⚠️ WARNING: Ecosystem mismatch detected")
+                self.log(f"        VC Platform: {vc_platform}")
+                self.log(f"        Audio: {audio_brand} (score: {score})")
+                self.log(f"        Control: {control_brand}")
+        
+        return {
+            'selected_brands': selected_brands,
+            'ecosystem_compatible': compatible
+        }
+
     def log(self, message: str):
         """Add to selection log"""
         self.selection_log.append(message)
