@@ -544,13 +544,15 @@ def main():
             room_area = room_length * room_width
             st.metric("Room Area", f"{room_area:.0f} sq ft")
             
+            # =================== APPLIED CHANGE HERE ===================
             # Room type selection
             room_type = st.selectbox(
                 "Room Type",
                 list(ROOM_SPECS.keys()),
                 key="boq_room_type_select",  # ✅ UNIQUE KEY
-                index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'))
+                index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select')) if st.session_state.get('room_type_select') in ROOM_SPECS else 0
             )
+            # ==========================================================
             
             missing_fields = validate_required_fields()
             generate_disabled = bool(missing_fields)
