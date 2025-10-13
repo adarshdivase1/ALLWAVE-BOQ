@@ -551,7 +551,7 @@ def create_interactive_boq_editor(product_df):
         return
 
     currency = st.session_state.get('currency_select', 'USD')
-    tabs = st.tabs(["✏️ Edit Current BOQ", "➕ Add Products", "🔍 Product Search"])
+    tabs = st.tabs(["✏️ Edit Current BOQ", "➕ Add Products", "🔍 Product Search", "🔄 Compare Alternatives"])
 
     with tabs[0]:
         edit_current_boq(product_df, currency)
@@ -561,6 +561,9 @@ def create_interactive_boq_editor(product_df):
 
     with tabs[2]:
         product_search_interface(product_df, currency)
+
+    with tabs[3]:
+        create_boq_comparison_interface(product_df)
 
 
 def edit_current_boq(product_df, currency):
@@ -805,6 +808,126 @@ def product_search_interface(product_df, currency):
                         update_boq_content_with_current_items()
                         st.success(f"✅ Added {add_qty}x {product['name']}!")
                         st.rerun()
+
+def create_boq_comparison_interface(product_df):
+    """
+    Allow users to compare current BOQ with alternatives
+    """
+    
+    st.subheader("🔄 Product Alternatives & Comparison")
+    
+    if not st.session_state.get('boq_items'):
+        st.info("Generate a BOQ first to see alternatives")
+        return
+    
+    # Let user select an item to explore alternatives
+    item_names = [
+        f"{item.get('category')} - {item.get('brand')} {item.get('model_number')}"
+        for item in st.session_state.boq_items
+    ]
+    
+    if not item_names:
+        return
+    
+    selected_item_name = st.selectbox(
+        "Select component to view alternatives:",
+        item_names,
+        key="comparison_item_select"
+    )
+    
+    selected_index = item_names.index(selected_item_name)
+    selected_item = st.session_state.boq_items[selected_index]
+    
+    # Display selected item details
+    st.markdown("### 📌 Current Selection")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write(f"**Brand:** {selected_item.get('brand')}")
+        st.write(f"**Model:** {selected_item.get('model_number')}")
+    
+    with col2:
+        st.metric("Unit Price", f"${selected_item.get('price', 0):,.2f}")
+        st.write(f"**Warranty:** {selected_item.get('warranty', 'N/A')}")
+    
+    with col3:
+        st.metric("Quantity", selected_item.get('quantity', 1))
+        total = selected_item.get('price', 0) * selected_item.get('quantity', 1)
+        st.metric("Line Total", f"${total:,.2f}")
+    
+    # Show top 3 reasons
+    if selected_item.get('top_3_reasons'):
+        with st.expander("🎯 Why This Product?", expanded=True):
+            for idx, reason in enumerate(selected_item.get('top_3_reasons', []), 1):
+                st.markdown(f"**{idx}.** {reason}")
+    
+    st.markdown("---")
+    
+    # Generate alternatives
+    if st.button("🔍 Find Alternative Products", key="find_alternatives_btn"):
+        with st.spinner("Searching for alternatives..."):
+            from components.intelligent_product_selector import ProductRequirement, IntelligentProductSelector
+            
+            # Create a requirement from the selected item
+            requirement = ProductRequirement(
+                category=selected_item.get('category'),
+                sub_category=selected_item.get('sub_category'),
+                quantity=selected_item.get('quantity', 1),
+                priority=1,
+                justification="Alternative search",
+                size_requirement=selected_item.get('size_requirement'),
+                client_preference_weight=0.0  # Ignore brand preference for alternatives
+            )
+            
+            selector = IntelligentProductSelector(
+                product_df=product_df,
+                client_preferences={},
+                budget_tier='Standard'
+            )
+            
+            alternatives = selector.suggest_alternatives(selected_item, requirement, count=3)
+            
+            if alternatives:
+                st.markdown("### 🔄 Alternative Options")
+                
+                for i, alt in enumerate(alternatives, 1):
+                    with st.expander(f"Option {i}: {alt.get('brand')} {alt.get('model_number')}"):
+                        col_a, col_b, col_c = st.columns([2, 1, 1])
+                        
+                        with col_a:
+                            st.write(f"**Product:** {alt.get('name', '')[:60]}...")
+                            st.write(f"**Brand:** {alt.get('brand')}")
+                            st.write(f"**Model:** {alt.get('model_number')}")
+                        
+                        with col_b:
+                            st.metric("Price", f"${alt.get('price', 0):,.2f}")
+                            
+                            diff = alt.get('price_difference', 0)
+                            diff_pct = alt.get('price_difference_pct', 0)
+                            
+                            if diff > 0:
+                                st.markdown(f"🔺 **+${abs(diff):,.2f}** ({abs(diff_pct):.1f}% more)")
+                            elif diff < 0:
+                                st.markdown(f"🔻 **-${abs(diff):,.2f}** ({abs(diff_pct):.1f}% less)")
+                            else:
+                                st.markdown("➡️ **Same price**")
+                        
+                        with col_c:
+                            if st.button(f"Use This Instead", key=f"swap_{i}_{alt.get('model_number')}"):
+                                # Replace the item in BOQ
+                                st.session_state.boq_items[selected_index] = {
+                                    **alt,
+                                    'quantity': selected_item.get('quantity', 1),
+                                    'justification': f"Alternative selected by user (replaced {selected_item.get('brand')} {selected_item.get('model_number')})",
+                                    'top_3_reasons': selected_item.get('top_3_reasons', []),
+                                    'matched': True
+                                }
+                                
+                                st.success(f"✅ Replaced with {alt.get('brand')} {alt.get('model_number')}")
+                                st.rerun()
+            else:
+                st.info("No suitable alternatives found in the catalog")
 
 # ==================== ALSO ADD THIS DEBUG VIEW (OPTIONAL) ====================
 def show_boq_debug_info():
