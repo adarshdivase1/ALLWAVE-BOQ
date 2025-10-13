@@ -40,7 +40,7 @@ class OptimizedBOQGenerator:
         )
         
         # Build blueprint
-        blueprint = self._build_logical_blueprint(
+        blueprint = self._build_questionnaire_based_blueprint(
             room_type=room_type,
             room_area=room_area,
             room_profile=room_profile,
@@ -72,22 +72,38 @@ class OptimizedBOQGenerator:
         
         return boq_items, validation_results
     
-    def _build_logical_blueprint(
+    def _build_questionnaire_based_blueprint(
         self, room_type: str, room_area: float, room_profile: Dict,
         ceiling_height: float, avixa_calcs: Dict
     ) -> Dict[str, ProductRequirement]:
-        """Build equipment blueprint based on questionnaire responses"""
+        """
+        Build equipment blueprint based on QUESTIONNAIRE responses
+        This ensures each room gets different equipment based on client answers
+        """
         
         blueprint = {}
-        req = self.requirements
+        req = self.requirements  # ClientRequirements from questionnaire
         
-        # === DISPLAY SYSTEM ===
+        # === DISPLAY SYSTEM (Uses questionnaire preferences) ===
         display_size = avixa_calcs.get('recommended_display_size_inches', 65)
-        display_qty = 2 if req.dual_display_needed else 1
+        
+        # 🔥 FIX: Use questionnaire data for display quantity
+        if req.dual_display_needed:
+            display_qty = 2
+            st.info(f"✅ Adding dual displays (from questionnaire)")
+        else:
+            display_qty = 1
+        
+        # 🔥 FIX: Use questionnaire data for display type
+        if req.interactive_display_needed:
+            display_sub_cat = 'Interactive Display'
+            st.info(f"✅ Adding interactive touch display (from questionnaire)")
+        else:
+            display_sub_cat = 'Professional Display'
         
         blueprint['primary_display'] = ProductRequirement(
             category='Displays',
-            sub_category='Interactive Display' if req.interactive_display_needed else 'Professional Display',
+            sub_category=display_sub_cat,
             quantity=display_qty,
             priority=1,
             justification=f'AVIXA-calculated {display_size}" display for optimal viewing',
@@ -110,8 +126,10 @@ class OptimizedBOQGenerator:
             max_price=2000
         )
         
-        # === VIDEO CONFERENCING ===
+        # === VIDEO CONFERENCING (Uses questionnaire camera preference) ===
         if 'All-in-One Video Bar' in req.camera_type_preference:
+            st.info(f"✅ Using Video Bar (from questionnaire)")
+            
             blueprint['video_bar'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='Video Bar',
@@ -123,6 +141,8 @@ class OptimizedBOQGenerator:
                 client_preference_weight=0.9
             )
         else:
+            st.info(f"✅ Using PTZ Camera System (from questionnaire)")
+            
             blueprint['video_codec'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='Room Kit / Codec',
@@ -155,13 +175,15 @@ class OptimizedBOQGenerator:
             min_price=300
         )
         
-        # === AUDIO SYSTEM ===
+        # === AUDIO SYSTEM (Uses questionnaire microphone preference) ===
         audio_integrated = 'All-in-One Video Bar' in req.camera_type_preference and room_area < 400
 
         if not audio_integrated:
-            # === MICROPHONES (ALWAYS REQUIRED) ===
+            # === MICROPHONES (Based on questionnaire choice) ===
             if 'Ceiling' in req.microphone_type:
                 mic_count = max(2, int(room_area / 150))
+                st.info(f"✅ Adding {mic_count}x ceiling microphones (from questionnaire)")
+                
                 blueprint['ceiling_microphones'] = ProductRequirement(
                     category='Audio',
                     sub_category='Ceiling Microphone',
@@ -173,6 +195,8 @@ class OptimizedBOQGenerator:
                 )
             elif 'Table' in req.microphone_type or 'Boundary' in req.microphone_type:
                 mic_count = max(1, int(room_area / 200))
+                st.info(f"✅ Adding {mic_count}x table microphones (from questionnaire)")
+                
                 blueprint['table_microphones'] = ProductRequirement(
                     category='Audio',
                     sub_category='Table/Boundary Microphone',
@@ -183,7 +207,7 @@ class OptimizedBOQGenerator:
                     blacklist_keywords=['cable', 'extension', 'adapter']
                 )
             else:
-                # FALLBACK: Always add microphones if none specified
+                # Fallback
                 mic_count = max(2, int(room_area / 200))
                 blueprint['default_microphones'] = ProductRequirement(
                     category='Audio',
@@ -195,8 +219,10 @@ class OptimizedBOQGenerator:
                     blacklist_keywords=['wireless', 'handheld']
                 )
 
-            # DSP for large rooms or complex audio
+            # DSP for large rooms or voice reinforcement
             if room_area > 400 or req.voice_reinforcement_needed:
+                st.info(f"✅ Adding DSP (room size or questionnaire requirement)")
+                
                 blueprint['audio_dsp'] = ProductRequirement(
                     category='Audio',
                     sub_category='DSP / Audio Processor / Mixer',
@@ -205,13 +231,15 @@ class OptimizedBOQGenerator:
                     justification='DSP for professional audio processing',
                     required_keywords=['dsp', 'processor', 'mixer', 'dante', 'tesira', 'biamp', 'qsc', 'core'],
                     blacklist_keywords=['amplifier', 'speaker', 'loudspeaker', 'portable', 'active', 'powered', 'cp12', 'cp8'],
-                    min_price=800,  # Real DSPs cost more
+                    min_price=800,
                     max_price=8000
                 )
             
-            # Speakers
+            # Speakers (Based on questionnaire ceiling vs table preference)
             if 'Ceiling' in req.ceiling_vs_table_audio or req.voice_reinforcement_needed:
                 speaker_count = max(2, int(room_area / 200))
+                st.info(f"✅ Adding {speaker_count}x ceiling speakers (from questionnaire)")
+                
                 blueprint['ceiling_speakers'] = ProductRequirement(
                     category='Audio',
                     sub_category='Ceiling Loudspeaker',
@@ -232,8 +260,10 @@ class OptimizedBOQGenerator:
                     blacklist_keywords=['dsp', 'summing']
                 )
         
-        # === CONNECTIVITY ===
+        # === CONNECTIVITY (Based on questionnaire) ===
         if req.wireless_presentation_needed:
+            st.info(f"✅ Adding wireless presentation (from questionnaire)")
+            
             blueprint['wireless_presentation'] = ProductRequirement(
                 category='Signal Management',
                 sub_category='Wireless Presentation',
@@ -241,6 +271,21 @@ class OptimizedBOQGenerator:
                 priority=9,
                 justification='Wireless presentation for BYOD',
                 required_keywords=['wireless', 'presentation']
+            )
+        
+        # === ROOM SCHEDULING (Based on questionnaire) ===
+        if req.room_scheduling_needed:
+            st.info(f"✅ Adding room scheduling display (from questionnaire)")
+            
+            blueprint['room_scheduler'] = ProductRequirement(
+                category='Control Systems',
+                sub_category='Touch Panel',
+                quantity=1,
+                priority=10,
+                justification='Room scheduling and calendar integration',
+                required_keywords=['scheduling', 'room panel', 'calendar'],
+                min_price=300,
+                max_price=1500
             )
         
         # === CABLES ===
@@ -251,20 +296,20 @@ class OptimizedBOQGenerator:
             category='Cables & Connectivity',
             sub_category='AV Cable',
             quantity=cable_count,
-            priority=10,
+            priority=11,
             justification=f'{cable_count}x network cables',
             required_keywords=['cat6', 'cat7', 'ethernet'],
             min_price=10,
             max_price=150
         )
         
-        # === INFRASTRUCTURE ===
+        # === INFRASTRUCTURE (for large rooms) ===
         if room_area > 400:
             blueprint['equipment_rack'] = ProductRequirement(
                 category='Infrastructure',
                 sub_category='AV Rack',
                 quantity=1,
-                priority=11,
+                priority=12,
                 justification='Equipment rack for AV components',
                 required_keywords=['rack', 'cabinet', 'enclosure', '12u', '18u', '20u'],
                 min_price=500
@@ -274,7 +319,7 @@ class OptimizedBOQGenerator:
                 category='Infrastructure',
                 sub_category='Power (PDU/UPS)',
                 quantity=1,
-                priority=12,
+                priority=13,
                 justification='Rackmount PDU for power distribution',
                 required_keywords=['pdu', 'power']
             )
