@@ -671,6 +671,19 @@ def add_products_interface(product_df, currency):
     """Interface for adding new products to BOQ with cascading filters."""
     st.write("**Add Products to BOQ:**")
 
+    # ✅ DEFENSIVE FIX
+    if product_df is None or product_df.empty:
+        st.error("Product catalog is empty or not loaded.")
+        return
+    
+    if 'category' not in product_df.columns:
+        if 'primary_category' in product_df.columns:
+            product_df = product_df.copy()
+            product_df['category'] = product_df['primary_category']
+        else:
+            st.error("Product catalog is missing 'category' column.")
+            return
+
     col1, col2 = st.columns(2)
 
     with col1:
