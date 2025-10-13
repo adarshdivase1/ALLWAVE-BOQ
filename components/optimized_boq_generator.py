@@ -51,7 +51,7 @@ class OptimizedBOQGenerator:
         # Select products
         boq_items = []
         for component_key, requirement in blueprint.items():
-            product = self.selector.select_product(requirement)
+            product = self.selector.select_product_with_fallback(requirement)
             
             if product:
                 justification = self._generate_component_justification(
@@ -554,3 +554,4 @@ class OptimizedBOQGenerator:
             )
         
         return validation
+
