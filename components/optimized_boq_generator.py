@@ -51,7 +51,7 @@ class OptimizedBOQGenerator:
         # Select products
         boq_items = []
         for component_key, requirement in blueprint.items():
-            product = self.selector.select_product_with_fallback(requirement)
+            product = self.selector.select_product(requirement)
             
             if product:
                 justification = self._generate_component_justification(
@@ -555,3 +555,171 @@ class OptimizedBOQGenerator:
         
         return validation
 
+    def calculate_boq_quality_score(self, boq_items: List[Dict], validation_results: Dict) -> Dict[str, Any]:
+        """
+        Calculate comprehensive quality score for generated BOQ
+        """
+        
+        score_breakdown = {
+            'brand_compliance': 0,
+            'component_completeness': 0,
+            'avixa_compliance': 0,
+            'integration_quality': 0,
+            'pricing_accuracy': 0
+        }
+        
+        max_scores = {
+            'brand_compliance': 20,
+            'component_completeness': 30,
+            'avixa_compliance': 20,
+            'integration_quality': 15,
+            'pricing_accuracy': 15
+        }
+        
+        # 1. Brand Compliance (20 points)
+        prefs = self.requirements.get_brand_preferences()
+        brand_matches = 0
+        brand_total = 0
+        
+        for category, preferred_brand in prefs.items():
+            if preferred_brand != 'No Preference':
+                brand_total += 1
+                category_map = {
+                    'displays': 'Displays',
+                    'video_conferencing': 'Video Conferencing',
+                    'audio': 'Audio',
+                    'control': 'Control Systems'
+                }
+                
+                actual_category = category_map.get(category)
+                matching_items = [
+                    item for item in boq_items 
+                    if actual_category in item.get('category', '')
+                ]
+                
+                if any(item.get('brand', '').lower() == preferred_brand.lower() for item in matching_items):
+                    brand_matches += 1
+        
+        if brand_total > 0:
+            score_breakdown['brand_compliance'] = (brand_matches / brand_total) * max_scores['brand_compliance']
+        else:
+            score_breakdown['brand_compliance'] = max_scores['brand_compliance']  # Full score if no preferences
+        
+        # 2. Component Completeness (30 points)
+        essential_components = {
+            'Displays': 10,
+            'Video Conferencing': 10,
+            'Audio': 5,
+            'Mounts': 3,
+            'Cables & Connectivity': 2
+        }
+        
+        completeness_score = 0
+        for category, points in essential_components.items():
+            if any(category in item.get('category', '') for item in boq_items):
+                completeness_score += points
+        
+        # Bonus points for microphones
+        has_microphones = any(
+            'Microphone' in item.get('sub_category', '') or 'Mic' in item.get('sub_category', '')
+            for item in boq_items
+        )
+        if has_microphones:
+            completeness_score += 5
+        
+        score_breakdown['component_completeness'] = min(completeness_score, max_scores['component_completeness'])
+        
+        # 3. AVIXA Compliance (20 points)
+        avixa_score = 20
+        
+        # Deduct for critical issues
+        critical_issues = [
+            issue for issue in validation_results.get('issues', [])
+            if 'CRITICAL' in issue
+        ]
+        avixa_score -= len(critical_issues) * 5
+        
+        # Deduct for warnings
+        warnings = validation_results.get('warnings', [])
+        avixa_score -= len(warnings) * 2
+        
+        score_breakdown['avixa_compliance'] = max(0, min(avixa_score, max_scores['avixa_compliance']))
+        
+        # 4. Integration Quality (15 points)
+        integration_score = 15
+        
+        # Check for ecosystem consistency
+        brands_used = {}
+        for item in boq_items:
+            category = item.get('category', '')
+            brand = item.get('brand', '')
+            if category not in brands_used:
+                brands_used[category] = set()
+            brands_used[category].add(brand)
+        
+        # Penalize if too many brands in same category (fragmented ecosystem)
+        for category, brands in brands_used.items():
+            if len(brands) > 2:
+                integration_score -= 3
+        
+        score_breakdown['integration_quality'] = max(0, min(integration_score, max_scores['integration_quality']))
+        
+        # 5. Pricing Accuracy (15 points)
+        pricing_score = 15
+        
+        # Check for items with zero or suspiciously low prices
+        for item in boq_items:
+            price = item.get('price', 0)
+            category = item.get('category', '')
+            
+            # Expected minimum prices by category
+            min_prices = {
+                'Displays': 500,
+                'Video Conferencing': 800,
+                'Audio': 100,
+                'Control Systems': 300
+            }
+            
+            expected_min = min_prices.get(category, 50)
+            if price < expected_min:
+                pricing_score -= 2
+        
+        score_breakdown['pricing_accuracy'] = max(0, min(pricing_score, max_scores['pricing_accuracy']))
+        
+        # Calculate total
+        total_score = sum(score_breakdown.values())
+        max_total = sum(max_scores.values())
+        percentage = (total_score / max_total) * 100
+        
+        # Grade assignment
+        if percentage >= 90:
+            grade = 'A+'
+            quality_level = 'EXCELLENT'
+            color = '#10b981'
+        elif percentage >= 80:
+            grade = 'A'
+            quality_level = 'VERY GOOD'
+            color = '#22c55e'
+        elif percentage >= 70:
+            grade = 'B'
+            quality_level = 'GOOD'
+            color = '#84cc16'
+        elif percentage >= 60:
+            grade = 'C'
+            quality_level = 'ACCEPTABLE'
+            color = '#eab308'
+        else:
+            grade = 'D'
+            quality_level = 'NEEDS IMPROVEMENT'
+            color = '#ef4444'
+        
+        return {
+            'score': total_score,
+            'max_score': max_total,
+            'percentage': percentage,
+            'grade': grade,
+            'quality_level': quality_level,
+            'color': color,
+            'breakdown': score_breakdown,
+            'max_breakdown': max_scores
+        }
