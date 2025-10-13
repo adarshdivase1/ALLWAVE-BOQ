@@ -1,4 +1,4 @@
-# app.py - ENHANCED VERSION with complete state save/load
+# app.py - ENHANCED VERSION with complete state save/load and pre-generation validation
 
 import streamlit as st
 import time
@@ -565,7 +565,45 @@ def main():
             st.metric("Room Area", f"{room_area:.0f} sq ft")
             st.info(f"📐 Room Type: {room_type}")
             
+            # ======================== NEW CODE: PRE-GENERATION CHECKLIST ========================
+            st.markdown("### 📋 Pre-Generation Checklist")
+            checklist_items = []
+
+            # Check questionnaire completion
+            if 'client_requirements' in st.session_state:
+                req = st.session_state.client_requirements
+                checklist_items.append(("✅", "Questionnaire completed"))
+                
+                # Check for brand preferences
+                prefs = req.get_brand_preferences()
+                pref_count = sum(1 for v in prefs.values() if v != 'No Preference')
+                if pref_count > 0:
+                    checklist_items.append(("✅", f"{pref_count} brand preferences set"))
+                else:
+                    checklist_items.append(("⚠️", "No brand preferences (using best available)"))
+            else:
+                checklist_items.append(("❌", "Questionnaire not completed"))
+
+            # Check room dimensions
+            if room_area > 0:
+                checklist_items.append(("✅", f"Room: {room_length:.0f}' × {room_width:.0f}' = {room_area:.0f} sqft"))
+            else:
+                checklist_items.append(("❌", "Invalid room dimensions"))
+
+            # Check project details
             missing_fields = validate_required_fields()
+            if not missing_fields:
+                checklist_items.append(("✅", "All project details filled"))
+            else:
+                checklist_items.append(("⚠️", f"{len(missing_fields)} project detail(s) missing"))
+
+            # Display checklist
+            for icon, text in checklist_items:
+                st.markdown(f"{icon} {text}")
+
+            st.markdown("---")
+            # ================================== END OF NEW CODE ===================================
+            
             generate_disabled = bool(missing_fields)
             if missing_fields:
                 st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
@@ -583,6 +621,9 @@ def main():
                         product_df=product_df,
                         client_requirements=st.session_state.client_requirements
                     )
+                    # ======================== NEW CODE: STORE SELECTOR ==========================
+                    st.session_state.boq_selector = generator.selector
+                    # ============================================================================
                     progress_bar.progress(50, text="🔍 Selecting optimal products...")
                     # Generate BOQ
                     boq_items, validation_results = generator.generate_boq_for_room(
@@ -595,6 +636,9 @@ def main():
                     if boq_items:
                         st.session_state.boq_items = boq_items
                         st.session_state.validation_results = validation_results
+                        # ===================== NEW CODE: STORE SELECTOR (AGAIN) ===================
+                        st.session_state.boq_selector = generator.selector # Save selector
+                        # ==========================================================================
                         update_boq_content_with_current_items()
                         # Save to current room
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
