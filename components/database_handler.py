@@ -79,6 +79,10 @@ def save_project(db, user_email, project_data):
             'name': project_id,
             'last_saved': datetime.now().isoformat(),
             
+            # === NEW: QUESTIONNAIRE DATA ===
+            # This captures the entire state of the client requirements object
+            'client_requirements': vars(st.session_state.get('client_requirements')) if 'client_requirements' in st.session_state else {},
+
             # Project Header Info (Tab 1)
             'project_name_input': project_data.get('project_name_input', ''),
             'client_name_input': project_data.get('client_name_input', ''),
@@ -172,6 +176,12 @@ def restore_project_state(project_data):
         return False
     
     try:
+        # === NEW: RESTORE QUESTIONNAIRE DATA ===
+        if 'client_requirements' in project_data and project_data['client_requirements']:
+            from components.smart_questionnaire import ClientRequirements
+            req_data = project_data['client_requirements']
+            st.session_state.client_requirements = ClientRequirements(**req_data)
+        
         # Project Header (Tab 1)
         st.session_state.project_name_input = str(project_data.get('project_name_input', ''))
         st.session_state.client_name_input = str(project_data.get('client_name_input', ''))
