@@ -32,6 +32,8 @@ try:
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
+    # 1. ADDED IMPORT
+    from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}")
     st.stop()
@@ -417,8 +419,9 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============= MAIN TABS =============
-    tab_titles = ["📋 Project Scope", "📐 Room Analysis", "📋 Requirements", "🛠️ Generate BOQ", "✨ 3D Visualization"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_titles)
+    # 2. REPLACED TAB CREATION
+    tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
 
     with tab1:
         st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
@@ -491,77 +494,112 @@ def main():
         st.markdown("---")
         create_multi_room_interface()
 
+    # 3. REPLACED TAB 2 CONTENT
     with tab2:
-        st.markdown('<h2 class="section-header section-header-room">AVIXA Standards Calculator</h2>', unsafe_allow_html=True)
-        create_room_calculator()
+        show_smart_questionnaire_tab()
         
+    # 4. REPLACED TAB 3 CONTENT (NOW "GENERATE BOQ")
     with tab3:
-        st.markdown('<h2 class="section-header section-header-requirements">Advanced Technical Requirements</h2>', unsafe_allow_html=True)
-        technical_reqs = {}
-        st.text_area(
-            "🎯 Specific Client Needs & Features:",
-            key="features_text_area",
-            placeholder="e.g., 'Must be Zoom certified, requires wireless presentation, needs ADA compliance.'",
-            height=100)
-        technical_reqs.update(create_advanced_requirements())
-        technical_reqs['ceiling_height'] = st.session_state.get('ceiling_height_input', 10)
-        
-    with tab4:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-        
-        missing_fields = validate_required_fields()
-        if missing_fields:
-            st.warning(f"⚠️ Please fill required fields: {', '.join(missing_fields)}")
-            generate_disabled = True
+        # Check if questionnaire is completed
+        if 'client_requirements' not in st.session_state:
+            st.warning("⚠️ Please complete the Smart Questionnaire in the previous tab first.")
+            st.info("The questionnaire gathers all necessary information to generate an optimized BOQ.")
         else:
-            generate_disabled = False
-
-        if st.button("✨ Generate & Validate Production-Ready BOQ", 
-                      type="primary", use_container_width=True, 
-                      key="generate_boq_btn",
-                      disabled=generate_disabled):
-            if not model:
-                show_error_message("AI Model is not available. Please check API key.")
-            else:
-                progress_bar = st.progress(0, text="Initializing generation pipeline...")
+            # Show summary of requirements
+            with st.expander("📋 Your Requirements Summary", expanded=False):
+                requirements = st.session_state.client_requirements
+                st.write(f"**Primary Use:** {requirements.primary_use_case}")
+                st.write(f"**Budget Level:** {requirements.budget_level}")
+                st.write(f"**VC Platform:** {requirements.vc_platform}")
+                # Show brand preferences
+                brand_prefs = requirements.get_brand_preferences()
+                if any(v != 'No Preference' for v in brand_prefs.values()):
+                    st.write("**Brand Preferences:**")
+                    for category, brand in brand_prefs.items():
+                        if brand != 'No Preference':
+                            st.write(f"  • {category.replace('_', ' ').title()}: {brand}")
+            # Room dimensions input (still needed for calculations)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                room_length = st.number_input(
+                    "Room Length (ft)",
+                    min_value=10.0,
+                    max_value=80.0,
+                    value=st.session_state.get('room_length_input', 28.0),
+                    key="room_length_input"
+                )
+            with col2:
+                room_width = st.number_input(
+                    "Room Width (ft)",
+                    min_value=8.0,
+                    max_value=50.0,
+                    value=st.session_state.get('room_width_input', 20.0),
+                    key="room_width_input"
+                )
+            with col3:
+                ceiling_height = st.number_input(
+                    "Ceiling Height (ft)",
+                    min_value=8.0,
+                    max_value=20.0,
+                    value=st.session_state.get('ceiling_height_input', 10.0),
+                    key="ceiling_height_input"
+                )
+            room_area = room_length * room_width
+            st.metric("Room Area", f"{room_area:.0f} sq ft")
+            # Room type selection
+            room_type = st.selectbox(
+                "Room Type",
+                list(ROOM_SPECS.keys()),
+                key="room_type_select"
+            )
+            missing_fields = validate_required_fields()
+            generate_disabled = bool(missing_fields)
+            if missing_fields:
+                st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
+            if st.button("✨ Generate Optimized BOQ",
+                          type="primary",
+                          use_container_width=True,
+                          disabled=generate_disabled):
+                progress_bar = st.progress(0, text="Initializing optimized generation...")
                 try:
-                    room_area = st.session_state.room_length_input * st.session_state.room_width_input
-
-                    progress_bar.progress(25, text="🤖 Step 1: Querying AI, validating, and post-processing...")
-                    
-                    processed_boq, avixa_calcs, equipment_reqs, validation_results = generate_boq_from_ai(
-                        model, product_df, guidelines,
-                        st.session_state.room_type_select,
-                        st.session_state.budget_tier_slider,
-                        st.session_state.get('features_text_area', ''),
-                        technical_reqs,
-                        room_area 
+                    # Import the optimized generator
+                    from components.optimized_boq_generator import OptimizedBOQGenerator
+                    progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
+                    # Create generator with questionnaire requirements
+                    generator = OptimizedBOQGenerator(
+                        product_df=product_df,
+                        client_requirements=st.session_state.client_requirements
                     )
-                    
-                    if processed_boq:
-                        progress_bar.progress(90, text="✅ Finalizing results...")
-                        
-                        st.session_state.boq_items = processed_boq
+                    progress_bar.progress(50, text="🔍 Selecting optimal products...")
+                    # Generate BOQ
+                    boq_items, validation_results = generator.generate_boq_for_room(
+                        room_type=room_type,
+                        room_length=room_length,
+                        room_width=room_width,
+                        ceiling_height=ceiling_height
+                    )
+                    progress_bar.progress(90, text="✅ Finalizing BOQ...")
+                    if boq_items:
+                        st.session_state.boq_items = boq_items
                         st.session_state.validation_results = validation_results
                         update_boq_content_with_current_items()
-
+                        # Save to current room
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = processed_boq
-                        
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
                         progress_bar.progress(100, text="✅ BOQ generation complete!")
                         time.sleep(0.5)
                         progress_bar.empty()
-                        show_success_message("BOQ Generated Successfully with AVIXA Compliance Check")
+                        show_success_message("BOQ Generated Successfully with AVIXA Compliance")
                     else:
                         progress_bar.empty()
-                        show_error_message("Failed to generate BOQ. Please check your inputs and try again.")
+                        show_error_message("Failed to generate BOQ. Please check your inputs.")
                 except Exception as e:
                     progress_bar.empty()
                     show_error_message(f"Error during BOQ generation: {str(e)}")
                     st.exception(e)
-        
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        # Display BOQ results (same as before)
         if st.session_state.get('boq_items'):
             project_details = {
                 'Project Name': st.session_state.get('project_name_input', 'Untitled Project'),
@@ -572,8 +610,6 @@ def main():
                 'Key Client Personnel': st.session_state.get('client_personnel_input', 'N/A'),
                 'Key Comments': st.session_state.get('comments_input', ''),
                 'gst_rates': st.session_state.get('gst_rates', {}),
-                
-                # NEW FIELDS
                 'PSNI Referral': "Yes" if st.session_state.get('is_psni_referral', False) else "No",
                 'Client Type': "Local (India)" if st.session_state.get('client_is_local', False) else "International",
                 'Existing Customer': "Yes" if st.session_state.get('is_existing_customer') else "No",
@@ -581,9 +617,10 @@ def main():
             }
             display_boq_results(product_df, project_details)
         else:
-            st.info("👆 Click the 'Generate BOQ' button above to create your Bill of Quantities")
-    
-    with tab5:
+            st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
+
+    # 5. UPDATED TAB 4 (WAS TAB 5 - 3D VISUALIZATION)
+    with tab4:
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         
         if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
