@@ -1,4 +1,4 @@
-# app.py - ENHANCED VERSION with complete state save/load and pre-generation validation
+# app.py - ENHANCED VERSION with quality score calculation and display
 
 import streamlit as st
 import time
@@ -565,7 +565,7 @@ def main():
             st.metric("Room Area", f"{room_area:.0f} sq ft")
             st.info(f"📐 Room Type: {room_type}")
             
-            # ======================== NEW CODE: PRE-GENERATION CHECKLIST ========================
+            # Pre-Generation Checklist
             st.markdown("### 📋 Pre-Generation Checklist")
             checklist_items = []
 
@@ -602,7 +602,6 @@ def main():
                 st.markdown(f"{icon} {text}")
 
             st.markdown("---")
-            # ================================== END OF NEW CODE ===================================
             
             generate_disabled = bool(missing_fields)
             if missing_fields:
@@ -621,10 +620,9 @@ def main():
                         product_df=product_df,
                         client_requirements=st.session_state.client_requirements
                     )
-                    # ======================== NEW CODE: STORE SELECTOR ==========================
                     st.session_state.boq_selector = generator.selector
-                    # ============================================================================
                     progress_bar.progress(50, text="🔍 Selecting optimal products...")
+                    
                     # Generate BOQ
                     boq_items, validation_results = generator.generate_boq_for_room(
                         room_type=room_type,
@@ -632,17 +630,59 @@ def main():
                         room_width=room_width,
                         ceiling_height=ceiling_height
                     )
-                    progress_bar.progress(90, text="✅ Finalizing BOQ...")
+                    
+                    progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
+
+                    # ======================== NEW CODE: QUALITY SCORE ========================
+                    # Calculate quality score
+                    quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
+                    st.session_state.boq_quality_score = quality_score
+
                     if boq_items:
                         st.session_state.boq_items = boq_items
                         st.session_state.validation_results = validation_results
-                        # ===================== NEW CODE: STORE SELECTOR (AGAIN) ===================
-                        st.session_state.boq_selector = generator.selector # Save selector
-                        # ==========================================================================
+                        st.session_state.boq_selector = generator.selector
+                        
+                        # Display quality score prominently
+                        col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                        
+                        with col_q1:
+                            st.metric(
+                                "BOQ Quality Score",
+                                f"{quality_score['percentage']:.1f}%",
+                                f"Grade: {quality_score['grade']}"
+                            )
+                        
+                        with col_q2:
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
+                                         border-left: 4px solid {quality_score['color']}; 
+                                         padding: 1rem; 
+                                         border-radius: 8px; 
+                                         margin: 1rem 0;">
+                                <h3 style="margin: 0; color: {quality_score['color']};">
+                                    {quality_score['quality_level']}
+                                </h3>
+                                <p style="margin: 0.5rem 0 0 0; color: #666;">
+                                    This BOQ meets professional standards for {room_type}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col_q3:
+                            with st.expander("📊 Score Breakdown"):
+                                for category, score in quality_score['breakdown'].items():
+                                    max_score = quality_score['max_breakdown'][category]
+                                    pct = (score / max_score) * 100
+                                    st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
+                        
                         update_boq_content_with_current_items()
+                        # ============================ END OF NEW CODE ===========================
+                        
                         # Save to current room
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
                             st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
                         progress_bar.progress(100, text="✅ BOQ generation complete!")
                         time.sleep(0.5)
                         progress_bar.empty()
