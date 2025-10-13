@@ -772,78 +772,80 @@ class IntelligentProductSelector:
 
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """
-        ENHANCED: Strictly enforce client brand preferences with intelligent fallbacks.
-        
-        Strategy:
-        1. Try exact brand match (highest priority)
-        2. Try substitute brands from same category (80% confidence)
-        3. Log warning and flag for review
-        4. Never silently fall back to random brand
+        STRICT brand preference enforcement with intelligent fallbacks.
+        Does NOT silently return random products.
         """
-        
+    
         if df.empty:
             return df
-        
-        # Determine which brand preference applies to this category
-        preferred_brand = None
-        category = req.category
-        
-        if category == 'Displays':
-            preferred_brand = self.client_preferences.get('displays')
-        elif category == 'Video Conferencing':
-            preferred_brand = self.client_preferences.get('video_conferencing')
-        elif category == 'Audio':
-            preferred_brand = self.client_preferences.get('audio')
-        elif category in ['Control Systems', 'Signal Management']:
-            preferred_brand = self.client_preferences.get('control')
-        
+    
+        # Get preferred brand for this category
+        preferred_brand = self._get_client_preference_for_category(req.category)
+    
         if not preferred_brand or preferred_brand == 'No Preference':
-            return df  # No preference specified, return all options
-        
-        # STRATEGY 1: Try exact match
-        brand_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
-        
-        if not brand_matches.empty:
-            self.log(f"    ✅ BRAND MATCH: Found {len(brand_matches)} {preferred_brand} products in {category}")
-            return brand_matches
-        
-        # STRATEGY 2: Try substitute brands
+            self.log(f"     ℹ️ No brand preference for {req.category}")
+            return df  # Return all candidates if no preference
+    
+        # ============ ATTEMPT 1: Exact brand match ============
+        exact_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
+    
+        if not exact_matches.empty:
+            self.log(f"     ✅ EXACT BRAND MATCH: {len(exact_matches)} {preferred_brand} products found")
+            return exact_matches
+    
+        # ============ ATTEMPT 2: Tier-equivalent substitutes ============
+        self.log(f"     ⚠️ BRAND NOT FOUND: '{preferred_brand}' not in {req.category}")
+    
         ecosystem_mgr = BrandEcosystemManager()
-        substitute_brands = ecosystem_mgr.get_substitute_brands(category, preferred_brand)
-        
+        substitute_brands = ecosystem_mgr.get_substitute_brands(req.category, preferred_brand)
+    
         if substitute_brands:
-            self.log(f"    ✅ BRAND PREFERENCE: {preferred_brand} not available")
-            self.log(f"        Searching substitutes: {', '.join(substitute_brands)}")
-            
+            self.log(f"     🔄 Searching tier-equivalent substitutes: {', '.join(substitute_brands)}")
+    
             for substitute in substitute_brands:
                 sub_matches = df[df['brand'].str.lower() == substitute.lower()]
-                
+    
                 if not sub_matches.empty:
-                    self.log(f"    ✅ USING SUBSTITUTE: {substitute} ({len(sub_matches)} options)")
-                    
-                    # Add warning for report
+                    self.log(f"     ✅ SUBSTITUTE FOUND: {substitute} ({len(sub_matches)} options)")
+    
+                    # Flag this for the validation report
                     self.validation_warnings.append({
                         'component': req.sub_category,
-                        'issue': f"Preferred brand '{preferred_brand}' unavailable. Using '{substitute}' (equivalent quality/performance)",
-                        'severity': 'MEDIUM'
+                        'issue': f"CLIENT REQUESTED: '{preferred_brand}' — NOT AVAILABLE. Substituting '{substitute}' (equivalent tier)",
+                        'severity': 'HIGH'
                     })
-                    
+    
                     return sub_matches
-        
-        # STRATEGY 3: If no substitutes found, log critical issue and still try to find ANY compatible product
-        self.log(f"    ❌ CRITICAL: {preferred_brand} NOT FOUND and no substitutes available")
-        
+    
+        # ============ ATTEMPT 3: Last resort - flag critical ============
+        self.log(f"     ❌ CRITICAL: No {preferred_brand} found AND no tier equivalents available")
+    
         self.validation_warnings.append({
             'component': req.sub_category,
-            'issue': f"Client requested '{preferred_brand}' but NOT FOUND in catalog. Using best available alternative.",
-            'severity': 'HIGH'
+            'issue': f"🚨 CLIENT REQUESTED BRAND NOT IN CATALOG: '{preferred_brand}' for {req.category}. No substitutes available. Using best available.",
+            'severity': 'CRITICAL'
         })
-        
-        # Return best quality option as fallback
+    
+        # Return best quality product as fallback
         if 'data_quality_score' in df.columns:
+            best = df.nlargest(1, 'data_quality_score').iloc[0]
+            fallback_brand = best.get('brand', 'Unknown')
+            self.log(f"     ⚠️ FALLBACK: Using {fallback_brand} (highest quality score)")
             return df.nlargest(1, 'data_quality_score')
-        
-        return df.head(1)  # Last resort: first item
+    
+        return df.head(1)
+
+    def _get_client_preference_for_category(self, category: str) -> str:
+        """Helper to get preferred brand for category"""
+        if category == 'Displays':
+            return self.client_preferences.get('displays', 'No Preference')
+        elif category == 'Video Conferencing':
+            return self.client_preferences.get('video_conferencing', 'No Preference')
+        elif category == 'Audio':
+            return self.client_preferences.get('audio', 'No Preference')
+        elif category in ['Control Systems', 'Signal Management', 'Lighting']:
+            return self.client_preferences.get('control', 'No Preference')
+        return 'No Preference'
 
     def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
         """Stage 5.5: Ensure brand ecosystem compatibility"""
