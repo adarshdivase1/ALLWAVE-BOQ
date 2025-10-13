@@ -386,13 +386,43 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🌍 Environment Design</h3>', unsafe_allow_html=True)
         
+        # ============= APPLIED CHANGE HERE =============
+        # Determine default room type from questionnaire
+        use_case_to_room_type = {
+            'Video Conferencing': 'Standard Conference Room (6-8 People)',
+            'Presentations & Training': 'Training Room (15-25 People)',
+            'Hybrid Meetings': 'Large Conference Room (8-12 People)',
+            'Executive Boardroom': 'Executive Boardroom (10-16 People)',
+            'Event & Broadcast': 'Multipurpose Event Room (40+ People)',
+            'Multipurpose': 'Large Training/Presentation Room (25-40 People)'
+        }
+
+        default_room_type = 'Standard Conference Room (6-8 People)'
+        if 'client_requirements' in st.session_state:
+            req = st.session_state.client_requirements
+            default_room_type = use_case_to_room_type.get(
+                req.primary_use_case, 
+                default_room_type
+            )
+
+        # Get current value or use questionnaire-based default
+        current_room_type = st.session_state.get('room_type_select', default_room_type)
+        room_types_list = list(ROOM_SPECS.keys())
+
+        try:
+            default_index = room_types_list.index(current_room_type)
+        except ValueError:
+            default_index = 0
+
         room_type_key = st.selectbox(
             "Primary Space Type",
-            list(ROOM_SPECS.keys()),
+            room_types_list,
+            index=default_index,
             key="room_type_select",
             on_change=update_dimensions_from_room_type
         )
-        
+        # ===============================================
+
         if 'initial_load' not in st.session_state:
             update_dimensions_from_room_type()
             st.session_state.initial_load = True
@@ -416,26 +446,6 @@ def main():
                     <b>🎯 Primary Use:</b> {primary_use}</p>
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
-
-    # ============= APPLIED CHANGE HERE =============
-    # Map primary_use_case to room_type
-    use_case_to_room_type = {
-        'Video Conferencing': 'Standard Conference Room (6-8 People)',
-        'Presentations & Training': 'Training Room (15-25 People)',
-        'Hybrid Meetings': 'Large Conference Room (8-12 People)',
-        'Executive Boardroom': 'Executive Boardroom (10-16 People)',
-        'Event & Broadcast': 'Multipurpose Event Room (40+ People)',
-        'Multipurpose': 'Large Training/Presentation Room (25-40 People)'
-    }
-
-    if 'client_requirements' in st.session_state:
-        req = st.session_state.client_requirements
-        mapped_room_type = use_case_to_room_type.get(
-            req.primary_use_case, 
-            'Standard Conference Room (6-8 People)'
-        )
-        st.session_state.room_type_select = mapped_room_type
-    # ===============================================
 
     # ============= MAIN TABS =============
     tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
