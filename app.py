@@ -26,7 +26,7 @@ try:
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    from components.boq_generator import generate_boq_from_ai
+    # OLD: from components.boq_generator import generate_boq_from_ai  # ❌ REMOVED
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
@@ -544,7 +544,6 @@ def main():
             room_area = room_length * room_width
             st.metric("Room Area", f"{room_area:.0f} sq ft")
             
-            # =================== APPLIED CHANGE HERE ===================
             # Room type selection
             room_type = st.selectbox(
                 "Room Type",
@@ -552,8 +551,7 @@ def main():
                 key="boq_room_type_select",  # ✅ UNIQUE KEY
                 index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'))
             )
-            # ==========================================================
-
+            
             missing_fields = validate_required_fields()
             generate_disabled = bool(missing_fields)
             if missing_fields:
