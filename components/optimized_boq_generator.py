@@ -266,9 +266,8 @@ class OptimizedBOQGenerator:
                 quantity=1,
                 priority=11,
                 justification='Equipment rack for AV components',
-                required_keywords=['rack', 'cabinet', 'enclosure'],
-                blacklist_keywords=['shelf', 'mount', 'bracket'],
-                min_price=300
+                required_keywords=['rack', 'cabinet', 'enclosure', '12u', '18u', '20u'],
+                min_price=500
             )
             
             blueprint['power_distribution'] = ProductRequirement(
@@ -398,4 +397,3 @@ class OptimizedBOQGenerator:
                 validation['warnings'].append("💡 Large system needs equipment rack for proper housing")
         
         return validation
-
