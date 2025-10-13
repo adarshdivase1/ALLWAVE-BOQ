@@ -3,6 +3,7 @@
 import pandas as pd
 import streamlit as st
 import re
+import traceback
 
 @st.cache_data
 def load_and_validate_data():
@@ -14,39 +15,59 @@ def load_and_validate_data():
     try:
         df = pd.read_csv("master_product_catalog.csv")
 
-        # --- Updated Column Mapping for process_data.py output ---
-        required_cols = {
-            'name': 'name',
-            'brand': 'brand',
-            'primary_category': 'category',  # From process_data.py
-            'sub_category': 'sub_category',
-            'price_usd': 'price',
-            'description': 'description',  # Short description
-            'full_specifications': 'specifications',  # Full specs (NEW)
-            'model_number': 'model_number',
-            'warranty': 'warranty',
-            'lead_time_days': 'lead_time_days',
-            'gst_rate': 'gst_rate',
-            'image_url': 'image_url',
-            'unit_of_measure': 'unit_of_measure',  # NEW
-            'data_quality_score': 'data_quality_score'  # NEW
-        }
-
-        # Check for missing columns and create defaults
-        for original, new in required_cols.items():
-            if original not in df.columns:
-                if original in ['price_usd', 'gst_rate', 'lead_time_days', 'data_quality_score']:
-                    df[original] = 0
-                elif original == 'unit_of_measure':
-                    df[original] = 'piece'
-                else:
-                    df[original] = ''
-                data_issues.append(f"Source file is missing expected column: '{original}'. Using default values.")
+        # ========== BULLETPROOF COLUMN NORMALIZATION ==========
         
-        # Rename columns for internal consistency
-        df = df.rename(columns=required_cols)
+        # Handle category column (might be 'category' or 'primary_category')
+        if 'category' not in df.columns:
+            if 'primary_category' in df.columns:
+                df['category'] = df['primary_category']
+                data_issues.append("Renamed 'primary_category' to 'category'")
+            else:
+                df['category'] = 'General AV'
+                data_issues.append("Created default 'category' column")
+        
+        # Handle sub_category
+        if 'sub_category' not in df.columns:
+            df['sub_category'] = 'Uncategorized'
+            data_issues.append("Created default 'sub_category' column")
+        
+        # Handle price (might be 'price', 'price_usd', or missing)
+        if 'price' not in df.columns:
+            if 'price_usd' in df.columns:
+                df['price'] = df['price_usd']
+            elif 'price_inr' in df.columns:
+                df['price'] = df['price_inr'] / 83.5  # Convert to USD
+            else:
+                df['price'] = 0
+                data_issues.append("Created default 'price' column")
+        
+        # Handle specifications (might be 'specifications' or 'full_specifications')
+        if 'specifications' not in df.columns:
+            if 'full_specifications' in df.columns:
+                df['specifications'] = df['full_specifications']
+            else:
+                df['specifications'] = ''
+        
+        # Handle other essential columns with defaults
+        column_defaults = {
+            'name': '',
+            'brand': '',
+            'description': '',
+            'model_number': '',
+            'warranty': 'Not Specified',
+            'lead_time_days': 14,
+            'gst_rate': 18,
+            'image_url': '',
+            'unit_of_measure': 'piece',
+            'data_quality_score': 100
+        }
+        
+        for col, default_val in column_defaults.items():
+            if col not in df.columns:
+                df[col] = default_val
+                data_issues.append(f"Created default '{col}' column")
 
-        # Data Type Coercion and Cleaning
+        # ========== DATA TYPE COERCION ==========
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
         df['gst_rate'] = pd.to_numeric(df['gst_rate'], errors='coerce').fillna(18)
         df['lead_time_days'] = pd.to_numeric(df['lead_time_days'], errors='coerce').fillna(14)
@@ -59,23 +80,26 @@ def load_and_validate_data():
         df['model_number'] = df['model_number'].fillna('')
         df['warranty'] = df['warranty'].fillna('Not Specified')
         df['unit_of_measure'] = df['unit_of_measure'].fillna('piece')
+        df['name'] = df['name'].fillna('')
+        df['brand'] = df['brand'].fillna('')
         
         # Category handling
         df['category'] = df['category'].fillna('General AV')
         df['sub_category'] = df['sub_category'].fillna('Needs Classification')
 
+        # ========== DATA QUALITY FILTERS ==========
         # Filter out products with zero price
         initial_count = len(df)
         df = df[df['price'] > 0].copy()
         if initial_count > len(df):
             data_issues.append(f"Removed {initial_count - len(df)} products with a price of $0.")
 
-        # Filter out low quality products (optional - adjust threshold as needed)
+        # Filter out low quality products (optional)
         low_quality_count = len(df[df['data_quality_score'] < 50])
         if low_quality_count > 0:
             data_issues.append(f"Found {low_quality_count} products with quality score < 50.")
 
-        # Load AVIXA guidelines
+        # ========== LOAD AVIXA GUIDELINES ==========
         try:
             with open("avixa_guidelines.md", "r") as f:
                 guidelines = f.read()
@@ -90,6 +114,7 @@ def load_and_validate_data():
         return None, None, ["'master_product_catalog.csv' is missing."]
     except Exception as e:
         st.error(f"A critical error occurred during data loading: {e}")
+        traceback.print_exc()
         return None, None, [f"An unexpected error occurred: {str(e)}"]
 
 
