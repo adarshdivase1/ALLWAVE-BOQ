@@ -515,43 +515,26 @@ def main():
                     for category, brand in brand_prefs.items():
                         if brand != 'No Preference':
                             st.write(f"  • {category.replace('_', ' ').title()}: {brand}")
-            # Room dimensions input (still needed for calculations)
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                room_length = st.number_input(
-                    "Room Length (ft)",
-                    min_value=10.0,
-                    max_value=80.0,
-                    value=st.session_state.get('room_length_input', 28.0),
-                    key="room_length_input"
-                )
-            with col2:
-                room_width = st.number_input(
-                    "Room Width (ft)",
-                    min_value=8.0,
-                    max_value=50.0,
-                    value=st.session_state.get('room_width_input', 20.0),
-                    key="room_width_input"
-                )
-            with col3:
-                ceiling_height = st.number_input(
-                    "Ceiling Height (ft)",
-                    min_value=8.0,
-                    max_value=20.0,
-                    value=st.session_state.get('ceiling_height_input', 10.0),
-                    key="ceiling_height_input"
-                )
-            room_area = room_length * room_width
-            st.metric("Room Area", f"{room_area:.0f} sq ft")
             
             # =================== APPLIED CHANGE HERE ===================
-            # Room type selection
-            room_type = st.selectbox(
-                "Room Type",
-                list(ROOM_SPECS.keys()),
-                key="boq_room_type_select",  # ✅ UNIQUE KEY
-                index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select')) if st.session_state.get('room_type_select') in ROOM_SPECS else 0
-            )
+            # Get room dimensions from sidebar (already captured)
+            room_length = st.session_state.get('room_length_input', 28.0)
+            room_width = st.session_state.get('room_width_input', 20.0)
+            ceiling_height = st.session_state.get('ceiling_height_input', 10.0)
+            room_type = st.session_state.get('room_type_select', 'Standard Conference Room')
+
+            # Just show summary (no input fields)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Room Length", f"{room_length:.0f} ft")
+            with col2:
+                st.metric("Room Width", f"{room_width:.0f} ft")
+            with col3:
+                st.metric("Ceiling Height", f"{ceiling_height:.0f} ft")
+
+            room_area = room_length * room_width
+            st.metric("Room Area", f"{room_area:.0f} sq ft")
+            st.info(f"📐 Room Type: {room_type}")
             # ==========================================================
             
             missing_fields = validate_required_fields()
