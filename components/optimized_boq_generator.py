@@ -179,8 +179,8 @@ class OptimizedBOQGenerator:
                     quantity=mic_count,
                     priority=5,
                     justification=f'{mic_count}x table microphones',
-                    required_keywords=['table', 'boundary', 'microphone'],
-                    blacklist_keywords=['ceiling', 'wireless', 'handheld']
+                    required_keywords=['microphone', 'mic', 'pod', 'rally'],
+                    blacklist_keywords=['cable', 'extension', 'adapter']
                 )
             else:
                 # FALLBACK: Always add microphones if none specified
@@ -398,3 +398,4 @@ class OptimizedBOQGenerator:
                 validation['warnings'].append("💡 Large system needs equipment rack for proper housing")
         
         return validation
+
