@@ -87,32 +87,46 @@ class OptimizedBOQGenerator:
         # === DISPLAY SYSTEM (Uses questionnaire preferences) ===
         display_size = avixa_calcs.get('recommended_display_size_inches', 65)
         
-        # 🔥 FIX: Use questionnaire data for display quantity
         if req.dual_display_needed:
             display_qty = 2
             st.info(f"✅ Adding dual displays (from questionnaire)")
         else:
             display_qty = 1
         
-        # 🔥 FIX: Use questionnaire data for display type
         if req.interactive_display_needed:
             display_sub_cat = 'Interactive Display'
             st.info(f"✅ Adding interactive touch display (from questionnaire)")
         else:
             display_sub_cat = 'Professional Display'
         
-        blueprint['primary_display'] = ProductRequirement(
-            category='Displays',
-            sub_category=display_sub_cat,
-            quantity=display_qty,
-            priority=1,
-            justification=f'AVIXA-calculated {display_size}" display for optimal viewing',
-            size_requirement=display_size,
-            required_keywords=['display', '4k'],
-            blacklist_keywords=['mount', 'bracket'],
-            client_preference_weight=0.9
-        )
-        
+        # Enforce brand preference if specified
+        display_brand_pref = req.display_brand_preference
+        if display_brand_pref != 'No Preference':
+            st.info(f"✅ Forcing display brand: {display_brand_pref}")
+            blueprint['primary_display'] = ProductRequirement(
+                category='Displays',
+                sub_category=display_sub_cat,
+                quantity=display_qty,
+                priority=1,
+                justification=f'AVIXA-calculated {display_size}" display for optimal viewing',
+                size_requirement=display_size,
+                required_keywords=['display', '4k', display_brand_pref.lower()],
+                blacklist_keywords=['mount', 'bracket'],
+                client_preference_weight=1.0  # Force preference
+            )
+        else:
+            blueprint['primary_display'] = ProductRequirement(
+                category='Displays',
+                sub_category=display_sub_cat,
+                quantity=display_qty,
+                priority=1,
+                justification=f'AVIXA-calculated {display_size}" display for optimal viewing',
+                size_requirement=display_size,
+                required_keywords=['display', '4k'],
+                blacklist_keywords=['mount', 'bracket'],
+                client_preference_weight=0.9
+            )
+            
         blueprint['display_mount'] = ProductRequirement(
             category='Mounts',
             sub_category='Display Mount / Cart',
@@ -263,16 +277,16 @@ class OptimizedBOQGenerator:
         # === CONNECTIVITY (Based on questionnaire) ===
         if req.wireless_presentation_needed:
             st.info(f"✅ Adding wireless presentation (from questionnaire)")
-            
             blueprint['wireless_presentation'] = ProductRequirement(
                 category='Signal Management',
-                sub_category='Wireless Presentation',
+                sub_category='Scaler / Converter / Processor',  # Fix category
                 quantity=1,
                 priority=9,
-                justification='Wireless presentation for BYOD',
-                required_keywords=['wireless', 'presentation']
+                justification='Wireless presentation for BYOD content sharing',
+                required_keywords=['wireless', 'presentation', 'clickshare', 'airmedia', 'barco'],
+                min_price=800
             )
-        
+            
         # === ROOM SCHEDULING (Based on questionnaire) ===
         if req.room_scheduling_needed:
             st.info(f"✅ Adding room scheduling display (from questionnaire)")
@@ -287,7 +301,19 @@ class OptimizedBOQGenerator:
                 min_price=300,
                 max_price=1500
             )
-        
+
+        # === CONTROL SYSTEMS ===
+        if req.lighting_control_integration:
+            st.info(f"✅ Adding lighting control system (from questionnaire)")
+            blueprint['lighting_control'] = ProductRequirement(
+                category='Lighting',
+                sub_category='Lighting Control',
+                quantity=1,
+                priority=14,
+                justification='Lighting control for ambiance and AV integration',
+                required_keywords=['dimmer', 'lighting', 'control', 'lutron', 'crestron'],
+            )
+            
         # === CABLES ===
         component_count = len(blueprint)
         cable_count = max(5, component_count * 2)
