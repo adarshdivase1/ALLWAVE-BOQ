@@ -376,6 +376,53 @@ class IntelligentProductSelector:
         
         return None
     
+    def suggest_alternatives(self, selected_product: Dict, requirement: ProductRequirement, count: int = 3) -> List[Dict]:
+        """
+        Suggest alternative products if client wants options
+        """
+        
+        alternatives = []
+        
+        # Get similar products
+        similar_products = self.product_df[
+            (self.product_df['category'] == requirement.category) &
+            (self.product_df['sub_category'] == requirement.sub_category)
+        ].copy()
+        
+        # Remove the selected product
+        similar_products = similar_products[
+            similar_products['model_number'] != selected_product.get('model_number')
+        ]
+        
+        if similar_products.empty:
+            return []
+        
+        # Score alternatives based on:
+        # 1. Price similarity (±20%)
+        # 2. Brand reputation
+        # 3. Feature richness
+        
+        selected_price = selected_product.get('price', 0)
+        
+        similar_products['price_similarity'] = similar_products['price'].apply(
+            lambda x: 100 - abs(x - selected_price) / selected_price * 100 if selected_price > 0 else 0
+        )
+        
+        # Sort by quality score and price similarity
+        similar_products = similar_products.sort_values(
+            by=['data_quality_score', 'price_similarity'],
+            ascending=[False, False]
+        )
+        
+        # Return top alternatives
+        for _, product in similar_products.head(count).iterrows():
+            alt = product.to_dict()
+            alt['price_difference'] = product['price'] - selected_price
+            alt['price_difference_pct'] = (alt['price_difference'] / selected_price * 100) if selected_price > 0 else 0
+            alternatives.append(alt)
+        
+        return alternatives
+    
     def _apply_strict_validation(self, df, req: ProductRequirement):
         """
         NEW STAGE: Apply strict category validation to all candidates
