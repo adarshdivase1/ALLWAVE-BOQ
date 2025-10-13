@@ -324,6 +324,58 @@ class IntelligentProductSelector:
         
         return selected
     
+    def select_product_with_fallback(self, requirement: ProductRequirement) -> Optional[Dict]:
+        """
+        ENHANCED: Try strict selection first, then intelligent fallbacks
+        """
+        
+        # Attempt 1: Strict selection
+        selected = self.select_product(requirement)
+        
+        if selected:
+            return selected
+        
+        # Attempt 2: Relax brand preference if nothing found
+        if requirement.client_preference_weight == 1.0:
+            self.log(f"    🔄 No products found with strict brand preference, trying alternates...")
+            requirement.client_preference_weight = 0.5
+            selected = self.select_product(requirement)
+            
+            if selected:
+                self.validation_warnings.append({
+                    'component': requirement.sub_category,
+                    'issue': f'Client-preferred brand not available, using {selected.get("brand")}',
+                    'severity': 'MEDIUM'
+                })
+                return selected
+        
+        # Attempt 3: Broaden category search
+        self.log(f"    🔄 Attempting broader category search...")
+        
+        if requirement.category == 'Video Conferencing' and 'PTZ Camera' in requirement.sub_category:
+            # Try room kits that include cameras
+            requirement.sub_category = 'Room Kit / Codec'
+            requirement.required_keywords = ['room kit', 'camera', 'system']
+            selected = self.select_product(requirement)
+            
+            if selected:
+                self.validation_warnings.append({
+                    'component': requirement.sub_category,
+                    'issue': 'Using room kit instead of standalone PTZ camera',
+                    'severity': 'LOW'
+                })
+                return selected
+        
+        # Attempt 4: Log failure for manual intervention
+        self.log(f"    ❌ FAILED: Could not find suitable product for {requirement.sub_category}")
+        self.validation_warnings.append({
+            'component': requirement.sub_category,
+            'issue': f'No suitable products found in catalog',
+            'severity': 'CRITICAL'
+        })
+        
+        return None
+    
     def _apply_strict_validation(self, df, req: ProductRequirement):
         """
         NEW STAGE: Apply strict category validation to all candidates
