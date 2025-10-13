@@ -391,7 +391,8 @@ def main():
         room_type_key = st.selectbox(
             "Primary Space Type",
             list(ROOM_SPECS.keys()),
-            key="room_type_select",
+            key="boq_room_type_select",
+            index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'))
             on_change=update_dimensions_from_room_type
         )
         
@@ -655,4 +656,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
