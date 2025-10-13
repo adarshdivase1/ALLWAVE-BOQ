@@ -26,14 +26,12 @@ try:
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
-    from components.optimized_boq_generator import OptimizedBOQGenerator
+    from components.boq_generator import generate_boq_from_ai
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
-    # 1. ADDED IMPORT
     from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}")
@@ -391,8 +389,7 @@ def main():
         room_type_key = st.selectbox(
             "Primary Space Type",
             list(ROOM_SPECS.keys()),
-            key="boq_room_type_select",
-            index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'))
+            key="room_type_select",
             on_change=update_dimensions_from_room_type
         )
         
@@ -421,7 +418,6 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============= MAIN TABS =============
-    # 2. REPLACED TAB CREATION
     tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
 
@@ -496,11 +492,9 @@ def main():
         st.markdown("---")
         create_multi_room_interface()
 
-    # 3. REPLACED TAB 2 CONTENT
     with tab2:
         show_smart_questionnaire_tab()
         
-    # 4. REPLACED TAB 3 CONTENT (NOW "GENERATE BOQ")
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         # Check if questionnaire is completed
@@ -549,12 +543,17 @@ def main():
                 )
             room_area = room_length * room_width
             st.metric("Room Area", f"{room_area:.0f} sq ft")
+            
+            # =================== APPLIED CHANGE HERE ===================
             # Room type selection
             room_type = st.selectbox(
                 "Room Type",
                 list(ROOM_SPECS.keys()),
-                key="room_type_select"
+                key="boq_room_type_select",  # ✅ UNIQUE KEY
+                index=list(ROOM_SPECS.keys()).index(st.session_state.get('room_type_select', 'Standard Conference Room (6-8 People)'))
             )
+            # ==========================================================
+
             missing_fields = validate_required_fields()
             generate_disabled = bool(missing_fields)
             if missing_fields:
@@ -621,7 +620,6 @@ def main():
         else:
             st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
 
-    # 5. UPDATED TAB 4 (WAS TAB 5 - 3D VISUALIZATION)
     with tab4:
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
         
@@ -656,5 +654,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
