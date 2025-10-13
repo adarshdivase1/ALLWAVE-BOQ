@@ -580,7 +580,7 @@ class IntelligentProductSelector:
             return df
     
     def _apply_client_preferences(self, df, req: ProductRequirement):
-        """Stage 5: Weight products by client preferences"""
+        """Stage 5: STRICTLY ENFORCE client brand preferences"""
         
         preferred_brand = None
         
@@ -590,19 +590,24 @@ class IntelligentProductSelector:
             preferred_brand = self.client_preferences.get('video_conferencing')
         elif req.category == 'Audio':
             preferred_brand = self.client_preferences.get('audio')
-        elif req.category in ['Control Systems', 'Signal Management']:
+        elif req.category in ['Control Systems', 'Signal Management', 'Lighting']:  # ADDED Lighting
             preferred_brand = self.client_preferences.get('control')
         
-        if preferred_brand:
-            df['preference_score'] = df['brand'].str.lower().apply(
-                lambda x: req.client_preference_weight if x == preferred_brand.lower() else 0
-            )
-            df = df.sort_values('preference_score', ascending=False)
+        if preferred_brand and preferred_brand != 'No Preference':
+            # CHANGED: Make this MANDATORY, not optional
+            brand_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
             
-            preferred_matches = df[df['preference_score'] > 0]
-            if not preferred_matches.empty:
-                self.log(f"    ✅ Found {len(preferred_matches)} preferred brand products: {preferred_brand}")
-                return preferred_matches
+            if brand_matches.empty:
+                self.log(f"    ⚠️ CRITICAL: No {preferred_brand} products found in {req.category}")
+                self.validation_warnings.append({
+                    'component': req.sub_category,
+                    'issue': f'Client requested {preferred_brand} but no products available',
+                    'severity': 'HIGH'
+                })
+                return df  # Fallback to all products
+            else:
+                self.log(f"    ✅ ENFORCING brand preference: {preferred_brand} ({len(brand_matches)} options)")
+                return brand_matches  # ONLY return preferred brand
         
         return df
     
