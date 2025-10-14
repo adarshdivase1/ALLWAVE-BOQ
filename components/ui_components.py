@@ -362,6 +362,42 @@ def display_boq_results(product_df, project_details):
             height=min(400, len(summary_data) * 35 + 38)  # Auto height
         )
         
+        # === AVIXA COMPLIANCE CHECKS ===
+        if st.session_state.get('validation_results', {}).get('avixa_calculations'):
+            avixa_calcs = st.session_state.validation_results['avixa_calculations']
+            
+            with st.expander("🎯 AVIXA Standards Compliance", expanded=False):
+                st.markdown("#### Display Sizing (DISCAS)")
+                
+                # Check if display size matches AVIXA recommendation
+                display_items = [item for item in st.session_state.boq_items if item.get('category') == 'Displays']
+                
+                if display_items and avixa_calcs.get('display'):
+                    actual_size = display_items[0].get('size_requirement', 0)
+                    recommended_size = avixa_calcs['display']['selected_size_inches']
+                    viewing_distance = avixa_calcs['display']['max_viewing_distance_ft']
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Viewing Distance", f"{viewing_distance:.1f} ft")
+                    
+                    with col2:
+                        st.metric("AVIXA Recommended", f"{recommended_size}\"")
+                    
+                    with col3:
+                        size_diff = actual_size - recommended_size
+                        delta_color = "normal" if abs(size_diff) <= 5 else "inverse"
+                        st.metric("Selected Size", f"{actual_size}\"", 
+                                    f"{size_diff:+.0f}\"", delta_color=delta_color)
+                    
+                    if abs(size_diff) <= 5:
+                        st.success("✅ Display size is AVIXA DISCAS compliant")
+                    elif size_diff < -5:
+                        st.warning(f"⚠️ Display is {abs(size_diff):.0f}\" smaller than AVIXA recommendation")
+                    else:
+                        st.info(f"ℹ️ Display is {size_diff:.0f}\" larger than minimum AVIXA requirement")
+        
         st.markdown("---")
         st.markdown("### 📋 Detailed View (Click to expand for reasons & specs)")
         
@@ -622,6 +658,16 @@ def edit_current_boq(product_df, currency):
                 except:
                     sub_index = 0
                 item['sub_category'] = st.selectbox("Sub-Category", sub_cats, index=sub_index, key=f"subcat_{i}")
+
+                # Show AVIXA recommendation if available
+                if item.get('category') == 'Displays' and st.session_state.get('validation_results', {}).get('avixa_calculations'):
+                    avixa_display = st.session_state.validation_results['avixa_calculations'].get('display', {})
+                    recommended_size = avixa_display.get('selected_size_inches', 0)
+                    
+                    if recommended_size > 0:
+                        current_size = item.get('size_requirement', 0)
+                        if abs(current_size - recommended_size) > 5:
+                            st.warning(f"💡 AVIXA recommends {recommended_size}\" for optimal viewing")
 
             with col3:
                 item['quantity'] = st.number_input("Quantity", min_value=1, value=int(item.get('quantity', 1)), key=f"qty_{i}")
