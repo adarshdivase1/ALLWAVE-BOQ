@@ -52,6 +52,11 @@ class ClientRequirements:
     recording_capability_needed: bool
     streaming_capability_needed: bool
     
+    # NEW: AVIXA-specific requirements
+    avixa_display_sizing: str = "AVIXA DISCAS Recommended (Optimal viewing)"
+    performance_verification_required: bool = False
+    target_sti_level: str = "Standard (STI ≥ 0.60)"
+    
     # Advanced Requirements
     additional_requirements: str
     
@@ -417,6 +422,50 @@ class SmartQuestionnaire:
                 ]
             },
             
+            'avixa_compliance': {
+                'title': '📐 AVIXA Standards & Performance',
+                'questions': [
+                    {
+                        'id': 'avixa_display_sizing',
+                        'question': 'Display sizing preference',
+                        'type': 'select',
+                        'options': [
+                            'AVIXA DISCAS Recommended (Optimal viewing)',
+                            'Budget-Constrained (Smaller acceptable)',
+                            'Premium Viewing (Larger than minimum)',
+                            'I will specify exact size'
+                        ],
+                        'default': 'AVIXA DISCAS Recommended (Optimal viewing)',
+                        'help': 'AVIXA DISCAS ensures optimal viewing experience based on room dimensions'
+                    },
+                    {
+                        'id': 'performance_verification_required',
+                        'question': 'Do you require AVIXA 10:2013 performance verification testing?',
+                        'type': 'boolean',
+                        'default': False,
+                        'show_if': {
+                            'budget_level': ['Premium (Quality-focused)', 'Executive (Best-in-class)']
+                        },
+                        'help': 'Professional commissioning with documented test results per AVIXA standards'
+                    },
+                    {
+                        'id': 'target_sti_level',
+                        'question': 'Audio intelligibility requirements',
+                        'type': 'select',
+                        'options': [
+                            'Standard (STI ≥ 0.60)',
+                            'High (STI ≥ 0.70)',
+                            'Critical (STI ≥ 0.75)'
+                        ],
+                        'default': 'Standard (STI ≥ 0.60)',
+                        'show_if': {
+                            'primary_use_case': ['Video Conferencing', 'Executive Boardroom', 'Event & Broadcast']
+                        },
+                        'help': 'Speech Transmission Index - higher values ensure clearer audio'
+                    }
+                ]
+            },
+            
             'advanced_requirements': {
                 'title': '📝 Additional Requirements',
                 'questions': [
@@ -560,6 +609,11 @@ class SmartQuestionnaire:
             ada_compliance_required=responses.get('ada_compliance_required', False),
             recording_capability_needed=responses.get('recording_capability_needed', False),
             streaming_capability_needed=responses.get('streaming_capability_needed', False),
+            
+            # NEW: AVIXA requirements
+            avixa_display_sizing=responses.get('avixa_display_sizing', 'AVIXA DISCAS Recommended (Optimal viewing)'),
+            performance_verification_required=responses.get('performance_verification_required', False),
+            target_sti_level=responses.get('target_sti_level', 'Standard (STI ≥ 0.60)'),
             
             additional_requirements=responses.get('additional_requirements', '')
         )
