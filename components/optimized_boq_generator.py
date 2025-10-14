@@ -11,6 +11,17 @@ from components.room_profiles import ROOM_SPECS
 from components.intelligent_product_selector import IntelligentProductSelector, ProductRequirement
 from components.av_designer import calculate_avixa_recommendations
 
+# PRODUCTION: Room-specific display constraints
+ROOM_DISPLAY_CONSTRAINTS = {
+    'Small Huddle Room (2-3 People)': {'min': 43, 'max': 55},
+    'Medium Huddle Room (4-6 People)': {'min': 50, 'max': 65},
+    'Standard Conference Room (6-8 People)': {'min': 55, 'max': 75},
+    'Large Conference Room (8-12 People)': {'min': 65, 'max': 85},
+    'Executive Boardroom (10-16 People)': {'min': 75, 'max': 98},
+    'Training Room (15-25 People)': {'min': 75, 'max': 98},
+    'Large Training/Presentation Room (25-40 People)': {'min': 85, 'max': 110},
+    'Multipurpose Event Room (40+ People)': {'min': 98, 'max': 120},
+}
 
 class EnhancedAVIXACalculator:
     """
@@ -44,7 +55,7 @@ class EnhancedAVIXACalculator:
         
         # Snap to available sizes
         available_sizes = [43, 55, 65, 75, 85, 98]
-        selected_size = min(size for size in available_sizes if size >= recommended_diagonal)
+        selected_size = min((size for size in available_sizes if size >= recommended_diagonal), default=98)
         
         return {
             'max_viewing_distance_ft': max_viewing_distance,
@@ -437,7 +448,8 @@ class OptimizedBOQGenerator:
                     'justification': justification['technical'],
                     'top_3_reasons': justification['reasons'],
                     'avixa_compliant': True,
-                    'matched': True
+                    'matched': True,
+                    'size_requirement': requirement.size_requirement
                 })
                 
                 boq_items.append(product)
@@ -471,58 +483,116 @@ class OptimizedBOQGenerator:
         blueprint = {}
         req = self.requirements
         
-        # === DISPLAYS (Using AVIXA DISCAS) ===
-        display_size = avixa_calcs['display']['selected_size_inches']
-        display_qty = 2 if req.dual_display_needed else 1
-        
-        st.success(f"✅ AVIXA DISCAS: {display_size}\" display for {avixa_calcs['display']['max_viewing_distance_ft']:.1f}ft viewing distance")
-        
+        # === DISPLAYS (Using AVIXA DISCAS WITH ROOM CONSTRAINTS) ===
+        display_size_avixa = avixa_calcs['display']['selected_size_inches']
+
+        # CRITICAL: Apply room-specific constraints
+        room_constraints = ROOM_DISPLAY_CONSTRAINTS.get(room_type, {'min': 55, 'max': 98})
+        display_size = max(room_constraints['min'], min(display_size_avixa, room_constraints['max']))
+
+        # OVERRIDE: Executive/Large rooms MUST have minimum sizes
+        if 'Executive' in room_type or 'Boardroom' in room_type:
+            display_size = max(75, display_size)  # Absolute minimum 75"
+        elif room_area > 600:
+            display_size = max(75, display_size)
+
+        st.success(f"✅ AVIXA + Room Constraints: {display_size}\" display for {room_type}")
+
+        # Check if dual displays needed
+        display_qty = 2 if (req.dual_display_needed or room_area > 600) else 1
+
         blueprint['primary_display'] = ProductRequirement(
             category='Displays',
             sub_category='Interactive Display' if req.interactive_display_needed else 'Professional Display',
             quantity=display_qty,
             priority=1,
-            justification=f'AVIXA DISCAS-calculated {display_size}" for optimal viewing',
+            justification=f'AVIXA DISCAS + Room constraints: {display_size}" for {room_type}',
             size_requirement=display_size,
             required_keywords=['display', '4k', str(display_size)],
-            blacklist_keywords=['mount', 'bracket'],
+            blacklist_keywords=['mount', 'bracket', 'stand', 'arm', 'cable', 'adapter', 'menu'],
+            min_price=500 if display_size < 70 else 1000,
+            max_price=30000,
             client_preference_weight=1.0,
             strict_category_match=True
         )
-        
-        # Display mount
+
+        # Display mount - SIZE-APPROPRIATE
         blueprint['display_mount'] = ProductRequirement(
             category='Mounts',
             sub_category='Display Mount / Cart',
             quantity=display_qty,
             priority=2,
-            justification=f'AVIXA-compliant mount for {display_size}" display',
+            justification=f'Professional mount for {display_size}" display',
             size_requirement=display_size,
-            required_keywords=['mount', 'wall'],
-            blacklist_keywords=['camera', 'speaker'],
-            min_price=300 if display_size >= 85 else 150
+            required_keywords=['mount', 'wall', 'display', 'tv'] + (['large', 'heavy'] if display_size >= 75 else []),
+            blacklist_keywords=['camera', 'mic', 'speaker', 'touch', 'panel', 'controller', 'menu', 'menu board', 'food'],
+            min_price=300 if display_size >= 75 else 150,
+            max_price=3000
         )
-        
-        # === VIDEO CONFERENCING ===
-        # (Room-size adaptive logic remains the same but now references AVIXA calculations)
-        # ... existing video conferencing code ...
+
+        # === VIDEO CONFERENCING SYSTEM (Executive/Large Rooms) ===
+        if room_area > 400 or 'Executive' in room_type or 'Boardroom' in room_type:
+            self.selector.log(f"    🎥 Executive room detected - adding premium VC system")
+            
+            # Codec
+            blueprint['vc_codec'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Room Kit / Codec',
+                quantity=1,
+                priority=3,
+                justification='Executive-grade video conferencing codec',
+                required_keywords=['codec', 'room kit', req.vc_platform.lower().split()[0]],
+                blacklist_keywords=['video bar', 'webcam', 'usb'],
+                min_price=1500,
+                max_price=15000,
+                client_preference_weight=1.0
+            )
+            
+            # PTZ Camera
+            blueprint['ptz_camera'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='PTZ Camera',
+                quantity=1,
+                priority=4,
+                justification='High-quality PTZ camera for executive presentations',
+                required_keywords=['ptz', 'camera'],
+                blacklist_keywords=['webcam', 'usb', 'mount'],
+                min_price=1000,
+                max_price=10000
+            )
+
+            # Touch Controller
+            blueprint['touch_controller'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Touch Controller / Panel',
+                quantity=1,
+                priority=5,
+                justification='Intuitive room control interface',
+                required_keywords=['touch', 'controller', 'panel'],
+                min_price=300
+            )
         
         # === AUDIO SYSTEM (Using AVIXA A102.01) ===
         st.success(f"✅ AVIXA A102.01: {avixa_calcs['audio']['speakers_needed']} speakers needed for ±3dB uniformity")
         st.success(f"✅ AVIXA Microphone Coverage: {avixa_calcs['microphones']['mics_needed']} microphones required")
         
-        # Microphones
-        mic_type_sub = 'Ceiling Microphone' if 'Ceiling' in avixa_calcs['microphones']['mic_type'] else 'Table/Boundary Microphone'
-        
+        # Microphones - ROOM SIZE ADAPTIVE
+        if room_area > 400:  # Large/Executive rooms need ceiling mics
+            mic_type_sub = 'Ceiling Microphone'
+            min_mic_price = 400
+        else:
+            mic_type_sub = 'Table/Boundary Microphone'
+            min_mic_price = 150
+
         blueprint['microphones'] = ProductRequirement(
             category='Audio',
             sub_category=mic_type_sub,
             quantity=avixa_calcs['microphones']['mics_needed'],
             priority=6,
             justification=f"AVIXA-calculated {avixa_calcs['microphones']['mics_needed']}x mics for {room_area:.0f} sqft coverage",
-            required_keywords=['microphone', 'ceiling' if 'Ceiling' in mic_type_sub else 'table'],
-            blacklist_keywords=['wireless', 'handheld'] if 'Ceiling' in mic_type_sub else ['ceiling', 'wireless'],
-            min_price=200 if 'Ceiling' in mic_type_sub else 150,
+            required_keywords=['microphone', 'ceiling' if 'Ceiling' in mic_type_sub else 'table', 'array'],
+            blacklist_keywords=['usb', 'webcam'] if 'Ceiling' in mic_type_sub else ['usb'],
+            min_price=min_mic_price,
             client_preference_weight=0.9
         )
         
