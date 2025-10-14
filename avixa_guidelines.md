@@ -1,6 +1,4 @@
-Of course. Here is the complete AVIXA guidelines document, including the Python code examples, formatted in a single Markdown block for your repository.
 
-````markdown
 # Enhanced AV Design Guidelines for BOQ Generation
 *Based on AVIXA Standards & Industry Best Practices*
 
@@ -2731,3 +2729,4 @@ COMMON_PITFALLS = {
 
 ```
 ```
+
