@@ -12,53 +12,53 @@ import json
 @dataclass
 class ClientRequirements:
     """Structured client requirements from questionnaire"""
-    # Project Basics
+    # Project Basics (NO DEFAULTS - must come first)
     project_type: str
     room_count: int
     primary_use_case: str
     budget_level: str
     
-    # Display Preferences
+    # Display Preferences (NO DEFAULTS)
     display_brand_preference: str
     display_size_preference: str
     dual_display_needed: bool
     interactive_display_needed: bool
     
-    # Video Conferencing
+    # Video Conferencing (NO DEFAULTS)
     vc_platform: str
     vc_brand_preference: str
     camera_type_preference: str
     auto_tracking_needed: bool
     
-    # Audio System
+    # Audio System (NO DEFAULTS)
     audio_brand_preference: str
     microphone_type: str
     ceiling_vs_table_audio: str
     voice_reinforcement_needed: bool
     
-    # Control & Integration
+    # Control & Integration (NO DEFAULTS)
     control_brand_preference: str
     wireless_presentation_needed: bool
     room_scheduling_needed: bool
     lighting_control_integration: bool
     
-    # Infrastructure
+    # Infrastructure (NO DEFAULTS)
     existing_network_capable: bool
     power_infrastructure_adequate: bool
     cable_management_type: str
     
-    # Compliance & Special Requirements
+    # Compliance & Special Requirements (NO DEFAULTS)
     ada_compliance_required: bool
     recording_capability_needed: bool
     streaming_capability_needed: bool
     
-    # NEW: AVIXA-specific requirements
+    # Advanced Requirements (NO DEFAULTS)
+    additional_requirements: str
+    
+    # AVIXA-specific requirements (WITH DEFAULTS - must come LAST)
     avixa_display_sizing: str = "AVIXA DISCAS Recommended (Optimal viewing)"
     performance_verification_required: bool = False
     target_sti_level: str = "Standard (STI ≥ 0.60)"
-    
-    # Advanced Requirements
-    additional_requirements: str
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -610,12 +610,12 @@ class SmartQuestionnaire:
             recording_capability_needed=responses.get('recording_capability_needed', False),
             streaming_capability_needed=responses.get('streaming_capability_needed', False),
             
-            # NEW: AVIXA requirements
+            additional_requirements=responses.get('additional_requirements', ''),
+
+            # AVIXA requirements
             avixa_display_sizing=responses.get('avixa_display_sizing', 'AVIXA DISCAS Recommended (Optimal viewing)'),
             performance_verification_required=responses.get('performance_verification_required', False),
-            target_sti_level=responses.get('target_sti_level', 'Standard (STI ≥ 0.60)'),
-            
-            additional_requirements=responses.get('additional_requirements', '')
+            target_sti_level=responses.get('target_sti_level', 'Standard (STI ≥ 0.60)')
         )
     
     def generate_summary_report(self, requirements: ClientRequirements) -> str:
