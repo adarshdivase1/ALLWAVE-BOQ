@@ -9,6 +9,7 @@ import math
 from components.smart_questionnaire import ClientRequirements
 from components.room_profiles import ROOM_SPECS
 from components.intelligent_product_selector import IntelligentProductSelector, ProductRequirement
+from components.av_designer import calculate_avixa_recommendations
 
 
 class EnhancedAVIXACalculator:
@@ -649,99 +650,133 @@ class OptimizedBOQGenerator:
             'reasons': reasons[:3]
         }
     
-    def _validate_avixa_compliance(
-        self, boq_items: List[Dict], avixa_calcs: Dict
-    ) -> Dict[str, Any]:
+    def _validate_avixa_compliance(self, boq_items: List[Dict], avixa_calcs: Dict) -> Dict[str, Any]:
         """
-        ENHANCED: Comprehensive AVIXA compliance validation
+        ENHANCED: Comprehensive AVIXA compliance validation with detailed reporting
         """
         validation = {
             'issues': [],
             'warnings': [],
-            'avixa_compliance_report': {}
+            'avixa_compliance_report': {},
+            'compliance_score': 100
         }
         
-        # Check display size compliance
+        # 1. Display Size Compliance (DISCAS)
         display_items = [item for item in boq_items if item.get('category') == 'Displays']
-        if display_items:
+        if display_items and avixa_calcs.get('display'):
             actual_size = display_items[0].get('size_requirement', 0)
             recommended_size = avixa_calcs['display']['selected_size_inches']
+            viewing_distance = avixa_calcs['display']['max_viewing_distance_ft']
             
-            if abs(actual_size - recommended_size) > 5:
-                validation['warnings'].append(
-                    f"⚠️ Display size ({actual_size}\") deviates from AVIXA recommendation ({recommended_size}\")"
+            size_diff = actual_size - recommended_size
+            
+            if abs(size_diff) <= 5:
+                validation['avixa_compliance_report']['display'] = (
+                    f"✅ AVIXA DISCAS: {actual_size}\" display compliant "
+                    f"({viewing_distance:.1f}ft viewing distance)"
                 )
+            elif size_diff < -5:
+                validation['issues'].append(
+                    f"🚨 Display {actual_size}\" is {abs(size_diff):.0f}\" smaller than "
+                    f"AVIXA DISCAS recommendation ({recommended_size}\")"
+                )
+                validation['compliance_score'] -= 15
             else:
-                validation['avixa_compliance_report']['display'] = f"✅ AVIXA DISCAS: {actual_size}\" display compliant"
+                validation['avixa_compliance_report']['display'] = (
+                    f"✅ Display {actual_size}\" exceeds AVIXA minimum ({recommended_size}\")"
+                )
         
-        # Check speaker count
-        speaker_items = [item for item in boq_items if 'Speaker' in item.get('sub_category', '')]
-        if speaker_items:
+        # 2. Audio Coverage (A102.01)
+        speaker_items = [item for item in boq_items if 'Speaker' in item.get('sub_category', '') or 'Loudspeaker' in item.get('sub_category', '')]
+        if avixa_calcs.get('audio'):
             actual_speakers = sum(item.get('quantity', 0) for item in speaker_items)
             recommended_speakers = avixa_calcs['audio']['speakers_needed']
             
-            if actual_speakers < recommended_speakers:
-                validation['issues'].append(
-                    f"🚨 CRITICAL: Only {actual_speakers} speakers, AVIXA requires {recommended_speakers} for uniform coverage"
+            if actual_speakers >= recommended_speakers:
+                validation['avixa_compliance_report']['audio'] = (
+                    f"✅ AVIXA A102.01: {actual_speakers} speakers for uniform coverage "
+                    f"(±3dB uniformity)"
                 )
+            elif actual_speakers >= recommended_speakers - 1:
+                validation['warnings'].append(
+                    f"⚠️ {actual_speakers} speakers installed, AVIXA recommends {recommended_speakers} "
+                    f"for optimal coverage"
+                )
+                validation['compliance_score'] -= 5
             else:
-                validation['avixa_compliance_report']['audio'] = f"✅ AVIXA A102.01: {actual_speakers} speakers for ±3dB uniformity"
+                validation['issues'].append(
+                    f"🚨 CRITICAL: Only {actual_speakers} speakers, AVIXA A102.01 requires "
+                    f"{recommended_speakers} for ±3dB uniformity"
+                )
+                validation['compliance_score'] -= 20
         
-        # Check microphone count
+        # 3. Microphone Coverage
         mic_items = [item for item in boq_items if 'Microphone' in item.get('sub_category', '') or 'Mic' in item.get('sub_category', '')]
-        if mic_items:
+        if avixa_calcs.get('microphones'):
             actual_mics = sum(item.get('quantity', 0) for item in mic_items)
             recommended_mics = avixa_calcs['microphones']['mics_needed']
             
-            if actual_mics < recommended_mics:
-                validation['issues'].append(
-                    f"🚨 CRITICAL: Only {actual_mics} microphones, AVIXA requires {recommended_mics} for full coverage"
+            if actual_mics >= recommended_mics:
+                validation['avixa_compliance_report']['microphones'] = (
+                    f"✅ AVIXA Coverage: {actual_mics} microphones for "
+                    f"{avixa_calcs.get('room_area', 0):.0f} sqft"
                 )
+            elif actual_mics == 0:
+                validation['issues'].append(
+                    "🚨 CRITICAL: No microphones found - system cannot capture audio!"
+                )
+                validation['compliance_score'] -= 30
             else:
-                validation['avixa_compliance_report']['microphones'] = f"✅ AVIXA Coverage: {actual_mics} microphones for {avixa_calcs['room_area']:.0f} sqft"
-        else:
-            validation['issues'].append("🚨 CRITICAL: No microphones found - system cannot capture audio!")
+                validation['warnings'].append(
+                    f"⚠️ {actual_mics} microphones, AVIXA recommends {recommended_mics} "
+                    f"for full coverage"
+                )
+                validation['compliance_score'] -= 10
         
-        # Check viewing angles
-        viewing_ok = avixa_calcs['viewing_angles']['all_seats_acceptable']
+        # 4. Viewing Angles
+        viewing_ok = avixa_calcs.get('viewing_angles', {}).get('all_seats_acceptable', True)
         if not viewing_ok:
             validation['warnings'].append(
-                f"⚠️ Some seats may exceed 45° horizontal viewing angle"
+                "⚠️ Some seats may exceed 45° horizontal viewing angle"
             )
+            validation['compliance_score'] -= 5
         else:
-            validation['avixa_compliance_report']['viewing_angles'] = "✅ All seats within AVIXA viewing angle limits"
+            validation['avixa_compliance_report']['viewing_angles'] = (
+                "✅ All seats within AVIXA viewing angle limits (≤45° horizontal)"
+            )
         
-        # Check power requirements
+        # 5. Power Requirements
         power_reqs = avixa_calcs.get('power', {})
         if power_reqs.get('ups_recommended'):
-            ups_items = [item for item in boq_items if 'UPS' in item.get('sub_category', '') or 'Power' in item.get('sub_category', '')]
+            ups_items = [item for item in boq_items if 'UPS' in item.get('name', '').upper() or 'Power' in item.get('sub_category', '')]
             if not ups_items:
                 validation['warnings'].append(
-                    f"⚠️ AVIXA recommends UPS ({power_reqs['ups_capacity_va']:.0f}VA) for {power_reqs['total_watts']:.0f}W load"
+                    f"⚠️ AVIXA recommends UPS ({power_reqs['ups_capacity_va']:.0f}VA) "
+                    f"for {power_reqs['total_watts']:.0f}W load"
                 )
+                validation['compliance_score'] -= 5
         
-        # Check network requirements
+        # 6. Network Requirements
         network_reqs = avixa_calcs.get('network', {})
         if network_reqs.get('total_bandwidth_mbps', 0) > 100:
             switch_items = [item for item in boq_items if 'Switch' in item.get('sub_category', '')]
             if not switch_items:
                 validation['warnings'].append(
-                    f"⚠️ AVIXA network requirements: {network_reqs['switch_type']} needed for {network_reqs['total_bandwidth_mbps']}Mbps"
+                    f"⚠️ AVIXA network requirements: {network_reqs['switch_type']} "
+                    f"needed for {network_reqs['total_bandwidth_mbps']}Mbps"
                 )
+                validation['compliance_score'] -= 5
         
-        # Summary
+        # Overall Status
+        compliance_score = validation['compliance_score']
         critical_count = len(validation['issues'])
-        warning_count = len(validation['warnings'])
         
-        if critical_count == 0 and warning_count == 0:
+        if compliance_score >= 95 and critical_count == 0:
             validation['overall_status'] = "✅ FULL AVIXA COMPLIANCE"
-            validation['compliance_score'] = 100
-        elif critical_count == 0:
-            validation['overall_status'] = f"⚠️ AVIXA COMPLIANT WITH {warning_count} RECOMMENDATIONS"
-            validation['compliance_score'] = 85
+        elif compliance_score >= 80 and critical_count == 0:
+            validation['overall_status'] = f"⚠️ AVIXA COMPLIANT WITH RECOMMENDATIONS"
         else:
             validation['overall_status'] = f"🚨 AVIXA NON-COMPLIANT: {critical_count} critical issues"
-            validation['compliance_score'] = max(0, 70 - (critical_count * 10))
         
         return validation
     
