@@ -244,7 +244,19 @@ class IntelligentProductSelector:
                 'must_contain': ['cable', 'connectivity', 'plate', 'module', 'hdmi', 'ethernet', 'cat'],
                 'must_not_contain': [],
                 'price_range': (5, 500)
-            }
+            },
+            # Add this new validator for AVIXA compliance
+            'AVIXA_Display_Sizing': {
+                'min_size_for_distance': {
+                    # viewing_distance_ft: min_display_inches
+                    10: 43,
+                    15: 55,
+                    20: 65,
+                    25: 75,
+                    30: 85,
+                    35: 98
+                }
+            },
         }
     
     def _validate_product_category(self, product: Dict, req: ProductRequirement) -> Tuple[bool, List[str]]:
@@ -378,6 +390,20 @@ class IntelligentProductSelector:
                     'issues': validation_issues
                 })
                 return None
+
+            # STAGE 7.5: AVIXA Display Sizing Validation
+            if selected and selected.get('category') == 'Displays' and hasattr(self, 'requirements_context'):
+                room_context = self.requirements_context
+                is_avixa_compliant, avixa_msg = self._validate_avixa_display_sizing(selected, room_context)
+                
+                if not is_avixa_compliant:
+                    self.log(f"    ⚠️ AVIXA WARNING: {avixa_msg}")
+                    self.validation_warnings.append({
+                        'component': requirement.sub_category,
+                        'product': selected.get('name'),
+                        'issue': avixa_msg,
+                        'severity': 'HIGH'
+                    })
             
             price = selected.get('price', 0)
             self.log(f"✅ SELECTED: {selected['brand']} {selected['model_number']}")
@@ -514,6 +540,62 @@ class IntelligentProductSelector:
             alternatives.append(alt)
         
         return alternatives
+
+    def _validate_avixa_display_sizing(self, product: Dict, room_context: Dict) -> Tuple[bool, str]:
+        """
+        Validates display size against AVIXA DISCAS standards
+        """
+        if product.get('category') != 'Displays':
+            return True, "N/A"
+        
+        # Extract display size
+        display_size = self._extract_display_size_from_product(product)
+        if not display_size:
+            return True, "Cannot validate - size unknown"
+        
+        # Get room viewing distance
+        viewing_distance = room_context.get('avixa_calcs', {}).get('display', {}).get('max_viewing_distance_ft', 0)
+        if viewing_distance == 0:
+            return True, "No viewing distance available"
+        
+        # Check against AVIXA standards
+        validators = self.category_validators.get('AVIXA_Display_Sizing', {})
+        min_size_map = validators.get('min_size_for_distance', {})
+        
+        # Find closest viewing distance bracket
+        distance_brackets = sorted(min_size_map.keys())
+        closest_bracket = min([d for d in distance_brackets if d >= viewing_distance], default=distance_brackets[-1])
+        min_recommended = min_size_map.get(closest_bracket, 55)
+        
+        if display_size < min_recommended - 5:  # 5" tolerance
+            return False, f"Display {display_size}\" undersized for {viewing_distance:.1f}ft viewing distance (AVIXA min: {min_recommended}\")"
+        
+        return True, f"AVIXA compliant for {viewing_distance:.1f}ft viewing distance"
+
+    def _extract_display_size_from_product(self, product: Dict) -> Optional[int]:
+        """Extract display size in inches from product name or specs"""
+        import re
+        
+        text = f"{product.get('name', '')} {product.get('specifications', '')}"
+        
+        # Try multiple patterns
+        patterns = [
+            r'(\d{2,3})["\']',  # 65" or 65'
+            r'(\d{2,3})\s*inch',  # 65 inch
+            r'(\d{2,3})-inch',   # 65-inch
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    size = int(match.group(1))
+                    if 40 <= size <= 120:  # Reasonable display size range
+                        return size
+                except ValueError:
+                    continue
+        
+        return None
 
     def _apply_strict_validation(self, df, req: ProductRequirement):
         """
