@@ -198,3 +198,56 @@ def extract_text_from_response(response):
             return None
     
     return None
+
+def validate_boq_against_avixa(model, boq_items, avixa_calcs, room_type):
+    """
+    Use AI to validate BOQ against AVIXA calculations and provide recommendations
+    """
+    if not model or not boq_items:
+        return []
+    
+    prompt = f"""
+    You are an AVIXA CTS (Certified Technology Specialist). Review this AV system design:
+    
+    **Room Type:** {room_type}
+    
+    **AVIXA Calculations:**
+    - Recommended Display: {avixa_calcs.get('display', {}).get('selected_size_inches', 'N/A')}"
+    - Required Speakers: {avixa_calcs.get('audio', {}).get('speakers_needed', 'N/A')}
+    - Required Microphones: {avixa_calcs.get('microphones', {}).get('mics_needed', 'N/A')}
+    - Target STI: {avixa_calcs.get('audio', {}).get('target_sti', 'N/A')}
+    
+    **Selected Equipment:**
+    {json.dumps([{
+        'category': item.get('category'),
+        'name': item.get('name'),
+        'quantity': item.get('quantity')
+    } for item in boq_items], indent=2)}
+    
+    Provide 3-5 specific AVIXA compliance observations:
+    1. Check if display size matches DISCAS recommendation
+    2. Check if audio coverage meets A102.01 standards
+    3. Check for any missing critical components
+    4. Suggest improvements for better AVIXA compliance
+    
+    Format: Brief bullet points, max 100 words total.
+    """
+    
+    try:
+        response_text = generate_with_retry(model, prompt, return_text_only=True)
+        
+        if response_text:
+            observations = []
+            lines = response_text.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
+                    observations.append(line)
+            
+            return observations
+        
+        return []
+        
+    except Exception as e:
+        return [f"AVIXA validation failed: {str(e)}"]
