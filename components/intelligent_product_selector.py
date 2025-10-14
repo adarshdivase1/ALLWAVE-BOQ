@@ -328,12 +328,15 @@ class IntelligentProductSelector:
     
     def select_product(self, requirement: ProductRequirement) -> Optional[Dict]:
         """
-        ENHANCED: Multi-stage product selection with strict validation
+        ENHANCED: Multi-stage product selection with strict validation and detailed logging
         """
         self.log(f"\n{'='*60}")
         self.log(f"🎯 Selecting product for: {requirement.sub_category}")
         self.log(f"    Category: {requirement.category}")
         self.log(f"    Quantity: {requirement.quantity}")
+        self.log(f"    Required Keywords: {requirement.required_keywords}")
+        self.log(f"    Blacklist: {requirement.blacklist_keywords}")
+        self.log(f"    Min Price: ${requirement.min_price}")
         
         # STAGE 1: Category Filter
         candidates = self._filter_by_category(requirement)
@@ -408,12 +411,21 @@ class IntelligentProductSelector:
             price = selected.get('price', 0)
             self.log(f"✅ SELECTED: {selected['brand']} {selected['model_number']}")
             self.log(f"    Price: ${price:.2f}")
+            self.log(f"    Score: {selected.get('data_quality_score', 'N/A')}")
             self.log(f"    Product: {selected['name'][:80]}")
             
             # Compatibility check
             if not self._validate_compatibility(selected, requirement):
                 self.log(f"⚠️ Product may have compatibility issues")
         
+        else:
+            self.log(f"❌ SELECTION FAILED - No matching products found after all filters")
+            self.validation_warnings.append({
+                'component': requirement.sub_category,
+                'issue': 'No products matched all criteria',
+                'severity': 'CRITICAL'
+            })
+
         # NEW STAGE 8: Fallback for hard-to-find items
         if selected is None and requirement.sub_category in ['Room Scheduling Display', 'Touch Controller / Panel']:
             self.log(f"    🔄 Attempting fallback search for {requirement.sub_category}")
@@ -811,7 +823,7 @@ class IntelligentProductSelector:
         return df
 
     def _validate_mount_capacity(self, df, req: ProductRequirement):
-        """Validate mount can support the display size"""
+        """FIXED: More flexible large display validation"""
         if not req.size_requirement or req.size_requirement < 85:
             return df
         
@@ -822,27 +834,23 @@ class IntelligentProductSelector:
             specs = str(product.get('specifications', '')).lower()
             combined = f"{name} {specs}"
             
-            # ENHANCED: More flexible large display indicators
+            # CRITICAL FIX: Accept if ANY of these conditions are true:
             has_large_support = any(term in combined for term in [
-                f'{int(req.size_requirement)}"', 
-                f'{int(req.size_requirement)-5}"', # Wider tolerance
-                f'{int(req.size_requirement)+5}"', # Cover range
+                f'{int(req.size_requirement)}"',
                 'large format', 'video wall', 'videowall',
-                '150 lbs', '175 lbs', '200 lbs', '225 lbs', '250 lbs',
-                'vesa 800', 'vesa 1000', 'vesa 900',
-                'up to 98"', 'up to 100"', 'up to 110"', # NEW
-                '85" and above', '90" and above', # NEW
-                'xlarge', 'x-large', 'xxl' # NEW
+                '150 lbs', '175 lbs', '200 lbs', '225 lbs',
+                'vesa 800', 'vesa 1000',
+                'up to 98"', 'up to 100"', 'up to 110"',
+                '85" and above', '90" and above'
             ])
             
-            # STRICT: Only reject if explicitly too small
+            # Only reject if EXPLICITLY too small
             is_explicitly_small = any(term in combined for term in [
-                'up to 55"', 'up to 60"', 'up to 65"', 'up to 70"',
                 'max 55"', 'max 60"', 'max 65"', 'max 70"',
-                'small format', 'compact only', 'lightweight only'
+                'small format only', 'lightweight only'
             ])
             
-            # Accept if large support OR (not explicitly small AND not video wall mount)
+            # ACCEPT IF: large support OR (not explicitly small AND is video wall mount)
             is_video_wall_mount = 'video wall' in combined or 'videowall' in combined
             
             if has_large_support or (not is_explicitly_small and is_video_wall_mount):
@@ -852,7 +860,8 @@ class IntelligentProductSelector:
             self.log(f"    ✅ {len(validated_mounts)} mounts validated for {req.size_requirement}\" display")
             return pd.DataFrame(validated_mounts)
         else:
-            self.log(f"    ⚠️ No validated mounts for {req.size_requirement}\" - using all candidates")
+            # FALLBACK: If strict validation finds nothing, return all candidates
+            self.log(f"    ⚠️ Strict validation found no mounts - using all candidates")
             return df
 
     def _apply_client_preferences(self, df, req: ProductRequirement):
