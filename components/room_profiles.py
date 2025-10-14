@@ -1,5 +1,5 @@
 # components/room_profiles.py
-# CORRECTED VERSION - This will fix the AttributeError
+# ENHANCED VERSION - Includes table/chair info and AVIXA compliance flags.
 
 ROOM_SPECS = {
     'Small Huddle Room (2-3 People)': {
@@ -7,6 +7,15 @@ ROOM_SPECS = {
         'capacity': (2, 3),
         'primary_use': 'Ad-hoc collaboration, quick calls',
         'typical_dims_ft': (12, 10),
+        'table_size': [5, 3],
+        'chair_count': 3,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Commercial 4K Display'
@@ -33,6 +42,15 @@ ROOM_SPECS = {
         'capacity': (4, 6),
         'primary_use': 'Team meetings, brainstorming',
         'typical_dims_ft': (15, 12),
+        'table_size': [8, 4],
+        'chair_count': 6,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Commercial 4K Display'
@@ -60,6 +78,15 @@ ROOM_SPECS = {
         'capacity': (6, 8),
         'primary_use': 'Formal meetings, presentations',
         'typical_dims_ft': (20, 15),
+        'table_size': [14, 4],
+        'chair_count': 8,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Commercial 4K Display'
@@ -88,6 +115,15 @@ ROOM_SPECS = {
         'capacity': (8, 12),
         'primary_use': 'Client presentations, project reviews',
         'typical_dims_ft': (28, 20),
+        'table_size': [18, 5],
+        'chair_count': 12,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Commercial 4K Display'
@@ -120,6 +156,15 @@ ROOM_SPECS = {
         'capacity': (10, 16),
         'primary_use': 'High-stakes meetings, executive sessions',
         'typical_dims_ft': (35, 20),
+        'table_size': [24, 6],
+        'chair_count': 16,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.70,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 2,
             'type': 'Premium Commercial 4K Display'
@@ -155,6 +200,15 @@ ROOM_SPECS = {
         'capacity': (15, 25),
         'primary_use': 'Instruction, workshops',
         'typical_dims_ft': (40, 25),
+        'table_size': [6, 2], # Representative size for individual tables
+        'chair_count': 25,
+        'chair_arrangement': 'classroom',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 2,
             'type': 'Commercial 4K Display'
@@ -190,6 +244,15 @@ ROOM_SPECS = {
         'capacity': (25, 40),
         'primary_use': 'Lectures, seminars',
         'typical_dims_ft': (50, 35),
+        'table_size': [6, 2], # Representative size for individual tables
+        'chair_count': 40,
+        'chair_arrangement': 'classroom',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Projector and Screen'
@@ -225,6 +288,15 @@ ROOM_SPECS = {
         'capacity': (40, 100),
         'primary_use': 'Town halls, large events',
         'typical_dims_ft': (60, 40),
+        'table_size': None,
+        'chair_count': 100,
+        'chair_arrangement': 'theater',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 1,
             'type': 'Large Projector or Direct-View LED'
@@ -257,6 +329,15 @@ ROOM_SPECS = {
         'capacity': (3, 10),
         'primary_use': 'Content creation, recording',
         'typical_dims_ft': (40, 25),
+        'table_size': None,
+        'chair_count': 5,
+        'chair_arrangement': 'studio',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.70,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 3,
             'type': 'Reference Monitors & Multiviewer'
@@ -293,6 +374,15 @@ ROOM_SPECS = {
         'capacity': (6, 12),
         'primary_use': 'Immersive video conferencing',
         'typical_dims_ft': (30, 20),
+        'table_size': [20, 8], # Based on custom furniture
+        'chair_count': 12,
+        'chair_arrangement': 'conference',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.70,
+            'requires_performance_verification': True
+        },
         'displays': {
             'quantity': 3,
             'type': 'Vendor-Specific Immersive Displays'
