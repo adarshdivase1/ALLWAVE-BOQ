@@ -183,12 +183,12 @@ class IntelligentProductSelector:
             },
             'Mounts': {
                 'must_contain': ['mount', 'bracket', 'stand', 'cart', 'rack'],
-                'must_not_contain': ['display', 'monitor', 'camera', 'microphone', 'speaker'],
+                'must_not_contain': ['camera', 'microphone', 'speaker', 'menu', 'menu board', 'food service'],
                 'price_range': (50, 3000),
                 'sub_category_validators': {
                     'Display Mount / Cart': {
-                        'must_contain': ['wall', 'ceiling', 'floor', 'stand', 'cart', 'mobile'],
-                        'must_not_contain': ['camera', 'mic', 'speaker', 'touch', 'panel', 'controller']
+                        'must_contain': ['wall', 'ceiling', 'floor', 'stand', 'cart', 'mobile', 'display', 'tv', 'video wall'],
+                        'must_not_contain': ['camera', 'mic', 'speaker', 'touch', 'panel', 'controller', 'menu', 'menu board']
                     }
                 }
             },
@@ -576,13 +576,16 @@ class IntelligentProductSelector:
         """Extract display size in inches from product name or specs"""
         import re
         
-        text = f"{product.get('name', '')} {product.get('specifications', '')}"
+        text = f"{product.get('name', '')} {product.get('model_number', '')} {product.get('specifications', '')}"
         
-        # Try multiple patterns
+        # ENHANCED: Try multiple patterns
         patterns = [
-            r'(\d{2,3})["\']',  # 65" or 65'
-            r'(\d{2,3})\s*inch',  # 65 inch
-            r'(\d{2,3})-inch',   # 65-inch
+            r'(\d{2,3})["\']',           # 65" or 65'
+            r'(\d{2,3})\s*inch',          # 65 inch
+            r'(\d{2,3})-inch',            # 65-inch
+            r'\b(\d{2,3})\s*"',           # 65 "
+            r'QH(\d{2,3})',               # Samsung QH43 format
+            r'-(\d{2,3})[A-Z]',           # -43C format
         ]
         
         for pattern in patterns:
@@ -590,9 +593,9 @@ class IntelligentProductSelector:
             if match:
                 try:
                     size = int(match.group(1))
-                    if 40 <= size <= 120:  # Reasonable display size range
+                    if 40 <= size <= 120:  # Reasonable range
                         return size
-                except ValueError:
+                except (ValueError, IndexError):
                     continue
         
         return None
