@@ -6,6 +6,7 @@ from datetime import datetime
 import base64
 from pathlib import Path
 import logging
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -628,12 +629,15 @@ def main():
             generate_disabled = bool(missing_fields)
             if missing_fields:
                 st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
+            
+            # ======================= MODIFIED ERROR HANDLING BLOCK =======================
             if st.button("✨ Generate Optimized BOQ",
                           type="primary",
                           use_container_width=True,
                           disabled=generate_disabled):
-                progress_bar = st.progress(0, text="Initializing optimized generation...")
                 try:
+                    progress_bar = st.progress(0, text="Initializing optimized generation...")
+                    
                     # Import the optimized generator
                     from components.optimized_boq_generator import OptimizedBOQGenerator
                     progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
@@ -655,7 +659,6 @@ def main():
                     
                     progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
 
-                    # ======================== NEW CODE: QUALITY SCORE ========================
                     # Calculate quality score
                     quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
                     st.session_state.boq_quality_score = quality_score
@@ -699,7 +702,6 @@ def main():
                                     st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
                         
                         update_boq_content_with_current_items()
-                        # ============================ END OF NEW CODE ===========================
                         
                         # Save to current room
                         if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
@@ -712,10 +714,21 @@ def main():
                     else:
                         progress_bar.empty()
                         show_error_message("Failed to generate BOQ. Please check your inputs.")
+
+                except KeyError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Data Error: Missing required field - {e}")
+                    st.info("This usually means the product catalog is incomplete. Please check the catalog data file.")
+                except ValueError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Validation Error: {e}")
                 except Exception as e:
                     progress_bar.empty()
-                    show_error_message(f"Error during BOQ generation: {str(e)}")
-                    st.exception(e)
+                    st.error(f"❌ Unexpected Error: {e}")
+                    with st.expander("🔍 Technical Details"):
+                        st.code(traceback.format_exc())
+            # ======================= END MODIFIED BLOCK =======================
+
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
         # Display BOQ results
