@@ -102,33 +102,47 @@ class AVIXADesigner:
     
     @staticmethod
     def calculate_audio_coverage_a102(room_area: float, ceiling_height: float, 
-                                      room_type: str) -> Dict:
+                                      room_type: str, occupancy: int = None) -> Dict:
         """
+        ✅ ENHANCED: Now scales with actual occupancy, not just area
         AVIXA A102.01:2017 - Audio Coverage Uniformity
         Implements Section 2 of guidelines
         """
-        # Base coverage area per speaker based on ceiling height
+        # Base coverage (area-based)
         if ceiling_height <= 9:
-            coverage_per_speaker = 150  # sq ft
+            coverage_per_speaker = 150
         elif ceiling_height <= 12:
-            coverage_per_speaker = 200  # sq ft
+            coverage_per_speaker = 200
         else:
-            coverage_per_speaker = 250  # sq ft
-        
-        # Adjust for room type (speech clarity requirements)
+            coverage_per_speaker = 250
+
+        # Room type adjustment
         if room_type in ["Conference", "Meeting", "Executive Boardroom"]:
             coverage_per_speaker *= 0.8  # Tighter coverage for critical listening
         elif room_type in ["Training", "Classroom"]:
             coverage_per_speaker *= 0.9
-        
-        # Calculate required speakers (minimum 2 for stereo/redundancy)
-        speakers_needed = max(2, math.ceil(room_area / coverage_per_speaker))
-        
+
+        area_based_speakers = max(2, math.ceil(room_area / coverage_per_speaker))
+
+        # NEW: Occupancy-based validation
+        if occupancy:
+            # AVIXA guideline: 1 speaker per 6-8 people in training/presentation environments
+            if "Training" in room_type or "Presentation" in room_type:
+                occupancy_based_speakers = max(2, math.ceil(occupancy / 7))
+                
+                # Use the HIGHER of the two calculations
+                speakers_needed = max(area_based_speakers, occupancy_based_speakers)
+            else:
+                speakers_needed = area_based_speakers
+        else:
+            speakers_needed = area_based_speakers
+
         # Target STI (Speech Transmission Index)
         target_sti = 0.70 if "Executive" in room_type or "Critical" in room_type else 0.60
-        
+
         return {
             'speakers_needed': speakers_needed,
+            'calculation_basis': 'area + occupancy' if occupancy else 'area only',
             'coverage_per_speaker_sqft': coverage_per_speaker,
             'target_sti': target_sti,
             'spl_uniformity_target': '±3 dB (500Hz-4kHz)',
@@ -535,8 +549,10 @@ def calculate_avixa_recommendations(length: float, width: float, ceiling_height:
     )
     
     # Audio coverage (A102.01)
+    # Get occupancy from room profile to pass to the enhanced function
+    occupancy = ROOM_SPECS.get(room_type, {}).get('capacity_max')
     audio_calcs = designer.calculate_audio_coverage_a102(
-        area, ceiling_height, room_type
+        area, ceiling_height, room_type, occupancy
     )
     
     # Microphone coverage
