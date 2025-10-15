@@ -1,5 +1,5 @@
 # components/excel_generator.py
-# PRODUCTION VERSION - Matches AllWave AV company format
+# PRODUCTION VERSION - Matches AllWave AV company format (Updated Oct 2025)
 
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -42,12 +42,12 @@ def _define_styles():
     return {
         "header_green_fill": PatternFill(start_color="A9D08E", end_color="A9D08E", fill_type="solid"),
         "header_light_green_fill": PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
-        "table_header_blue_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"), # CHANGED COLOR
+        "table_header_blue_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
         "boq_category_fill": PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
         "black_bold_font": Font(color="000000", bold=True),
         "bold_font": Font(bold=True),
         "thin_border": thin_border,
-        "currency_format": "₹#,##0.00" # CHANGED - Removed space
+        "currency_format": "₹#,##0.00"
     }
 
 
@@ -74,14 +74,15 @@ def _create_sheet_header(sheet):
     # Merge cells for logo placement
     sheet.merge_cells('A1:C2')
     sheet.merge_cells('D1:F2')
-    sheet.merge_cells('M1:N2')
-    sheet.merge_cells('O1:P2')
+    # Adjusted merge to match new BOQ column count
+    sheet.merge_cells('L1:M2')
+    sheet.merge_cells('N1:O2')
 
     # Add logos (will fail gracefully if files don't exist)
     _add_image_to_cell(sheet, 'assets/company_logo.png', 'A1', 95)
     _add_image_to_cell(sheet, 'assets/crestron_logo.png', 'D1', 95)
-    _add_image_to_cell(sheet, 'assets/iso_logo.png', 'M1', 95)
-    _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'O1', 95)
+    _add_image_to_cell(sheet, 'assets/iso_logo.png', 'L1', 95)
+    _add_image_to_cell(sheet, 'assets/avixa_logo.png', 'N1', 95)
 
 
 # ==================== VERSION CONTROL SHEET ====================
@@ -104,7 +105,7 @@ def _add_version_control_sheet(workbook, project_details, styles):
     vc_header.value = "Version"
     vc_header.fill = styles['header_green_fill']
     vc_header.font = styles['black_bold_font']
-    vc_header.alignment = Alignment(horizontal='center', vertical='center') # ADDED vertical='center'
+    vc_header.alignment = Alignment(horizontal='center', vertical='center')
     vc_header.border = styles['thin_border']
     sheet['B3'].border = styles['thin_border']
 
@@ -121,9 +122,9 @@ def _add_version_control_sheet(workbook, project_details, styles):
             sheet[f'{col_letter}{row}'].border = styles['thin_border']
         sheet[f'A{row}'].value = label
         sheet[f'A{row}'].fill = styles['header_light_green_fill']
-        sheet[f'A{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
+        sheet[f'A{row}'].alignment = Alignment(vertical='center')
         sheet[f'B{row}'].value = value
-        sheet[f'B{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
+        sheet[f'B{row}'].alignment = Alignment(vertical='center')
 
     # === CONTACT DETAILS TABLE ===
     sheet.merge_cells('E3:F3')
@@ -131,7 +132,7 @@ def _add_version_control_sheet(workbook, project_details, styles):
     cd_header.value = "Contact Details"
     cd_header.fill = styles['header_green_fill']
     cd_header.font = styles['black_bold_font']
-    cd_header.alignment = Alignment(horizontal='center', vertical='center') # ADDED vertical='center'
+    cd_header.alignment = Alignment(horizontal='center', vertical='center')
     cd_header.border = styles['thin_border']
     sheet['F3'].border = styles['thin_border']
 
@@ -152,13 +153,13 @@ def _add_version_control_sheet(workbook, project_details, styles):
             sheet[f'{col_letter}{row}'].border = styles['thin_border']
         sheet[f'E{row}'].value = label
         sheet[f'E{row}'].fill = styles['header_light_green_fill']
-        sheet[f'E{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
+        sheet[f'E{row}'].alignment = Alignment(vertical='center')
         sheet[f'F{row}'].value = value
         if label == "Key Comments for this version":
             sheet.row_dimensions[row].height = 40
             sheet[f'F{row}'].alignment = Alignment(wrap_text=True, vertical='top')
         else:
-            sheet[f'F{row}'].alignment = Alignment(vertical='center') # ADD THIS LINE
+            sheet[f'F{row}'].alignment = Alignment(vertical='center')
 
 
 # ==================== TERMS & CONDITIONS SHEET ====================
@@ -192,8 +193,8 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "A. Delivery, Installations & Site Schedule"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = Font(bold=True, color="FFFFFF") # ADDED color="FFFFFF"
-    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADDED vertical='center'
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
     # ADD BORDERS TO ALL MERGED CELLS
     for col in ['B', 'C', 'D', 'E', 'F']:
@@ -218,7 +219,7 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         sheet.merge_cells(f'A{row_cursor}:F{row_cursor}')
         cell = sheet[f'A{row_cursor}']
         cell.value = term
-        cell.alignment = Alignment(wrap_text=True, vertical='center') # CHANGED from 'top' to 'center'
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
         cell.border = styles['thin_border']
         # ADD BORDERS TO ALL MERGED CELLS
         for col in ['B', 'C', 'D', 'E', 'F']:
@@ -237,8 +238,8 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "B. Payment Terms"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = Font(bold=True, color="FFFFFF") # ADDED color="FFFFFF"
-    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADDED
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
     for col in ['B', 'C', 'D', 'E', 'F']:
         sheet[f'{col}{row_cursor}'].border = styles['thin_border']
@@ -314,7 +315,7 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         cell = sheet[f'A{row_cursor}']
         cell.value = detail
         cell.border = styles['thin_border']
-        cell.alignment = Alignment(vertical='center') # ADD THIS
+        cell.alignment = Alignment(vertical='center')
         for col in ['B', 'C', 'D', 'E', 'F']:
             sheet[f'{col}{row_cursor}'].border = styles['thin_border']
         if detail and not detail.startswith(' '):
@@ -446,10 +447,10 @@ def _add_terms_and_conditions_sheet(workbook, styles):
         row_cursor += 1
 
 
-# ==================== ROOM BOQ SHEET ====================
+# ==================== ROOM BOQ SHEET (NEW FORMAT) ====================
 def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, gst_rates):
     """
-    Creates detailed BOQ sheet with PRODUCT IMAGES and TOP 3 REASONS columns.
+    Creates detailed BOQ sheet with updated format, colors, and column order.
     """
     _create_sheet_header(sheet)
     
@@ -465,7 +466,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         row = i + 3
         sheet[f'A{row}'].value = label
         sheet[f'A{row}'].font = styles['bold_font']
-        sheet[f'A{row}'].fill = styles['header_light_green_fill'] # ADDED THIS LINE
+        sheet[f'A{row}'].fill = styles['header_light_green_fill']
         sheet.merge_cells(f'B{row}:C{row}')
         sheet[f'B{row}'].value = value
         for col in ['A', 'B', 'C']:
@@ -473,10 +474,9 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
 
     sheet.append([])  # Spacer row
 
-    # === TABLE HEADERS ===
+    # === TABLE HEADERS (MATCHING NEW FORMAT) ===
     headers1 = [
         'Sr. No.', 
-        'Reference Image',  # NEW COLUMN
         'Description of Goods / Services', 
         'Make', 
         'Model No.', 
@@ -484,16 +484,15 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         'Unit Rate (INR)', 
         'Total', 
         'Warranty', 
-        'Lead Time (Days)',
-        'SGST\n( In Maharashtra)', None, 
-        'CGST\n( In Maharashtra)', None,
+        'SGST (In Maharashtra)', None, 
+        'CGST (In Maharashtra)', None,
         'Total (TAX)', 
         'Total Amount (INR)', 
-        'Top 3 Reasons'  # NEW COLUMN
+        'Reference Image'
     ]
     
     headers2 = [
-        None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None,
         'Rate', 'Amt', 'Rate', 'Amt', None, None, None
     ]
     
@@ -502,18 +501,17 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     header_start_row = sheet.max_row - 1
 
     # Merge GST header cells
+    sheet.merge_cells(f'I{header_start_row}:J{header_start_row}')
     sheet.merge_cells(f'K{header_start_row}:L{header_start_row}')
-    sheet.merge_cells(f'M{header_start_row}:N{header_start_row}')
-    # ADDED - Explicit alignment for merged cells
+    sheet[f'I{header_start_row}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
     sheet[f'K{header_start_row}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    sheet[f'M{header_start_row}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     # Style headers
     for row in sheet.iter_rows(min_row=header_start_row, max_row=sheet.max_row):
         for cell in row:
             if cell.value is not None:
                 cell.fill = styles["table_header_blue_fill"]
-                cell.font = styles['bold_font']
+                cell.font = Font(bold=True, color="FFFFFF") # White text for headers
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 cell.border = styles['thin_border']
     
@@ -524,7 +522,6 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         grouped_items.setdefault(cat, []).append(item)
 
     total_before_gst_hardware = 0
-    total_gst_hardware = 0
     item_s_no = 1
     category_letters = [chr(ord('A') + i) for i in range(len(grouped_items))]
 
@@ -533,10 +530,10 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         # Category header row
         sheet.append([category_letters[i], category])
         cat_row_idx = sheet.max_row
-        sheet.merge_cells(f'B{cat_row_idx}:Q{cat_row_idx}')  # Extended to include new column
+        sheet.merge_cells(f'B{cat_row_idx}:O{cat_row_idx}')  # Extended to new last column
         for cell in sheet[cat_row_idx]:
             cell.fill = styles['boq_category_fill']
-            cell.font = Font(bold=True, color="000000") # CHANGED - Explicit font color
+            cell.font = Font(bold=True, color="000000")
             cell.border = styles['thin_border']
         
         # Individual items
@@ -551,22 +548,10 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             total_with_gst = subtotal + total_tax
             
             total_before_gst_hardware += subtotal
-            total_gst_hardware += total_tax
 
-            # === GET TOP 3 REASONS (Already extracted during BOQ generation) ===
-            reasons = item.get('top_3_reasons', [])
-
-            # Fallback if somehow missing
-            if not reasons:
-                reasons = ["Standard component for this room type"]
-
-            # Format as "1. Reason\n2. Reason\n3. Reason"
-            top_3_reasons = '\n'.join([f"{idx+1}. {reason}" for idx, reason in enumerate(reasons)])
-
-            # Build row data
+            # Build row data in the new order
             row_data = [
                 item_s_no,
-                '',  # Image column (will be populated separately)
                 item.get('name', ''),
                 item.get('brand', 'Unknown'),
                 item.get('model_number', 'N/A'),
@@ -574,12 +559,11 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 unit_price_inr,
                 subtotal,
                 item.get('warranty', 'Not Specified'),
-                item.get('lead_time_days', 14),
                 f"{sgst_rate}%", sgst_amount,
                 f"{cgst_rate}%", cgst_amount,
                 total_tax, 
                 total_with_gst,
-                top_3_reasons  # NEW COLUMN DATA
+                ''  # Placeholder for Reference Image at the end
             ]
             
             sheet.append(row_data)
@@ -588,12 +572,10 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             # === ADD PRODUCT IMAGE (only if available) ===
             if IMAGE_GENERATION_AVAILABLE:
                 try:
-                    # Extract display size if applicable
                     size_inches = None
                     if item.get('category') == 'Displays':
                         size_inches = extract_display_size(item.get('name', ''))
                     
-                    # Generate product info card
                     img_buffer = generate_product_info_card(
                         product_name=item.get('name', 'Unknown Product'),
                         brand=item.get('brand', 'N/A'),
@@ -603,30 +585,23 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                     )
                     
                     if img_buffer:
-                        # CRITICAL: Ensure buffer is at position 0
                         img_buffer.seek(0)
-                        
                         excel_img = ExcelImage(img_buffer)
-                        # Scale to fit Excel cell
                         excel_img.width = 150
                         excel_img.height = 100
                         
-                        # CRITICAL: Anchor properly to cell
-                        cell_anchor = f'B{current_row}'
+                        # Anchor image to the new last column 'O'
+                        cell_anchor = f'O{current_row}'
                         sheet.add_image(excel_img, cell_anchor)
                         
-                        # CRITICAL: Set row height AFTER adding image
-                        sheet.row_dimensions[current_row].height = 85 # INCREASED from 80
-                        
+                        sheet.row_dimensions[current_row].height = 85
                         print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
                     else:
                         print(f"DEBUG: No image buffer generated for {item.get('name', 'Unknown')}")
                         
                 except Exception as e:
-                    # Fail gracefully - don't break BOQ generation
                     print(f"⚠️ Could not add product image for {item.get('name', 'Unknown')}: {e}")
             else:
-                # Skip image generation if module not available
                 print(f"⚠️ Skipping images for {item.get('name', 'Unknown')[:30]} (image generator unavailable)")
 
             item_s_no += 1
@@ -643,7 +618,7 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     if services and total_before_gst_hardware > 0:
         sheet.append([services_letter, "Services"])
         cat_row_idx = sheet.max_row
-        sheet.merge_cells(f'B{cat_row_idx}:Q{cat_row_idx}')
+        sheet.merge_cells(f'B{cat_row_idx}:O{cat_row_idx}')
         for cell in sheet[cat_row_idx]:
             cell.fill = styles['boq_category_fill']
             cell.font = styles['bold_font']
@@ -657,15 +632,8 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             service_total_tax = service_sgst + service_cgst
             service_total = service_amount_inr + service_total_tax
             
-            service_reasons = {
-                "Installation & Commissioning": "1. Professional on-site installation\n2. System configuration and testing\n3. Integration with existing infrastructure",
-                "System Warranty (3 Years)": "1. Comprehensive parts and labor coverage\n2. Priority support and rapid response\n3. Regular maintenance and health checks",
-                "Project Management": "1. Dedicated project coordinator\n2. Timeline management and progress tracking\n3. Quality assurance and documentation"
-            }
-            
             row_data = [
                 item_s_no, 
-                '',  # No image for services
                 service_name, 
                 "AllWave AV", 
                 "Professional Service", 
@@ -673,40 +641,32 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                 service_amount_inr, 
                 service_amount_inr, 
                 "As per terms", 
-                "N/A",
                 f"{sgst_rate}%", service_sgst, 
                 f"{cgst_rate}%", service_cgst,
                 service_total_tax, 
                 service_total,
-                service_reasons.get(service_name, "Standard professional service")
+                '' # No image for services
             ]
             sheet.append(row_data)
-            # ADDED - Styling for service reasons column
-            current_service_row = sheet.max_row
-            sheet[f'Q{current_service_row}'].alignment = Alignment(wrap_text=True, vertical='top')
-            sheet.row_dimensions[current_service_row].height = 60
-            
             item_s_no += 1
     
-    # === SET COLUMN WIDTHS ===
+    # === SET COLUMN WIDTHS (NEW LAYOUT) ===
     column_widths = {
         'A': 8,   # Sr. No
-        'B': 25,  # Reference Image (wider for image) - INCREASED
-        'C': 45,  # Description
-        'D': 20,  # Make
-        'E': 30,  # Model No
-        'F': 6,   # Qty
-        'G': 15,  # Unit Rate
-        'H': 15,  # Total
-        'I': 15,  # Warranty
-        'J': 15,  # Lead Time
-        'K': 10,  # SGST Rate
-        'L': 15,  # SGST Amt
-        'M': 10,  # CGST Rate
-        'N': 15,  # CGST Amt
-        'O': 15,  # Total Tax
-        'P': 18,  # Total Amount
-        'Q': 50   # Top 3 Reasons (extra wide)
+        'B': 45,  # Description
+        'C': 20,  # Make
+        'D': 30,  # Model No
+        'E': 6,   # Qty
+        'F': 15,  # Unit Rate
+        'G': 15,  # Total
+        'H': 15,  # Warranty
+        'I': 10,  # SGST Rate
+        'J': 15,  # SGST Amt
+        'K': 10,  # CGST Rate
+        'L': 15,  # CGST Amt
+        'M': 15,  # Total Tax
+        'N': 18,  # Total Amount
+        'O': 25   # Reference Image
     }
     
     for col, width in column_widths.items():
@@ -716,24 +676,22 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     for row in sheet.iter_rows(min_row=header_start_row + 2):
         for cell in row:
             # Currency formatting for price columns
-            if cell.column >= 7 and cell.column <= 16 and isinstance(cell.value, (int, float)):
+            if cell.column_letter in ['F', 'G', 'J', 'L', 'M', 'N'] and isinstance(cell.value, (int, float)):
                 cell.number_format = styles['currency_format']
             
             cell.border = styles['thin_border']
             
             # Center align specific columns
-            if cell.column in [1, 6]:  # Sr. No and Qty
+            if cell.column_letter in ['A', 'E']:  # Sr. No and Qty
                 cell.alignment = Alignment(horizontal='center', vertical='top')
-            elif cell.column == 17:  # Top 3 Reasons - wrap text
-                cell.alignment = Alignment(wrap_text=True, vertical='top')
             else:
-                cell.alignment = Alignment(vertical='top')
+                cell.alignment = Alignment(vertical='top', wrap_text=True)
 
 
-# ==================== SCOPE OF WORK SHEET ====================
+# ==================== SCOPE OF WORK SHEET (UPDATED CONTENT) ====================
 def _add_scope_of_work_sheet(workbook, styles):
     """Creates the Scope of Work sheet based on AllWave AV standard format."""
-    sheet = workbook.create_sheet(title="Scope of Work", index=2) # CHANGED index from 1 to 2
+    sheet = workbook.create_sheet(title="Scope of Work", index=2)
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
@@ -754,7 +712,7 @@ def _add_scope_of_work_sheet(workbook, styles):
     sheet.row_dimensions[row_cursor].height = 25
     row_cursor += 2
     
-    # === SCOPE ITEMS ===
+    # === SCOPE ITEMS (UPDATED FROM PROVIDED FORMAT) ===
     scope_items = [
         "Site Coordination and Prerequisites Clearance",
         "Detailed schematic drawings according to the design",
@@ -765,7 +723,9 @@ def _add_scope_of_work_sheet(workbook, styles):
         "Configuration of Audio/Video Switcher",
         "Configuration of DSP mixer",
         "Touch Panel Design",
-        "System programming as per design requirement"
+        "System programming as per design requirement",
+        "As built drawings after completion of project",
+        "User training & Handover"
     ]
     
     for idx, item in enumerate(scope_items, 1):
@@ -782,23 +742,23 @@ def _add_scope_of_work_sheet(workbook, styles):
     
     row_cursor += 1
     
-    # === EXCLUSIONS SECTION ===
+    # === EXCLUSIONS SECTION (UPDATED FROM PROVIDED FORMAT) ===
     sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
     section_cell = sheet[f'A{row_cursor}']
     section_cell.value = "Exclusions and Dependencies"
     section_cell.fill = styles['table_header_blue_fill']
-    section_cell.font = Font(bold=True, color="FFFFFF") # ADD color="FFFFFF"
-    section_cell.alignment = Alignment(horizontal='left', vertical='center') # ADD vertical='center'
+    section_cell.font = Font(bold=True, color="FFFFFF")
+    section_cell.alignment = Alignment(horizontal='left', vertical='center')
     section_cell.border = styles['thin_border']
-    sheet[f'B{row_cursor}'].border = styles['thin_border'] # ADD THIS
+    sheet[f'B{row_cursor}'].border = styles['thin_border']
     row_cursor += 1
     
     sheet.merge_cells(f'A{row_cursor}:B{row_cursor}')
     cell = sheet[f'A{row_cursor}']
     cell.value = "The following items need to be arranged by the client on site:"
     cell.border = styles['thin_border']
-    cell.alignment = Alignment(vertical='center') # ADD THIS
-    sheet[f'B{row_cursor}'].border = styles['thin_border'] # ADD THIS
+    cell.alignment = Alignment(vertical='center')
+    sheet[f'B{row_cursor}'].border = styles['thin_border']
     sheet.row_dimensions[row_cursor].height = 20
     row_cursor += 1
     
@@ -809,7 +769,9 @@ def _add_scope_of_work_sheet(workbook, styles):
         "Connectivity for electric power, LAN, telephone, IP (1 Mbps), ISDN (1 Mbps) & cable TV points",
         "Ballasts (0 to 10 volts) in case of fluorescent dimming for lights",
         "Shelves for mounting devices (if a rack is not in the SOW)",
-        "Adequate cooling/ventilation for all equipment racks and cabinets"
+        "Adequate cooling/ventilation for all equipment racks and cabinets",
+        "Any software other than specified in the proposal",
+        "Any active LAN points required for equipment"
     ]
     
     for idx, item in enumerate(exclusions, 1):
@@ -825,25 +787,18 @@ def _add_scope_of_work_sheet(workbook, styles):
         row_cursor += 1
 
 
-# ==================== PROPOSAL SUMMARY SHEET (FIXED VERSION) ====================
+# ==================== PROPOSAL SUMMARY SHEET ====================
 def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     """
     Creates the Proposal Summary sheet with FULL CALCULATIONS from BOQ sheets.
-    Now includes PSNI/Client Type highlights.
     """
-    sheet = workbook.create_sheet(title="Proposal Summary", index=3) # CHANGED index from 2 to 3
+    sheet = workbook.create_sheet(title="Proposal Summary", index=3)
     _create_sheet_header(sheet)
     sheet.sheet_view.showGridLines = False
     
     # === SET COLUMN WIDTHS ===
     column_widths = {
-        'A': 10,  # Sr. No
-        'B': 50,  # Description
-        'C': 12,  # Total Qty
-        'D': 18,  # Rate w/o TAX
-        'E': 18,  # Amount w/o TAX
-        'F': 18,  # Total TAX Amount
-        'G': 18   # Amount with Tax
+        'A': 10, 'B': 50, 'C': 12, 'D': 18, 'E': 18, 'F': 18, 'G': 18
     }
     
     for col, width in column_widths.items():
@@ -868,11 +823,10 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
         cell = sheet.cell(row=row_cursor, column=col_idx)
         cell.value = header
         cell.fill = styles['table_header_blue_fill']
-        cell.font = styles['bold_font']
+        cell.font = Font(bold=True, color="FFFFFF")
         cell.alignment = Alignment(horizontal='center', vertical='center')
         cell.border = styles['thin_border']
     
-    # Merge "INR Supply" across columns D-G
     sheet.merge_cells(f'D{row_cursor}:G{row_cursor}')
     row_cursor += 1
     
@@ -882,11 +836,11 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
         cell = sheet.cell(row=row_cursor, column=col_idx)
         cell.value = header
         cell.fill = styles['table_header_blue_fill']
-        cell.font = styles['bold_font']
+        cell.font = Font(bold=True, color="FFFFFF")
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         cell.border = styles['thin_border']
     
-    sheet.row_dimensions[row_cursor].height = 30  # Extra height for wrapped text
+    sheet.row_dimensions[row_cursor].height = 30
     row_cursor += 1
     
     # === ROOM DATA WITH CALCULATIONS ===
@@ -895,183 +849,59 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     grand_total = 0
     
     for idx, room in enumerate(rooms_data, 1):
-        # Calculate room totals (these should already be in room dict from main function)
         room_subtotal = room.get('subtotal', 0)
         room_tax = room.get('gst', 0)
         room_total = room.get('total', 0)
         
-        # Fallback calculation if totals weren't pre-calculated
-        if room_subtotal == 0 and room.get('boq_items'):
-            try:
-                from components.boq_generator import boq_to_dataframe, calculate_boq_summary
-                boq_df = boq_to_dataframe(room['boq_items'])
-                summary = calculate_boq_summary(boq_df)
-                room_subtotal = summary.get('subtotal', 0)
-                room_tax = summary.get('total_gst', 0)
-                room_total = summary.get('grand_total', 0)
-            except ImportError:
-                pass
-
         grand_subtotal += room_subtotal
         grand_tax += room_tax
         grand_total += room_total
         
-        # Calculate average rate (Amount / Quantity)
         total_qty = sum(item.get('quantity', 1) for item in room.get('boq_items', []))
         avg_rate = room_subtotal / total_qty if total_qty > 0 else room_subtotal
         
-        # Populate row
-        row_data = [
-            idx,
-            room.get('name', f'Room {idx}'),
-            total_qty,
-            avg_rate,
-            room_subtotal,
-            room_tax,
-            room_total
-        ]
+        row_data = [ idx, room.get('name', f'Room {idx}'), total_qty, avg_rate, room_subtotal, room_tax, room_total ]
         
         for col_idx, value in enumerate(row_data, 1):
             cell = sheet.cell(row=row_cursor, column=col_idx)
             cell.value = value
             cell.border = styles['thin_border']
-            cell.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") # ADD THIS LINE
-            
-            # Apply number formatting to currency columns
-            if col_idx >= 4: # Rate and all amount columns
+            if col_idx >= 4:
                 cell.number_format = styles['currency_format']
                 cell.alignment = Alignment(horizontal='right', vertical='center')
-            elif col_idx == 1: # Sr. No
+            elif col_idx in [1, 3]:
                 cell.alignment = Alignment(horizontal='center', vertical='center')
-            elif col_idx == 3: # Qty
-                cell.alignment = Alignment(horizontal='center', vertical='center')
-            else: # Description
+            else:
                 cell.alignment = Alignment(horizontal='left', vertical='center')
         
-        sheet.row_dimensions[row_cursor].height = 20 # ADD THIS LINE for consistency
+        sheet.row_dimensions[row_cursor].height = 20
         row_cursor += 1
     
     # === GRAND TOTAL ROW ===
-    row_cursor += 1  # Add spacing
-    
-    # Merge cells A to C for "GRAND TOTAL" label
+    row_cursor += 1
     sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
     total_label_cell = sheet[f'A{row_cursor}']
     total_label_cell.value = "GRAND TOTAL"
     total_label_cell.font = Font(bold=True, size=12)
-    total_label_cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid") # CHANGED COLOR
+    total_label_cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     total_label_cell.alignment = Alignment(horizontal='center', vertical='center')
     total_label_cell.border = styles['thin_border']
     
-    # Add grand totals to columns D-G
-    grand_total_data = [
-        '',  # Rate w/o TAX (not applicable for total)
-        grand_subtotal,
-        grand_tax,
-        grand_total
-    ]
+    grand_total_data = ['', grand_subtotal, grand_tax, grand_total]
     
     for col_idx, value in enumerate(grand_total_data, 4):
         cell = sheet.cell(row=row_cursor, column=col_idx)
         cell.value = value
         cell.font = Font(bold=True, size=11)
-        cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid") # CHANGED COLOR
+        cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
         cell.border = styles['thin_border']
-        
-        if value:  # Only format if not empty
+        if value:
             cell.number_format = styles['currency_format']
             cell.alignment = Alignment(horizontal='right', vertical='center')
-    
     sheet.row_dimensions[row_cursor].height = 25
-    
-    # === PROJECT METADATA HIGHLIGHTS ===
-    row_cursor += 3
-
-    # PSNI Referral Highlight
-    if project_details.get('PSNI Referral') == 'Yes':
-        sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
-        psni_cell = sheet[f'A{row_cursor}']
-        psni_cell.value = "✅ PSNI GLOBAL ALLIANCE REFERRED PROJECT"
-        psni_cell.font = Font(size=12, bold=True, color="FFFFFF")
-        psni_cell.fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
-        psni_cell.alignment = Alignment(horizontal='center', vertical='center')
-        psni_cell.border = styles['thin_border']
-        sheet.row_dimensions[row_cursor].height = 25
-        row_cursor += 1
-
-    # Client Type Highlight
-    client_type = project_details.get('Client Type', 'International')
-    color = "3B82F6" if client_type == "Local (India)" else "8B5CF6"
-    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
-    client_cell = sheet[f'A{row_cursor}']
-    client_cell.value = f"🌐 CLIENT TYPE: {client_type.upper()}"
-    client_cell.font = Font(size=11, bold=True, color="FFFFFF")
-    client_cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
-    client_cell.alignment = Alignment(horizontal='center', vertical='center')
-    client_cell.border = styles['thin_border']
-    sheet.row_dimensions[row_cursor].height = 22
-    row_cursor += 2
-    
-    # === COMMERCIAL TERMS SECTION (Below Grand Total) ===
-    row_cursor += 1
-    
-    sheet.merge_cells(f'A{row_cursor}:G{row_cursor}')
-    ct_header = sheet[f'A{row_cursor}']
-    ct_header.value = "Commercial Terms"
-    ct_header.font = Font(size=12, bold=True, color="FFFFFF")
-    ct_header.fill = PatternFill(start_color="2563eb", end_color="2563eb", fill_type="solid")
-    ct_header.alignment = Alignment(horizontal='center', vertical='center')
-    ct_header.border = styles['thin_border']
-    # ADD BORDERS TO MERGED CELLS
-    for col in ['B', 'C', 'D', 'E', 'F', 'G']:
-        sheet[f'{col}{row_cursor}'].border = styles['thin_border']
-    row_cursor += 1
-    
-    # Add basic commercial terms
-    commercial_terms = [
-        ("A. Delivery, Installations & Site Schedule", "", True),
-        ("All Wave AV Systems undertake to ensure it's best efforts to complete the assignment for Client within the shortest timelines possible.", "", False),
-        ("", "", False),
-        ("1. Project Schedule & Site Requirements", "", True),
-        ("Week 1-3", "", False),
-        ("All Wave AV Systems", "Design & Procurement", False),
-        ("Client", "Site Preparations", False),
-        ("", "", False),
-        ("2. Delivery Terms", "", True),
-        ("Duty Paid INR- Free delivery at site", "", False),
-        ("Direct Import- FOB OR Ex-works of CIF", "", False)
-    ]
-    
-    for term_label, term_value, is_header in commercial_terms:
-        if not term_label and not term_value:
-            row_cursor += 1
-            continue
-        
-        sheet.merge_cells(f'A{row_cursor}:E{row_cursor}')
-        label_cell = sheet[f'A{row_cursor}']
-        label_cell.value = term_label
-        label_cell.border = styles['thin_border']
-        label_cell.alignment = Alignment(wrap_text=True, vertical='center')
-        # ADD BORDERS TO MERGED CELLS
-        for col in ['B', 'C', 'D', 'E']:
-            sheet[f'{col}{row_cursor}'].border = styles['thin_border']
-        
-        if is_header:
-            label_cell.font = styles['bold_font']
-            label_cell.fill = styles['header_light_green_fill']
-        
-        sheet.merge_cells(f'F{row_cursor}:G{row_cursor}')
-        value_cell = sheet[f'F{row_cursor}']
-        value_cell.value = term_value
-        value_cell.border = styles['thin_border']
-        value_cell.alignment = Alignment(wrap_text=True, vertical='center')
-        sheet[f'G{row_cursor}'].border = styles['thin_border'] # ADD THIS
-        
-        sheet.row_dimensions[row_cursor].height = 20 if len(term_label) < 50 else 30
-        row_cursor += 1
 
 
-# ==================== EXECUTIVE SUMMARY SHEET (NEW) ====================
+# ==================== EXECUTIVE SUMMARY SHEET ====================
 def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles):
     """
     Create executive-level budget summary (1-page overview)
@@ -1118,7 +948,6 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
     header.alignment = Alignment(horizontal='center', vertical='center')
     row += 1
     
-    # Table headers
     headers = ['Room Name', 'Area (sqft)', 'Equipment Cost', 'Services', 'Tax', 'Total']
     for col_idx, header_text in enumerate(headers, 1):
         cell = sheet.cell(row=row, column=col_idx)
@@ -1129,16 +958,9 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
         cell.alignment = Alignment(horizontal='center', vertical='center')
     row += 1
     
-    # Room data
-    grand_equipment = 0
-    grand_services = 0
-    grand_tax = 0
-    grand_total = 0
+    grand_equipment, grand_services, grand_tax, grand_total = 0, 0, 0, 0
     
     for room in rooms_data:
-        # Based on services being 30% of hardware cost, subtotal = 1.3 * hardware
-        # Hardware = subtotal / 1.3 ~= subtotal * 0.77
-        # Services = (subtotal / 1.3) * 0.3 ~= subtotal * 0.23
         equipment_cost = room.get('subtotal', 0) / 1.30
         services_cost = equipment_cost * 0.30
         tax = room.get('gst', 0)
@@ -1149,27 +971,17 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
         grand_tax += tax
         grand_total += total
         
-        room_data = [
-            room.get('name', 'Unknown'),
-            f"{room.get('area', 0):.0f}",
-            equipment_cost,
-            services_cost,
-            tax,
-            total
-        ]
+        room_data = [ room.get('name', 'Unknown'), f"{room.get('area', 0):.0f}", equipment_cost, services_cost, tax, total ]
         
         for col_idx, value in enumerate(room_data, 1):
             cell = sheet.cell(row=row, column=col_idx)
             cell.value = value
             cell.border = styles['thin_border']
-            
             if col_idx >= 3:
                 cell.number_format = styles['currency_format']
                 cell.alignment = Alignment(horizontal='right', vertical='center')
             else:
                 cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    
         row += 1
     
     # Grand total row
@@ -1180,7 +992,6 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
     total_label.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     total_label.border = styles['thin_border']
     sheet[f'B{row}'].border = styles['thin_border']
-
     
     totals = [grand_equipment, grand_services, grand_tax, grand_total]
     for col_idx, value in enumerate(totals, 3):
@@ -1202,85 +1013,50 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
     sheet.column_dimensions['F'].width = 20
 
 
-# ==================== MAIN ENTRY POINT (UPDATED) ====================
+# ==================== MAIN ENTRY POINT ====================
 def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     """
     Main function to generate the complete Excel workbook.
-    Enhanced with executive summary.
     """
     workbook = openpyxl.Workbook()
     styles = _define_styles()
 
     # === CALCULATE ROOM TOTALS FIRST ===
     for room in rooms_data:
-        if room.get('boq_items') and len(room['boq_items']) > 0:
-            # Calculate hardware subtotal
-            subtotal_hardware = sum(
-                item.get('price', 0) * item.get('quantity', 1) 
-                for item in room['boq_items']
-            ) * usd_to_inr_rate
-            
-            # Calculate services total (based on hardware subtotal)
-            services_total = subtotal_hardware * 0.30  # 15% + 10% + 5% for services
+        if room.get('boq_items'):
+            subtotal_hardware = sum(item.get('price', 0) * item.get('quantity', 1) for item in room['boq_items']) * usd_to_inr_rate
+            services_total = subtotal_hardware * 0.30
             total_without_gst = subtotal_hardware + services_total
-            
-            # GST calculation
-            gst_electronics = sum(
-                (item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100)
-                for item in room['boq_items']
-            )
+            gst_electronics = sum((item.get('price', 0) * item.get('quantity', 1) * usd_to_inr_rate) * (item.get('gst_rate', 18) / 100) for item in room['boq_items'])
             gst_services = services_total * (project_details.get('gst_rates', {}).get('Services', 18) / 100)
             total_gst = gst_electronics + gst_services
-            
-            # Store in room dict for Proposal Summary
             room['subtotal'] = total_without_gst
             room['gst'] = total_gst
             room['total'] = total_without_gst + total_gst
 
-    # === SHEET 1: VERSION CONTROL ===
+    # === GENERATE SHEETS ===
     _add_version_control_sheet(workbook, project_details, styles)
-    
-    # === SHEET 2: EXECUTIVE SUMMARY (NEW!) ===
     generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
-
-    # === SHEET 3: SCOPE OF WORK ===
     _add_scope_of_work_sheet(workbook, styles)
-    
-    # === SHEET 4: PROPOSAL SUMMARY (NOW WITH CALCULATIONS) ===
     _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles)
-    
-    # === SHEET 5: TERMS & CONDITIONS ===
     _add_terms_and_conditions_sheet(workbook, styles)
     
-    # === SHEET 6+: ROOM BOQ SHEETS ===
+    # === ROOM BOQ SHEETS ===
     for room in rooms_data:
-        if room.get('boq_items') and len(room['boq_items']) > 0:
-            print(f"DEBUG: Creating sheet for room: {room['name']}")
-            
-            # Create safe sheet name (Excel has 31 char limit)
+        if room.get('boq_items'):
             safe_name = re.sub(r'[\\/*?:"<>|]', '', room['name'])[:25]
             room_sheet = workbook.create_sheet(title=f"BOQ - {safe_name}")
-            
             _populate_room_boq_sheet(
-                room_sheet, 
-                room['boq_items'], 
-                room['name'], 
-                styles,
-                usd_to_inr_rate, 
-                project_details.get('gst_rates', {})
+                room_sheet, room['boq_items'], room['name'], styles,
+                usd_to_inr_rate, project_details.get('gst_rates', {})
             )
-            
-            print(f"DEBUG: Successfully created sheet for {room['name']}")
 
-    # === CLEANUP ===
-    # Remove default sheet
+    # === CLEANUP AND SAVE ===
     if "Sheet" in workbook.sheetnames:
         del workbook["Sheet"]
     
-    # Set active sheet to Version Control
     workbook.active = workbook["Version Control"]
 
-    # === SAVE TO BYTES ===
     excel_buffer = BytesIO()
     workbook.save(excel_buffer)
     excel_buffer.seek(0)
