@@ -430,7 +430,7 @@ After adding the above integrations, test with this scenario:
 
 4. **Expected Output:**
 ```
-   🔧 Multi-Room Optimization Applied
+   # 🔧 Multi-Room Optimization Applied
    
    Cost Savings: 12.5%
    
