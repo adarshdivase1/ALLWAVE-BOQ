@@ -13,6 +13,10 @@ class AVIXADesigner:
     Implements ALL standards from avixa_guidelines.md
     """
     
+    def log(self, message: str):
+        """Simple logging for AVIXA calculations"""
+        print(f"[AVIXA] {message}")
+
     @staticmethod
     def calculate_display_size_discas(room_length: float, room_width: float, 
                                       content_type: str = "BDM", 
@@ -100,9 +104,8 @@ class AVIXADesigner:
             'compliance_status': 'PASS' if seats_within_optimal else 'REVIEW REQUIRED'
         }
     
-    @staticmethod
-    def calculate_audio_coverage_a102(room_area: float, ceiling_height: float, 
-                                      room_type: str, occupancy: int = None) -> Dict:
+    def calculate_audio_coverage_a102(self, room_area: float, ceiling_height: float, 
+                                   room_type: str, occupancy: int = None) -> Dict:
         """
         ✅ ENHANCED: Now scales with actual occupancy, not just area
         AVIXA A102.01:2017 - Audio Coverage Uniformity
@@ -127,11 +130,14 @@ class AVIXADesigner:
         # NEW: Occupancy-based validation
         if occupancy:
             # AVIXA guideline: 1 speaker per 6-8 people in training/presentation environments
-            if "Training" in room_type or "Presentation" in room_type:
+            if "Training" in room_type or "Presentation" in room_type or "Multipurpose" in room_type:
                 occupancy_based_speakers = max(2, math.ceil(occupancy / 7))
                 
                 # Use the HIGHER of the two calculations
                 speakers_needed = max(area_based_speakers, occupancy_based_speakers)
+                
+                self.log(f"    📊 Area-based: {area_based_speakers} speakers, Occupancy-based: {occupancy_based_speakers} speakers")
+                self.log(f"    ✅ Selected: {speakers_needed} speakers (higher value per AVIXA)")
             else:
                 speakers_needed = area_based_speakers
         else:
@@ -147,6 +153,7 @@ class AVIXADesigner:
             'target_sti': target_sti,
             'spl_uniformity_target': '±3 dB (500Hz-4kHz)',
             'ceiling_height_ft': ceiling_height,
+            'occupancy_validated': bool(occupancy),
             'standard': 'AVIXA A102.01:2017'
         }
     
