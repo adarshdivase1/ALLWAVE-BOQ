@@ -27,13 +27,16 @@ try:
     from components.room_profiles import ROOM_SPECS
     from components.data_handler import load_and_validate_data
     from components.gemini_handler import setup_gemini
-    # OLD: from components.boq_generator import generate_boq_from_ai  # ❌ REMOVED
     from components.ui_components import (
         create_project_header, create_room_calculator, create_advanced_requirements,
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
     from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
+    
+    # ✅ ADD THIS LINE:
+    from components.multi_room_optimizer import MultiRoomOptimizer  # NEW IMPORT
+    
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}")
     st.stop()
@@ -382,6 +385,28 @@ def main():
         st.text_input("Account Manager", key="account_manager_input", placeholder="Enter manager's name")
         st.text_input("Key Client Personnel", key="client_personnel_input", placeholder="Enter client contact name")
         st.text_area("Key Comments for this version", key="comments_input", placeholder="Add any relevant comments...")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ✅ ADD THIS NEW SECTION:
+        st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<h3>🔧 Multi-Room Options</h3>', unsafe_allow_html=True)
+        
+        if len(st.session_state.get('project_rooms', [])) >= 3:
+            enable_optimization = st.checkbox(
+                "Enable Multi-Room Optimization",
+                value=True,
+                key="multi_room_optimization_enabled",
+                help="Consolidates network switches, racks, and shared infrastructure across 3+ rooms for cost savings"
+            )
+            
+            if enable_optimization:
+                st.success(f"✅ Optimizing across {len(st.session_state.project_rooms)} rooms")
+            else:
+                st.info("ℹ️ Each room will have independent equipment")
+        else:
+            st.info(f"ℹ️ Multi-room optimization requires 3+ rooms\n\nCurrent: {len(st.session_state.get('project_rooms', []))} room(s)")
         
         st.markdown('</div>', unsafe_allow_html=True)
         
