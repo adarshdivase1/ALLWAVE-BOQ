@@ -736,29 +736,46 @@ class IntelligentProductSelector:
                 case=False, na=False, regex=True
             )]
         
+        # === MODIFICATION 2: ADDED AMPLIFIER-SPECIFIC FILTERING ===
         elif req.category == 'Audio' and req.sub_category == 'Amplifier':
+            # CRITICAL: Only select POWER amplifiers, NOT signal processors
             df = df[df['name'].str.contains(
-                r'(power.*amp|multi.*channel|spa\d+|xpa\d+|\d+w)',
+                r'(power.*amp|amplifier.*\d+w|multi.*channel.*amp|netpa|xpa|spa|ma\d{4}|'
+                r'70v.*amp|100v.*amp|class.*d.*amp|installation.*amplifier)',
                 case=False, na=False, regex=True
             )]
+            
+            # BLACKLIST: Exclude DSPs, mixers, line-level amps, and summing amps
             df = df[~df['name'].str.contains(
-                r'(conferenc|poe\+|dante.*amp|amp.*dante)',
+                r'(dsp|mixer|processor|summing|line.*driver|distribution.*amplifier.*audio|'
+                r'active.*summing|line.*level)',
                 case=False, na=False, regex=True
             )]
-        
+            
+            # Price floor: Real power amps cost more
+            df = df[df['price'] > 300]
+            
+            self.log(f"    🔍 Filtered for power amplifiers only (excluded DSPs/processors): {len(df)} products")
+
+        # === MODIFICATION 1: FIXED DSP/MIXER FILTERING ===
         elif req.category == 'Audio' and req.sub_category == 'DSP / Audio Processor / Mixer':
-            # CRITICAL: Exclude powered speakers and portable systems
+            # CRITICAL: Exclude powered speakers, portable systems, AND amplifiers
             df = df[df['name'].str.contains(
-                r'(dsp|processor|mixer|tesira|biamp|qsc.*core|dante|avhub|intellimix)',
+                r'(dsp|processor|mixer|tesira|biamp|qsc.*core|dante|avhub|intellimix|dmp|bss|blu)',
                 case=False, na=False, regex=True
             )]
+            
+            # ENHANCED BLACKLIST: Exclude speakers, amps, summing amps
             df = df[~df['name'].str.contains(
-                r'(speaker|loudspeaker|portable|active.*speaker|powered.*speaker|cp\d+|k\d+\.\d+)',
+                r'(speaker|loudspeaker|portable|active.*speaker|powered.*speaker|cp\d+|k\d+\.\d+|'
+                r'amplifier|power.*amp|summing.*amp|line.*driver|distribution.*amp)',
                 case=False, na=False, regex=True
             )]
+            
+            # Price floor validation
             df = df[df['price'] > 800]  # Real DSPs cost more than $800
             
-            self.log(f"    🔍 Filtered for actual DSP/processors: {len(df)} products")
+            self.log(f"    🔍 Filtered for actual DSP/processors (excluded amps/speakers): {len(df)} products")
         
         elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
             df = df[df['name'].str.contains(
@@ -941,10 +958,44 @@ class IntelligentProductSelector:
             return self.client_preferences.get('control', 'No Preference')
         return 'No Preference'
 
+    # === MODIFICATION 3: ENHANCED BRAND ECOSYSTEM VALIDATION ===
     def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
-        """Stage 5.5: Ensure brand ecosystem compatibility"""
+        """
+        Stage 5.5: Ensure brand ecosystem compatibility
+        ENHANCED: Now validates VC platform compatibility
+        """
         
         if req.category in ['Audio', 'Video Conferencing']:
+            # Find the VC platform from requirements context
+            vc_platform = None
+            if hasattr(self, 'requirements_context'):
+                vc_platform = self.requirements_context.get('vc_platform', '').lower()
+            
+            # If we have a VC platform, ensure audio is compatible
+            if vc_platform and req.category == 'Audio':
+                
+                # Microsoft Teams requires specific audio brands
+                if 'teams' in vc_platform or 'microsoft' in vc_platform:
+                    teams_audio_brands = ['shure', 'biamp', 'qsc', 'bose', 'sennheiser', 'poly', 'yealink']
+                    
+                    # Filter for Teams-certified audio
+                    brand_matches = df[df['brand'].str.lower().isin(teams_audio_brands)]
+                    
+                    if not brand_matches.empty:
+                        self.log(f"    ✅ Filtering for Microsoft Teams-certified audio brands")
+                        return brand_matches
+                
+                # Zoom has different preferences
+                elif 'zoom' in vc_platform:
+                    zoom_audio_brands = ['shure', 'biamp', 'qsc', 'bose', 'poly', 'logitech']
+                    
+                    brand_matches = df[df['brand'].str.lower().isin(zoom_audio_brands)]
+                    
+                    if not brand_matches.empty:
+                        self.log(f"    ✅ Filtering for Zoom-compatible audio brands")
+                        return brand_matches
+            
+            # Audio accessory matching with existing VC bar
             vc_brand = None
             for selected in existing_selections:
                 if selected.get('category') == 'Video Conferencing':
@@ -957,7 +1008,7 @@ class IntelligentProductSelector:
                 if req.category == 'Audio' and any(term in req.sub_category for term in ['Microphone', 'Expansion']):
                     brand_matches = df[df['brand'].str.lower() == vc_brand]
                     if not brand_matches.empty:
-                        self.log(f"    ✅ Prioritizing {vc_brand} accessories for ecosystem")
+                        self.log(f"    ✅ Prioritizing {vc_brand} accessories for ecosystem consistency")
                         return brand_matches
         
         return df
