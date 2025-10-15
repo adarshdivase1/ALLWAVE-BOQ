@@ -1,10 +1,11 @@
 # components/excel_generator.py
-# PRODUCTION VERSION - Matches AllWave AV company format (Updated Oct 2025)
+# PRODUCTION VERSION - Matches AllWave AV company format (Updated Oct 2025 - Bug Fix)
 
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.drawing.image import Image as ExcelImage
 from openpyxl.utils import get_column_letter
+from openpyxl.cell import MergedCell
 from io import BytesIO
 import re
 from datetime import datetime
@@ -672,17 +673,21 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     for col, width in column_widths.items():
         sheet.column_dimensions[col].width = width
     
-    # === APPLY BORDERS AND NUMBER FORMATS ===
-    for row in sheet.iter_rows(min_row=header_start_row + 2):
+    # === APPLY BORDERS AND NUMBER FORMATS (FIXED) ===
+    for row in sheet.iter_rows(min_row=header_start_row + 2, max_col=15): # Iterate only over expected columns
         for cell in row:
-            # Currency formatting for price columns
-            if cell.column_letter in ['F', 'G', 'J', 'L', 'M', 'N'] and isinstance(cell.value, (int, float)):
+            # Skip formatting if it's a merged cell placeholder
+            if isinstance(cell, MergedCell):
+                continue
+            
+            # Currency formatting for price columns (using numeric index)
+            if cell.column in [6, 7, 10, 12, 13, 14] and isinstance(cell.value, (int, float)):
                 cell.number_format = styles['currency_format']
             
             cell.border = styles['thin_border']
             
-            # Center align specific columns
-            if cell.column_letter in ['A', 'E']:  # Sr. No and Qty
+            # Center align specific columns (using numeric index)
+            if cell.column in [1, 5]:  # Sr. No and Qty
                 cell.alignment = Alignment(horizontal='center', vertical='top')
             else:
                 cell.alignment = Alignment(vertical='top', wrap_text=True)
