@@ -208,46 +208,63 @@ def create_multi_room_interface():
                 'gst_rates': st.session_state.get('gst_rates', {})
             }
 
-            # CRITICAL: Validate rooms before passing
+            # ✅ CRITICAL: Validate rooms before passing
             valid_rooms = [
                 room for room in st.session_state.project_rooms
                 if room.get('boq_items') and len(room['boq_items']) > 0
             ]
-            
+
             if not valid_rooms:
                 st.warning("No rooms with BOQ items to export.")
             else:
-                # ✅ ADD OPTIMIZATION CALL HERE:
-                optimizer = MultiRoomOptimizer()
-                optimized_result = optimizer.optimize_multi_room_project(valid_rooms)
-                
-                # Show optimization summary
-                if optimized_result.get('optimization') == 'multi-room' and len(valid_rooms) >= 3:
-                    st.info(
-                        f"🔧 Multi-Room Optimization Applied\n\n"
-                        f"**Cost Savings:** {optimized_result['savings_pct']:.1f}%\n\n"
-                        f"**Shared Infrastructure:**\n"
-                        f"- {optimized_result['shared_infrastructure']['network']['type']}\n"
-                        f"- Centralized equipment racks: {optimized_result['shared_infrastructure']['racks']['consolidated_count']}\n"
-                        f"- Eliminates {optimized_result['shared_infrastructure']['network']['eliminates_individual_switches']} individual switches"
+                try:
+                    # Import here to avoid circular dependency
+                    from components.excel_generator import generate_company_excel
+                    from components.utils import get_usd_to_inr_rate
+                    
+                    # ✅ ADD OPTIMIZATION CALL HERE:
+                    from components.multi_room_optimizer import MultiRoomOptimizer
+                    optimizer = MultiRoomOptimizer()
+                    optimized_result = optimizer.optimize_multi_room_project(valid_rooms)
+                    
+                    # Show optimization summary
+                    if optimized_result.get('optimization') == 'multi-room' and len(valid_rooms) >= 3:
+                        st.info(
+                            f"🔧 Multi-Room Optimization Applied\n\n"
+                            f"**Cost Savings:** {optimized_result['savings_pct']:.1f}%\n\n"
+                            f"**Shared Infrastructure:**\n"
+                            f"- Centralized network switch\n"
+                            f"- Consolidated equipment racks\n"
+                            f"- Eliminates {optimized_result['shared_infrastructure']['network']['eliminates_individual_switches']} individual switches"
+                        )
+                    
+                    excel_data = generate_company_excel(
+                        project_details=project_details,
+                        rooms_data=optimized_result['rooms'],  # ✅ Use optimized rooms
+                        usd_to_inr_rate=get_usd_to_inr_rate()
                     )
-                
-                excel_data = generate_company_excel(
-                    project_details=project_details,
-                    rooms_data=optimized_result['rooms'],  # ✅ Use optimized rooms
-                    usd_to_inr_rate=get_usd_to_inr_rate()
-                )
 
-                if excel_data:
-                    filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                    st.download_button(
-                        label="📊 Download Full Project BOQ",
-                        data=excel_data,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        type="secondary"
-                    )
+                    if excel_data:
+                        filename = f"{project_details['Project Name']}_BOQ_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                        st.download_button(
+                            label="📊 Download Full Project BOQ",
+                            data=excel_data,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                    else:
+                        st.error("❌ Failed to generate Excel file. Check excel_generator.py")
+                        
+                except ImportError as e:
+                    st.error(f"❌ Excel generation failed: Missing component - {e}")
+                    st.info("Please ensure excel_generator.py and multi_room_optimizer.py are in the components folder")
+                except Exception as e:
+                    st.error(f"❌ Excel generation error: {e}")
+                    import traceback
+                    with st.expander("🔍 Technical Details"):
+                        st.code(traceback.format_exc())
 
     # Room selection and management
     if st.session_state.project_rooms:
