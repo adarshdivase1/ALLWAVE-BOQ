@@ -11,6 +11,7 @@ try:
     from components.excel_generator import generate_company_excel
     # This specific import is now used in the UI, so it needs to be available
     from components.boq_generator import extract_top_3_reasons
+    from components.multi_room_optimizer import MultiRoomOptimizer
 except ImportError:
     ROOM_SPECS = {'Standard Conference Room': {'area_sqft': (250, 400)}}
     def get_usd_to_inr_rate(): return 83.5
@@ -21,6 +22,12 @@ except ImportError:
         return None
     def extract_top_3_reasons(*args, **kwargs):
         return ["Feature 1", "Feature 2", "Feature 3"]
+    # Mock class for optimizer if import fails
+    class MultiRoomOptimizer:
+        def optimize_multi_room_project(self, rooms):
+            st.warning("Optimizer component not found. Running without optimization.")
+            return {'rooms': rooms, 'optimization': 'none'}
+
 
 # ==================== MAIN UI SECTION BUILDERS ====================
 
@@ -210,9 +217,24 @@ def create_multi_room_interface():
             if not valid_rooms:
                 st.warning("No rooms with BOQ items to export.")
             else:
+                # ✅ ADD OPTIMIZATION CALL HERE:
+                optimizer = MultiRoomOptimizer()
+                optimized_result = optimizer.optimize_multi_room_project(valid_rooms)
+                
+                # Show optimization summary
+                if optimized_result.get('optimization') == 'multi-room' and len(valid_rooms) >= 3:
+                    st.info(
+                        f"🔧 Multi-Room Optimization Applied\n\n"
+                        f"**Cost Savings:** {optimized_result['savings_pct']:.1f}%\n\n"
+                        f"**Shared Infrastructure:**\n"
+                        f"- {optimized_result['shared_infrastructure']['network']['type']}\n"
+                        f"- Centralized equipment racks: {optimized_result['shared_infrastructure']['racks']['consolidated_count']}\n"
+                        f"- Eliminates {optimized_result['shared_infrastructure']['network']['eliminates_individual_switches']} individual switches"
+                    )
+                
                 excel_data = generate_company_excel(
                     project_details=project_details,
-                    rooms_data=valid_rooms,  # Pass only valid rooms
+                    rooms_data=optimized_result['rooms'],  # ✅ Use optimized rooms
                     usd_to_inr_rate=get_usd_to_inr_rate()
                 )
 
@@ -535,9 +557,17 @@ def display_boq_results(product_df, project_details):
 
             single_room_data = [{'name': current_room_name, 'boq_items': st.session_state.boq_items}]
 
+            # ✅ ADD OPTIMIZATION CALL HERE (for single room, it's a no-op but keeps code consistent)
+            optimizer = MultiRoomOptimizer()
+            optimized_data = optimizer.optimize_multi_room_project(single_room_data)
+            
+            # If optimization occurred, show savings
+            if optimized_data.get('optimization') == 'multi-room':
+                st.success(f"💰 Optimization: {optimized_data['savings_pct']:.1f}% cost reduction via shared infrastructure")
+            
             excel_data_current = generate_company_excel(
                 project_details=project_details,
-                rooms_data=single_room_data,
+                rooms_data=optimized_data['rooms'],  # ✅ Use optimized rooms
                 usd_to_inr_rate=get_usd_to_inr_rate()
             )
 
