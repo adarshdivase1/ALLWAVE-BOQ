@@ -34,12 +34,42 @@ try:
     from components.visualizer import create_3d_visualization
     from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
     
-    # ✅ ADD THIS LINE:
-    from components.multi_room_optimizer import MultiRoomOptimizer  # NEW IMPORT
+    # ✅ ADD THESE TWO CRITICAL IMPORTS
+    from components.multi_room_optimizer import MultiRoomOptimizer
+    from components.excel_generator import generate_company_excel
     
 except ImportError as e:
     st.error(f"Failed to import a necessary component: {e}")
     st.stop()
+
+# ✅ FALLBACK HANDLERS for missing components
+def fallback_optimizer():
+    """Fallback if optimizer import fails"""
+    class MockOptimizer:
+        def optimize_multi_room_project(self, rooms):
+            st.warning("⚠️ Optimizer component not available. Using rooms as-is.")
+            return {
+                'rooms': rooms,
+                'optimization': 'none',
+                'savings_pct': 0,
+                'reason': 'Optimizer module not found'
+            }
+    return MockOptimizer()
+
+def fallback_excel_generator(project_details, rooms_data, usd_to_inr_rate):
+    """Fallback if Excel generator fails"""
+    st.error("❌ Excel generator not available. Please check excel_generator.py exists.")
+    return None
+
+# Check if imports worked
+# Note: Using globals() for a robust check of loaded modules
+if 'MultiRoomOptimizer' not in globals():
+    MultiRoomOptimizer = fallback_optimizer
+    st.sidebar.warning("⚠️ Multi-room optimizer unavailable")
+
+if 'generate_company_excel' not in globals():
+    generate_company_excel = fallback_excel_generator
+    st.sidebar.warning("⚠️ Excel export unavailable")
 
 
 def load_css():
