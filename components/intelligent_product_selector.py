@@ -736,7 +736,6 @@ class IntelligentProductSelector:
                 case=False, na=False, regex=True
             )]
         
-        # === MODIFICATION 2: ADDED AMPLIFIER-SPECIFIC FILTERING ===
         elif req.category == 'Audio' and req.sub_category == 'Amplifier':
             # CRITICAL: Only select POWER amplifiers, NOT signal processors
             df = df[df['name'].str.contains(
@@ -757,26 +756,88 @@ class IntelligentProductSelector:
             
             self.log(f"    🔍 Filtered for power amplifiers only (excluded DSPs/processors): {len(df)} products")
 
-        # === MODIFICATION 1: FIXED DSP/MIXER FILTERING ===
+        # === MODIFICATION 4: ENHANCED DSP FILTERING WITH AEC VALIDATION ===
         elif req.category == 'Audio' and req.sub_category == 'DSP / Audio Processor / Mixer':
-            # CRITICAL: Exclude powered speakers, portable systems, AND amplifiers
-            df = df[df['name'].str.contains(
-                r'(dsp|processor|mixer|tesira|biamp|qsc.*core|dante|avhub|intellimix|dmp|bss|blu)',
-                case=False, na=False, regex=True
-            )]
+            # ✅ CRITICAL: Only select CONFERENCING DSPs with AEC, NOT live sound mixers
             
-            # ENHANCED BLACKLIST: Exclude speakers, amps, summing amps
-            df = df[~df['name'].str.contains(
-                r'(speaker|loudspeaker|portable|active.*speaker|powered.*speaker|cp\d+|k\d+\.\d+|'
-                r'amplifier|power.*amp|summing.*amp|line.*driver|distribution.*amp)',
-                case=False, na=False, regex=True
-            )]
+            # WHITELIST: Known conferencing DSP brands/models
+            conferencing_dsp_patterns = [
+                r'tesira',           # Biamp Tesira series
+                r'qsc.*core',        # QSC Q-SYS Core
+                r'biamp',            # Any Biamp processor
+                r'dmp.*\d+',         # Extron DMP series
+                r'bss.*blu',         # BSS Blu series
+                r'avhub',            # Biamp AVHub
+                r'intellimix',       # Shure IntelliMix
+                r'uc.*engine',       # Yamaha UC Engine
+                r'dante.*processor', # Dante-enabled processors
+            ]
             
-            # Price floor validation
-            df = df[df['price'] > 800]  # Real DSPs cost more than $800
+            # First filter: Must match conferencing DSP patterns
+            conferencing_matches = pd.DataFrame()
+            for pattern in conferencing_dsp_patterns:
+                matches = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
+                conferencing_matches = pd.concat([conferencing_matches, matches]).drop_duplicates()
             
-            self.log(f"    🔍 Filtered for actual DSP/processors (excluded amps/speakers): {len(df)} products")
-        
+            if not conferencing_matches.empty:
+                df = conferencing_matches
+                self.log(f"    ✅ Filtered to {len(df)} conferencing DSP products")
+            else:
+                # No conferencing DSPs found - try generic "dsp" + "processor"
+                df = df[df['name'].str.contains(r'dsp|processor', case=False, na=False, regex=True)]
+                self.log(f"    ⚠️ No known conferencing DSPs, trying generic DSP/processor: {len(df)} products")
+            
+            # BLACKLIST: Exclude mixers, amplifiers, and non-conferencing equipment
+            blacklist_patterns = [
+                r'mixer(?!.*dsp)',          # Mixers (unless they're DSP-mixers)
+                r'touchmix',                # QSC TouchMix (live sound)
+                r'live.*sound',             # Live sound equipment
+                r'portable.*mixer',         # Portable mixers
+                r'analog.*mixer',           # Analog mixers
+                r'powered.*mixer',          # Powered mixers
+                r'amplifier',               # Amplifiers
+                r'power.*amp',              # Power amps
+                r'summing',                 # Summing amps
+                r'speaker|loudspeaker',     # Speakers
+                r'active.*speaker',         # Active speakers
+                r'line.*driver',            # Line drivers
+                r'distribution.*amp',       # Distribution amps
+                r'mg\d+',                   # Yamaha MG series (live sound mixers)
+                r'zm\d+',                   # Yamaha ZM series (zone mixers, not DSPs)
+            ]
+            
+            for pattern in blacklist_patterns:
+                before = len(df)
+                df = df[~df['name'].str.contains(pattern, case=False, na=False, regex=True)]
+                removed = before - len(df)
+                if removed > 0:
+                    self.log(f"    🚫 Excluded {removed} products matching '{pattern}'")
+            
+            # CRITICAL: Price floor validation (conferencing DSPs are expensive)
+            df = df[df['price'] > 1500]  # Real conferencing DSPs start at $1500
+            
+            # CRITICAL: Check for AEC capability in specifications
+            if 'specifications' in df.columns:
+                aec_capable = df[df['specifications'].str.contains(
+                    r'aec|acoustic.*echo.*cancel|echo.*cancellation|conferenc',
+                    case=False, na=False, regex=True
+                )]
+                
+                if not aec_capable.empty:
+                    df = aec_capable
+                    self.log(f"    ✅ Filtered to {len(df)} DSPs with confirmed AEC capability")
+                else:
+                    self.log(f"    ⚠️ Could not confirm AEC in specifications, using price-filtered DSPs")
+            
+            self.log(f"    ✅ Final DSP selection pool: {len(df)} products")
+            
+            if df.empty:
+                self.validation_warnings.append({
+                    'component': req.sub_category,
+                    'issue': '🚨 CRITICAL: No conferencing DSPs found in catalog! System will lack AEC.',
+                    'severity': 'CRITICAL'
+                })
+
         elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
             df = df[df['name'].str.contains(
                 r'(ptz|pan.*tilt.*zoom|eagleeye.*iv|eagleeye.*director|eptz)',
@@ -881,69 +942,94 @@ class IntelligentProductSelector:
             self.log(f"    ⚠️ Strict validation found no mounts - using all candidates")
             return df
 
+    # === MODIFICATION 2: ADDED ECOSYSTEM ENFORCEMENT ===
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """
-        STRICT brand preference enforcement with intelligent fallbacks.
-        Does NOT silently return random products.
+        ENHANCED: Strict brand preference enforcement with ecosystem validation.
+        Now respects vc_ecosystem_brand for VC components.
         """
-    
+        
         if df.empty:
             return df
-    
-        # Get preferred brand for this category
+        
+        # ✅ CRITICAL: Check if this is a VC ecosystem component
+        if req.category == 'Video Conferencing' and hasattr(self, 'vc_ecosystem_brand'):
+            enforced_brand = self.vc_ecosystem_brand
+            
+            self.log(f"    🔒 ECOSYSTEM ENFORCEMENT: Filtering for {enforced_brand} (VC ecosystem)")
+            
+            # STRICT filtering for ecosystem brand
+            exact_matches = df[df['brand'].str.lower() == enforced_brand.lower()]
+            
+            if not exact_matches.empty:
+                self.log(f"    ✅ ECOSYSTEM MATCH: {len(exact_matches)} {enforced_brand} products found")
+                return exact_matches
+            else:
+                # CRITICAL ERROR: If ecosystem brand not available, flag it
+                self.log(f"    ❌ CRITICAL: {enforced_brand} not available for {req.sub_category}")
+                
+                self.validation_warnings.append({
+                    'component': req.sub_category,
+                    'issue': f'🚨 ECOSYSTEM VIOLATION: {enforced_brand} not available. System will NOT be compatible!',
+                    'severity': 'CRITICAL'
+                })
+                
+                # DO NOT fall back to other brands - return empty to force review
+                return pd.DataFrame()
+        
+        # Get preferred brand for non-VC categories
         preferred_brand = self._get_client_preference_for_category(req.category)
-    
+        
         if not preferred_brand or preferred_brand == 'No Preference':
-            self.log(f"     ℹ️ No brand preference for {req.category}")
-            return df  # Return all candidates if no preference
-    
-        # ============ ATTEMPT 1: Exact brand match ============
+            self.log(f"    ℹ️ No brand preference for {req.category}")
+            return df
+        
+        # Exact brand match
         exact_matches = df[df['brand'].str.lower() == preferred_brand.lower()]
-    
+        
         if not exact_matches.empty:
-            self.log(f"     ✅ EXACT BRAND MATCH: {len(exact_matches)} {preferred_brand} products found")
+            self.log(f"    ✅ EXACT BRAND MATCH: {len(exact_matches)} {preferred_brand} products found")
             return exact_matches
-    
-        # ============ ATTEMPT 2: Tier-equivalent substitutes ============
-        self.log(f"     ⚠️ BRAND NOT FOUND: '{preferred_brand}' not in {req.category}")
-    
+        
+        # Tier-equivalent substitutes (only for non-VC)
+        self.log(f"    ⚠️ BRAND NOT FOUND: '{preferred_brand}' not in {req.category}")
+        
         ecosystem_mgr = BrandEcosystemManager()
         substitute_brands = ecosystem_mgr.get_substitute_brands(req.category, preferred_brand)
-    
+        
         if substitute_brands:
-            self.log(f"     🔄 Searching tier-equivalent substitutes: {', '.join(substitute_brands)}")
-    
+            self.log(f"    🔄 Searching tier-equivalent substitutes: {', '.join(substitute_brands)}")
+            
             for substitute in substitute_brands:
                 sub_matches = df[df['brand'].str.lower() == substitute.lower()]
-    
+                
                 if not sub_matches.empty:
-                    self.log(f"     ✅ SUBSTITUTE FOUND: {substitute} ({len(sub_matches)} options)")
-    
-                    # Flag this for the validation report
+                    self.log(f"    ✅ SUBSTITUTE FOUND: {substitute} ({len(sub_matches)} options)")
+                    
                     self.validation_warnings.append({
                         'component': req.sub_category,
                         'issue': f"CLIENT REQUESTED: '{preferred_brand}' — NOT AVAILABLE. Substituting '{substitute}' (equivalent tier)",
                         'severity': 'HIGH'
                     })
-    
+                    
                     return sub_matches
-    
-        # ============ ATTEMPT 3: Last resort - flag critical ============
-        self.log(f"     ❌ CRITICAL: No {preferred_brand} found AND no tier equivalents available")
-    
+        
+        # Last resort
+        self.log(f"    ❌ CRITICAL: No {preferred_brand} found AND no tier equivalents available")
+        
         self.validation_warnings.append({
             'component': req.sub_category,
             'issue': f"🚨 CLIENT REQUESTED BRAND NOT IN CATALOG: '{preferred_brand}' for {req.category}. No substitutes available. Using best available.",
             'severity': 'CRITICAL'
         })
-    
+        
         # Return best quality product as fallback
         if 'data_quality_score' in df.columns:
             best = df.nlargest(1, 'data_quality_score').iloc[0]
             fallback_brand = best.get('brand', 'Unknown')
-            self.log(f"     ⚠️ FALLBACK: Using {fallback_brand} (highest quality score)")
+            self.log(f"    ⚠️ FALLBACK: Using {fallback_brand} (highest quality score)")
             return df.nlargest(1, 'data_quality_score')
-    
+        
         return df.head(1)
 
     def _get_client_preference_for_category(self, category: str) -> str:
@@ -958,7 +1044,6 @@ class IntelligentProductSelector:
             return self.client_preferences.get('control', 'No Preference')
         return 'No Preference'
 
-    # === MODIFICATION 3: ENHANCED BRAND ECOSYSTEM VALIDATION ===
     def _check_brand_ecosystem(self, df, req: ProductRequirement, existing_selections):
         """
         Stage 5.5: Ensure brand ecosystem compatibility
