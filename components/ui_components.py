@@ -306,9 +306,26 @@ def create_multi_room_interface():
 # ==================== BOQ DISPLAY AND EDITING ====================
 
 def display_validation_summary(validation_results, selector):
-    """Display comprehensive validation report"""
+    """Display comprehensive validation report with ECOSYSTEM WARNINGS"""
     
-    with st.expander("📊 System Validation Report", expanded=bool(validation_results.get('issues'))):
+    # Count critical issues
+    critical_count = sum(
+        1 for w in validation_results.get('warnings', []) 
+        if '🚨' in str(w) or 'CRITICAL' in str(w)
+    )
+    
+    # Show critical issues FIRST with prominent styling
+    if critical_count > 0:
+        st.error(f"### 🚨 {critical_count} CRITICAL ISSUE(S) DETECTED")
+        st.markdown("**These issues will prevent the system from functioning properly:**")
+        
+        for warning in validation_results.get('warnings', []):
+            if '🚨' in str(warning) or 'CRITICAL' in str(warning):
+                st.error(f"#### {warning}")
+        
+        st.markdown("---")
+    
+    with st.expander("📊 Complete System Validation Report", expanded=(critical_count > 0)):
         
         # Brand Compliance
         if validation_results.get('brand_compliance'):
@@ -324,10 +341,12 @@ def display_validation_summary(validation_results, selector):
                 st.markdown(f"- {issue}")
             st.markdown("---")
         
-        # Warnings
-        if validation_results.get('warnings'):
-            st.warning(f"**💡 Recommendations ({len(validation_results['warnings'])})**")
-            for warning in validation_results['warnings']:
+        # Warnings (non-critical)
+        warnings = [w for w in validation_results.get('warnings', []) 
+                   if '🚨' not in str(w) and 'CRITICAL' not in str(w)]
+        if warnings:
+            st.warning(f"**💡 Recommendations ({len(warnings)})**")
+            for warning in warnings:
                 st.markdown(f"- {warning}")
             st.markdown("---")
         
