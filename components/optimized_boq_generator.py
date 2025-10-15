@@ -19,7 +19,7 @@ ROOM_DISPLAY_CONSTRAINTS = {
     'Large Conference Room (8-12 People)': {'min': 65, 'max': 85},
     'Executive Boardroom (10-16 People)': {'min': 75, 'max': 98},
     'Training Room (15-25 People)': {'min': 75, 'max': 98},
-    'Large Training/Presentation Room (25-40 People)': {'min': 85, 'max': 110},
+    'Large Training/Presentation Room (25-40 People)': {'min': 98, 'max': 110},
     'Multipurpose Event Room (40+ People)': {'min': 98, 'max': 120},
 }
 
@@ -1095,3 +1095,4 @@ class OptimizedBOQGenerator:
             'max_breakdown': max_scores,
             'avixa_compliance_score': avixa_score
         }
+
