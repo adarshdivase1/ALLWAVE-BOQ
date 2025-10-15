@@ -9,15 +9,23 @@ from io import BytesIO
 import re
 from datetime import datetime
 
-# Import the image generator
+# Import the image generator with better error handling
 try:
     from components.product_image_generator import generate_product_info_card, extract_display_size
-except ImportError:
-    # Fallback if import fails
+    IMAGE_GENERATION_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Product image generator not available: {e}")
+    IMAGE_GENERATION_AVAILABLE = False
+    
+    # Fallback functions
     def generate_product_info_card(*args, **kwargs):
+        print("⚠️ Image generation skipped (module not available)")
         return None
+    
     def extract_display_size(name):
-        return None
+        import re
+        match = re.search(r'(\d{2,3})["\']', str(name))
+        return int(match.group(1)) if match else None
 
 
 # ==================== STYLE DEFINITIONS ====================
@@ -577,48 +585,50 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             sheet.append(row_data)
             current_row = sheet.max_row
             
-            # === ADD PRODUCT IMAGE ===
-            try:
-                # Extract display size if applicable
-                size_inches = None
-                if item.get('category') == 'Displays':
-                    size_inches = extract_display_size(item.get('name', ''))
-                
-                # Generate product info card
-                img_buffer = generate_product_info_card(
-                    product_name=item.get('name', 'Unknown Product'),
-                    brand=item.get('brand', 'N/A'),
-                    model=item.get('model_number', 'N/A'),
-                    category=item.get('category', 'General AV'),
-                    size_inches=size_inches
-                )
-                
-                if img_buffer:
-                    # CRITICAL: Ensure buffer is at position 0
-                    img_buffer.seek(0)
+            # === ADD PRODUCT IMAGE (only if available) ===
+            if IMAGE_GENERATION_AVAILABLE:
+                try:
+                    # Extract display size if applicable
+                    size_inches = None
+                    if item.get('category') == 'Displays':
+                        size_inches = extract_display_size(item.get('name', ''))
                     
-                    excel_img = ExcelImage(img_buffer)
-                    # Scale to fit Excel cell
-                    excel_img.width = 150
-                    excel_img.height = 100
+                    # Generate product info card
+                    img_buffer = generate_product_info_card(
+                        product_name=item.get('name', 'Unknown Product'),
+                        brand=item.get('brand', 'N/A'),
+                        model=item.get('model_number', 'N/A'),
+                        category=item.get('category', 'General AV'),
+                        size_inches=size_inches
+                    )
                     
-                    # CRITICAL: Anchor properly to cell
-                    cell_anchor = f'B{current_row}'
-                    sheet.add_image(excel_img, cell_anchor)
-                    
-                    # CRITICAL: Set row height AFTER adding image
-                    sheet.row_dimensions[current_row].height = 85 # INCREASED from 80
-                    
-                    print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
-                else:
-                    print(f"DEBUG: No image buffer generated for {item.get('name', 'Unknown')}")
-                    
-            except Exception as e:
-                # Fail gracefully - don't break BOQ generation
-                print(f"ERROR: Could not add product image for {item.get('name', 'Unknown')}: {e}")
-                import traceback
-                traceback.print_exc()
-            
+                    if img_buffer:
+                        # CRITICAL: Ensure buffer is at position 0
+                        img_buffer.seek(0)
+                        
+                        excel_img = ExcelImage(img_buffer)
+                        # Scale to fit Excel cell
+                        excel_img.width = 150
+                        excel_img.height = 100
+                        
+                        # CRITICAL: Anchor properly to cell
+                        cell_anchor = f'B{current_row}'
+                        sheet.add_image(excel_img, cell_anchor)
+                        
+                        # CRITICAL: Set row height AFTER adding image
+                        sheet.row_dimensions[current_row].height = 85 # INCREASED from 80
+                        
+                        print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
+                    else:
+                        print(f"DEBUG: No image buffer generated for {item.get('name', 'Unknown')}")
+                        
+                except Exception as e:
+                    # Fail gracefully - don't break BOQ generation
+                    print(f"⚠️ Could not add product image for {item.get('name', 'Unknown')}: {e}")
+            else:
+                # Skip image generation if module not available
+                print(f"⚠️ Skipping images for {item.get('name', 'Unknown')[:30]} (image generator unavailable)")
+
             item_s_no += 1
 
     # === ADD SERVICES (Installation, Warranty, PM) ===
