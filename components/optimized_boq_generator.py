@@ -546,7 +546,7 @@ class OptimizedBOQGenerator:
             display_size = max(75, display_size)
 
         st.success(f"✅ AVIXA + Room Constraints: {display_size}\" display for {room_type}")
-        display_qty = 2 if (req.dual_display_needed or room_area > 600) else 1
+        display_qty = 2 if (req.dual_display_needed or 'Executive' in room_type or 'Boardroom' in room_type or room_area > 600) else 1
 
         blueprint['primary_display'] = ProductRequirement(
             category='Displays',
@@ -563,24 +563,25 @@ class OptimizedBOQGenerator:
             strict_category_match=True
         )
 
-        # ✅ FIX: Display mount with explicit requirements to prevent mismatches
+        # ✅ FIX 3: CORRECT MOUNT SELECTION
         blueprint['display_mount'] = ProductRequirement(
             category='Mounts',
             sub_category='Display Mount / Cart',
             quantity=display_qty,
             priority=2,
-            justification=f'Professional mount for {display_size}" display',
-            mounting_type='wall' if room_area < 600 else 'floor',
+            justification=f'Articulating wall mounts for dual {display_size}" displays',
+            mounting_type='wall',
             size_requirement=display_size,
-            compatibility_requirements=[f"{display_size}\"", "large format", "heavy duty"],
-            required_keywords=['mount', 'wall', 'display', 'tv'] + (['video wall', 'large'] if display_size >= 75 else []),
-            blacklist_keywords=['camera', 'mic', 'speaker', 'touch', 'panel', 'controller', 'menu'],
+            required_keywords=['wall mount', 'articulating', 'heavy duty', str(display_size)],
+            blacklist_keywords=['video wall', 'tile', 'array', 'ceiling', 'floor', 'camera', 'mic', 'speaker', 'touch', 'panel', 'controller', 'menu'],
             min_price=300 if display_size >= 75 else 150,
-            max_price=3000,
+            max_price=1500,
             strict_category_match=True
         )
 
         # ✅ FIX: Intelligent VC System Selection (Video Bar vs. Codec)
+        is_large_room = room_area > 400
+        
         if room_area <= 250:  # Small huddle
             blueprint['vc_system'] = ProductRequirement(
                 category='Video Conferencing', sub_category='Video Bar', quantity=1, priority=3,
@@ -607,7 +608,7 @@ class OptimizedBOQGenerator:
                     category='Video Conferencing', sub_category='Room Kit / Codec', quantity=1, priority=3,
                     justification='Microsoft Teams certified codec',
                     required_keywords=['teams', 'rooms', 'codec', 'microsoft'],
-                    blacklist_keywords=['zoom', 'webex', 'proprietary'], min_price=1500, max_price=8000
+                    blacklist_keywords=['zoom', 'webex', 'proprietary', 'video bar'], min_price=1500, max_price=8000
                 )
             else:
                 blueprint['vc_codec'] = ProductRequirement(
@@ -620,7 +621,19 @@ class OptimizedBOQGenerator:
                 category='Video Conferencing', sub_category='PTZ Camera', quantity=1, priority=4,
                 justification='Optical PTZ for large room coverage',
                 required_keywords=['ptz', 'camera', 'optical', 'zoom'],
-                blacklist_keywords=['controller', 'remote', 'mount', 'accessory'], min_price=1000, max_price=10000
+                blacklist_keywords=['controller', 'remote', 'mount', 'accessory', 'webcam'], min_price=1000, max_price=10000
+            )
+            # ✅ FIX 7: ADD CAMERA MOUNT
+            blueprint['camera_mount'] = ProductRequirement(
+                category='Mounts',
+                sub_category='Camera Mount',
+                quantity=1,
+                priority=4.5,
+                justification='Mounting hardware for PTZ camera (wall or ceiling)',
+                required_keywords=['camera', 'mount', 'ptz', 'bracket'],
+                blacklist_keywords=['display', 'speaker', 'projector'],
+                min_price=150,
+                max_price=400
             )
             blueprint['touch_controller'] = ProductRequirement(
                 category='Video Conferencing', sub_category='Touch Controller / Panel', quantity=1, priority=5,
@@ -641,17 +654,20 @@ class OptimizedBOQGenerator:
             blacklist_keywords=['usb', 'webcam'] if 'Ceiling' in mic_type_sub else ['usb'], min_price=min_mic_price
         )
         
-        if room_area > 400:
+        if is_large_room:
             blueprint['audio_dsp'] = ProductRequirement(
                 category='Audio', sub_category='DSP / Audio Processor / Mixer', quantity=1, priority=7,
                 justification=f"AVIXA-required DSP for {room_area:.0f} sqft room",
                 required_keywords=['dsp', 'processor', 'audio'], blacklist_keywords=['amplifier', 'speaker'], min_price=1000
             )
         
+        # ✅ FIX 6: PREVENT SELECTING GRILLES INSTEAD OF SPEAKERS
         blueprint['ceiling_speakers'] = ProductRequirement(
             category='Audio', sub_category='Ceiling Loudspeaker', quantity=avixa_calcs['audio']['speakers_needed'], priority=8,
             justification=f"AVIXA A102.01: {avixa_calcs['audio']['speakers_needed']}x speakers for uniform coverage",
-            required_keywords=['ceiling', 'speaker'], blacklist_keywords=['portable', 'powered'], min_price=100
+            required_keywords=['ceiling', 'speaker', 'in-ceiling'], 
+            blacklist_keywords=['portable', 'powered', 'grille', 'cover', 'trim', 'accessory'], 
+            min_price=100
         )
         
         recommended_power = avixa_calcs['spl']['recommended_power_watts']
@@ -662,38 +678,58 @@ class OptimizedBOQGenerator:
         )
         
         # === INFRASTRUCTURE & CONNECTIVITY ===
-        blueprint['av_rack'] = ProductRequirement(
-            category='Infrastructure', sub_category='AV Rack', quantity=1, priority=10,
-            justification='Equipment rack for codec, DSP, amplifier',
-            required_keywords=['rack', 'cabinet', 'enclosure', 'equipment'],
-            blacklist_keywords=['shelf', 'bracket', 'mount', 'accessory'], min_price=300, max_price=2000
-        )
+        # ✅ FIX 1 & 2: ADD RACK AND PDU for systems with codecs/amps
+        if is_large_room:
+            blueprint['av_rack'] = ProductRequirement(
+                category='Infrastructure',
+                sub_category='AV Rack',
+                quantity=1,
+                priority=10,
+                justification='Houses codec, DSP, amplifier, and network equipment (minimum 12U)',
+                required_keywords=['rack', '12u', 'equipment', 'enclosure'],
+                blacklist_keywords=['shelf', 'mount', 'bracket', 'accessory'],
+                min_price=500,
+                max_price=2500
+            )
+            blueprint['rack_pdu'] = ProductRequirement(
+                category='Infrastructure',
+                sub_category='Power (PDU/UPS)',
+                quantity=1,
+                priority=11,
+                justification='Rack-mount power distribution for all equipment',
+                required_keywords=['pdu', 'rack', 'power', '8 outlet', 'distribution'],
+                min_price=150,
+                max_price=800
+            )
+
         blueprint['network_switch'] = ProductRequirement(
-            category='Networking', sub_category='Network Switch', quantity=1, priority=11,
-            justification='Managed PoE switch for Teams Rooms system',
+            category='Networking', sub_category='Network Switch', quantity=1, priority=12,
+            justification='Managed PoE switch for VC system and other endpoints',
             required_keywords=['switch', 'poe', 'managed', 'gigabit'],
             blacklist_keywords=['unmanaged', 'hub'], min_price=300, max_price=1500
         )
-        blueprint['pdu'] = ProductRequirement(
-            category='Infrastructure', sub_category='Power (PDU/UPS)', quantity=1, priority=12,
-            justification='Rack-mount power distribution',
-            required_keywords=['pdu', 'power', 'rack', 'distribution'], min_price=100, max_price=800
-        )
+        
+        # ✅ FIX 5: ADD PROPER TABLE CONNECTIVITY BOX
         blueprint['table_connectivity'] = ProductRequirement(
-            category='Cables & Connectivity', sub_category='Wall & Table Plate Module', quantity=1, priority=13,
-            justification='HDMI/USB-C input for laptop connectivity',
-            required_keywords=['table', 'hdmi', 'usb-c', 'connectivity'],
-            blacklist_keywords=['mount', 'bracket'], min_price=100, max_price=500
+            category='Cables & Connectivity',
+            sub_category='Wall & Table Plate Module',
+            quantity=1,
+            priority=13,
+            justification='Table-mount connectivity for HDMI/USB-C laptop input',
+            required_keywords=['table', 'connectivity', 'hdmi', 'usb-c', 'retractor', 'cubby'],
+            blacklist_keywords=['wall plate', 'single gang', 'mount', 'bracket'],
+            min_price=200,
+            max_price=800
         )
         blueprint['cables_hdmi'] = ProductRequirement(
             category='Cables & Connectivity', sub_category='AV Cable', quantity=4, priority=14,
             justification='HDMI cables for video distribution',
-            required_keywords=['hdmi', 'cable', 'certified'], min_price=20, max_price=150
+            required_keywords=['hdmi', 'cable', 'certified', '4k'], min_price=20, max_price=150
         )
         blueprint['cables_network'] = ProductRequirement(
             category='Cables & Connectivity', sub_category='AV Cable', quantity=6, priority=15,
-            justification='Cat6A network cables',
-            required_keywords=['cat6', 'ethernet', 'network'], min_price=15, max_price=80
+            justification='Cat6A network cables for endpoints',
+            required_keywords=['cat6', 'ethernet', 'network', 'cable'], min_price=15, max_price=80
         )
         
         return blueprint
