@@ -1088,6 +1088,57 @@ class IntelligentProductSelector:
             'ecosystem_compatible': compatible
         }
 
+    def _validate_cross_component_compatibility(self, boq_items: List[Dict]) -> List[str]:
+        """
+        ✅ NEW: Check compatibility between selected components in the final BOQ
+        """
+        warnings = []
+        
+        # Check 1: Codec and Camera Brand Matching
+        codecs = [item for item in boq_items if 'Codec' in item.get('sub_category', '')]
+        cameras = [item for item in boq_items if 'Camera' in item.get('sub_category', '')]
+        
+        if codecs and cameras:
+            codec_brand = codecs[0].get('brand', '').lower()
+            camera_brand = cameras[0].get('brand', '').lower()
+            
+            # Cisco codec should have Cisco camera
+            if 'cisco' in codec_brand and 'cisco' not in camera_brand:
+                warnings.append(
+                    f"⚠️ Cisco codec typically pairs best with Cisco cameras. "
+                    f"Selected: {cameras[0].get('brand')} camera"
+                )
+        
+        # Check 2: DSP and Microphone Ecosystem
+        dsps = [item for item in boq_items if 'DSP' in item.get('sub_category', '')]
+        mics = [item for item in boq_items if 'Microphone' in item.get('sub_category', '')]
+        
+        if dsps and mics:
+            dsp_brand = dsps[0].get('brand', '').lower()
+            mic_brands = set(mic.get('brand', '').lower() for mic in mics)
+            
+            # QSC DSP works best with QSC mics
+            if 'qsc' in dsp_brand and 'qsc' not in mic_brands:
+                warnings.append(
+                    f"💡 QSC DSP recommended with QSC microphones for optimal integration"
+                )
+        
+        # Check 3: Control System and VC Platform
+        controls = [item for item in boq_items if 'Control' in item.get('category', '')]
+        
+        if controls and hasattr(self, 'requirements'):
+            vc_platform = self.requirements.vc_platform.lower()
+            control_brand = controls[0].get('brand', '').lower()
+            
+            # Teams Rooms requires specific control brands
+            if 'teams' in vc_platform and control_brand not in ['crestron', 'logitech', 'poly']:
+                warnings.append(
+                    f"⚠️ Microsoft Teams Rooms certification requires Crestron, Logitech, or Poly control. "
+                    f"Selected: {controls[0].get('brand')}"
+                )
+        
+        return warnings
+
     def log(self, message: str):
         """Add to selection log"""
         self.selection_log.append(message)
