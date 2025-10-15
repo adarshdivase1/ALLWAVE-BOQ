@@ -486,9 +486,21 @@ class OptimizedBOQGenerator:
         avixa_calcs['network'] = network_reqs
         avixa_calcs['power'] = power_reqs
         
-        # Validate
+        # Validate AVIXA compliance
         validation_results = self._validate_avixa_compliance(boq_items, avixa_calcs)
-        
+
+        # ✅ NEW: Validate audio ecosystem
+        audio_warnings = self._validate_audio_ecosystem(boq_items)
+        if audio_warnings:
+            if 'warnings' not in validation_results:
+                validation_results['warnings'] = []
+            # Add critical warnings to issues list for prominence
+            for warning in audio_warnings:
+                if '🚨' in warning:
+                    validation_results['issues'].append(warning)
+                else:
+                    validation_results['warnings'].append(warning)
+
         return boq_items, validation_results
     
     def _build_avixa_compliant_blueprint(
@@ -579,66 +591,112 @@ class OptimizedBOQGenerator:
             strict_category_match=True
         )
 
-        # ✅ FIX: Intelligent VC System Selection (Video Bar vs. Codec)
+        # === VIDEO CONFERENCING (WITH ECOSYSTEM ENFORCEMENT) ===
         is_large_room = room_area > 400
-        
+
+        # CRITICAL: Determine VC brand FIRST based on platform
+        vc_brand_preference = None
+        if self.requirements.vc_platform.lower() == 'microsoft teams':
+            # Teams certified: Poly, Yealink, Logitech, Crestron
+            vc_brand_preference = 'Poly'  # Default to Poly for Teams
+        elif self.requirements.vc_platform.lower() == 'zoom':
+            # Zoom certified: Poly, Logitech, Yealink
+            vc_brand_preference = 'Poly'  # Default to Poly
+        elif 'cisco' in self.requirements.vc_platform.lower() or 'webex' in self.requirements.vc_platform.lower():
+            vc_brand_preference = 'Cisco'
+        else:
+            # Check client preferences
+            vc_brand_preference = self.requirements.get_brand_preferences().get('video_conferencing', 'Poly')
+
+        # Store the selected VC brand for ecosystem enforcement
+        self.selector.vc_ecosystem_brand = vc_brand_preference
+        st.info(f"🎯 Video Conferencing Ecosystem: **{vc_brand_preference}** (enforced for camera, codec, and touch panel)")
+
         if room_area <= 250:  # Small huddle
             blueprint['vc_system'] = ProductRequirement(
-                category='Video Conferencing', sub_category='Video Bar', quantity=1, priority=3,
-                justification='All-in-one solution optimal for small spaces',
-                required_keywords=['video bar', 'all-in-one', req.vc_platform.lower()],
-                blacklist_keywords=['codec', 'ptz', 'camera'], min_price=800, max_price=3000
+                category='Video Conferencing',
+                sub_category='Video Bar',
+                quantity=1,
+                priority=3,
+                justification=f'All-in-one {vc_brand_preference} solution for small space',
+                required_keywords=['video bar', 'all-in-one', vc_brand_preference.lower()],
+                blacklist_keywords=['codec', 'ptz', 'camera'],
+                min_price=800,
+                max_price=3000,
+                client_preference_weight=1.0,  # ENFORCE brand
+                strict_category_match=True
             )
+
         elif 250 < room_area <= 400:  # Medium rooms
             blueprint['vc_system'] = ProductRequirement(
-                category='Video Conferencing', sub_category='Video Bar', quantity=1, priority=3,
-                justification='Video bar with expansion capability for medium room',
-                required_keywords=['video bar', 'expansion', req.vc_platform.lower()],
-                min_price=1200, max_price=5000
+                category='Video Conferencing',
+                sub_category='Video Bar',
+                quantity=1,
+                priority=3,
+                justification=f'{vc_brand_preference} video bar with expansion capability',
+                required_keywords=['video bar', 'expansion', vc_brand_preference.lower()],
+                min_price=1200,
+                max_price=5000,
+                client_preference_weight=1.0,  # ENFORCE brand
+                strict_category_match=True
             )
-            if room_area > 300:
-                blueprint['vc_expansion_mic'] = ProductRequirement(
-                    category='Video Conferencing', sub_category='Expansion Microphone', quantity=1, priority=4,
-                    justification='Extended audio pickup for larger medium room',
-                    required_keywords=['expansion', 'mic', 'pod'], min_price=200
-                )
-        else:  # Large rooms (>400 sqft) - Use full codec + PTZ system
-            if req.vc_platform.lower() == 'microsoft teams':
-                blueprint['vc_codec'] = ProductRequirement(
-                    category='Video Conferencing', sub_category='Room Kit / Codec', quantity=1, priority=3,
-                    justification='Microsoft Teams certified codec',
-                    required_keywords=['teams', 'rooms', 'codec', 'microsoft'],
-                    blacklist_keywords=['zoom', 'webex', 'proprietary', 'video bar'], min_price=1500, max_price=8000
-                )
-            else:
-                blueprint['vc_codec'] = ProductRequirement(
-                    category='Video Conferencing', sub_category='Room Kit / Codec', quantity=1, priority=3,
-                    justification='Modular codec for scalability',
-                    required_keywords=['codec', 'room kit', req.vc_platform.lower().split()[0]],
-                    blacklist_keywords=['video bar', 'webcam', 'usb'], min_price=1500, max_price=15000
-                )
+
+        else:  # Large rooms (>400 sqft) - Full codec + PTZ system with ENFORCED ECOSYSTEM
+            # CODEC
+            blueprint['vc_codec'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Room Kit / Codec',
+                quantity=1,
+                priority=3,
+                justification=f'{vc_brand_preference} codec for {self.requirements.vc_platform}',
+                required_keywords=['codec', 'room kit', vc_brand_preference.lower()],
+                blacklist_keywords=['video bar', 'webcam', 'usb'],
+                min_price=1500,
+                max_price=15000,
+                client_preference_weight=1.0,  # ENFORCE brand
+                strict_category_match=True
+            )
+            
+            # PTZ CAMERA (SAME BRAND AS CODEC)
             blueprint['ptz_camera'] = ProductRequirement(
-                category='Video Conferencing', sub_category='PTZ Camera', quantity=1, priority=4,
-                justification='Optical PTZ for large room coverage',
-                required_keywords=['ptz', 'camera', 'optical', 'zoom'],
-                blacklist_keywords=['controller', 'remote', 'mount', 'accessory', 'webcam'], min_price=1000, max_price=10000
+                category='Video Conferencing',
+                sub_category='PTZ Camera',
+                quantity=1,
+                priority=4,
+                justification=f'{vc_brand_preference} PTZ camera for ecosystem compatibility',
+                required_keywords=['ptz', 'camera', 'optical', 'zoom', vc_brand_preference.lower()],
+                blacklist_keywords=['controller', 'remote', 'mount', 'accessory', 'webcam'],
+                min_price=1000,
+                max_price=10000,
+                client_preference_weight=1.0,  # ENFORCE brand
+                strict_category_match=True
             )
-            # ✅ FIX 7: ADD CAMERA MOUNT
+            
+            # CAMERA MOUNT
             blueprint['camera_mount'] = ProductRequirement(
                 category='Mounts',
                 sub_category='Camera Mount',
                 quantity=1,
                 priority=4.5,
-                justification='Mounting hardware for PTZ camera (wall or ceiling)',
+                justification=f'Mounting hardware for {vc_brand_preference} PTZ camera',
                 required_keywords=['camera', 'mount', 'ptz', 'bracket'],
                 blacklist_keywords=['display', 'speaker', 'projector'],
                 min_price=150,
                 max_price=400
             )
+            
+            # TOUCH CONTROLLER (SAME BRAND AS CODEC)
             blueprint['touch_controller'] = ProductRequirement(
-                category='Video Conferencing', sub_category='Touch Controller / Panel', quantity=1, priority=5,
-                justification='Intuitive room control interface',
-                required_keywords=['touch', 'controller', 'panel'], min_price=300
+                category='Video Conferencing',
+                sub_category='Touch Controller / Panel',
+                quantity=1,
+                priority=5,
+                justification=f'{vc_brand_preference} touch controller for native integration',
+                required_keywords=['touch', 'controller', 'panel', vc_brand_preference.lower()],
+                blacklist_keywords=['crestron', 'extron', 'amx'] if vc_brand_preference != 'Crestron' else [],
+                min_price=300,
+                client_preference_weight=1.0,  # ENFORCE brand
+                strict_category_match=True
             )
 
         # === AUDIO SYSTEM (Using AVIXA A102.01) ===
@@ -655,10 +713,36 @@ class OptimizedBOQGenerator:
         )
         
         if is_large_room:
+            # ✅ CRITICAL: Brand matching with microphones
+            mic_brand = None
+            if 'microphones' in blueprint:
+                # Get the brand preference for microphones
+                mic_brand_pref = self.requirements.get_brand_preferences().get('audio', 'No Preference')
+                if mic_brand_pref != 'No Preference':
+                    mic_brand = mic_brand_pref
+            
+            # Build DSP requirement with brand matching
+            dsp_keywords = ['dsp', 'processor', 'digital signal processor', 'tesira', 'qsc core', 'biamp']
+            dsp_blacklist = ['mixer', 'amplifier', 'speaker', 'touchmix', 'live sound', 'portable mixer', 
+                             'analog mixer', 'powered mixer', 'summing']
+            
+            if mic_brand:
+                # Add brand to keywords for ecosystem matching
+                dsp_keywords.append(mic_brand.lower())
+                st.info(f"🎯 Audio Ecosystem: Matching DSP to {mic_brand} microphones")
+            
             blueprint['audio_dsp'] = ProductRequirement(
-                category='Audio', sub_category='DSP / Audio Processor / Mixer', quantity=1, priority=7,
-                justification=f"AVIXA-required DSP for {room_area:.0f} sqft room",
-                required_keywords=['dsp', 'processor', 'audio'], blacklist_keywords=['amplifier', 'speaker'], min_price=1000
+                category='Audio',
+                sub_category='DSP / Audio Processor / Mixer',
+                quantity=1,
+                priority=7,
+                justification=f"AVIXA-required conferencing DSP with AEC for {room_area:.0f} sqft room",
+                required_keywords=dsp_keywords,
+                blacklist_keywords=dsp_blacklist,
+                min_price=1500,  # Real conferencing DSPs start at $1500
+                max_price=15000,
+                client_preference_weight=1.0 if mic_brand else 0.5,
+                strict_category_match=True
             )
         
         # ✅ FIX 6: PREVENT SELECTING GRILLES INSTEAD OF SPEAKERS
@@ -944,6 +1028,45 @@ class OptimizedBOQGenerator:
             validation['overall_status'] = f"🚨 AVIXA NON-COMPLIANT: {critical_count} critical issues"
         
         return validation
+
+    def _validate_audio_ecosystem(self, boq_items: List[Dict]) -> List[str]:
+        """
+        NEW: Validate that audio components form a compatible ecosystem
+        """
+        warnings = []
+        
+        # Extract audio components
+        microphones = [item for item in boq_items if 'Microphone' in item.get('sub_category', '')]
+        dsp_items = [item for item in boq_items if 'DSP / Audio Processor / Mixer' in item.get('sub_category', '')]
+        
+        if microphones and dsp_items:
+            mic_brand = microphones[0].get('brand', '').lower()
+            dsp_brand = dsp_items[0].get('brand', '').lower()
+            
+            # Check for known brand mismatches
+            if mic_brand == 'biamp' and dsp_brand != 'biamp':
+                warnings.append(
+                    f"⚠️ AUDIO ECOSYSTEM WARNING: Biamp microphones paired with {dsp_items[0].get('brand')} DSP. "
+                    f"Recommend Biamp TesiraFORTE for optimal integration."
+                )
+            elif mic_brand == 'shure' and dsp_brand not in ['shure', 'biamp', 'qsc']:
+                warnings.append(
+                    f"⚠️ AUDIO ECOSYSTEM WARNING: Shure microphones paired with {dsp_items[0].get('brand')} DSP. "
+                    f"Recommend Shure IntelliMix, Biamp, or QSC for optimal integration."
+                )
+        
+        # Check for mixer instead of DSP
+        for item in boq_items:
+            if 'DSP' in item.get('sub_category', ''):
+                product_name = item.get('name', '').lower()
+                if any(term in product_name for term in ['touchmix', 'mixer', 'mg', 'zm']):
+                    warnings.append(
+                        f"🚨 CRITICAL: {item.get('name')} is a MIXER, not a conferencing DSP! "
+                        f"This lacks Acoustic Echo Cancellation (AEC) and will NOT work for video conferencing. "
+                        f"Replace with Biamp TesiraFORTE, QSC Core, or Extron DMP."
+                    )
+        
+        return warnings
     
     def calculate_boq_quality_score(self, boq_items: List[Dict], validation_results: Dict) -> Dict[str, Any]:
         """
@@ -1095,4 +1218,3 @@ class OptimizedBOQGenerator:
             'max_breakdown': max_scores,
             'avixa_compliance_score': avixa_score
         }
-
