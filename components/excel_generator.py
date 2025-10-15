@@ -1067,3 +1067,4 @@ def generate_company_excel(project_details, rooms_data, usd_to_inr_rate):
     excel_buffer.seek(0)
     
     return excel_buffer.getvalue()
+
