@@ -409,32 +409,3 @@ def show_optimization_settings_ui():
             st.info(f"✅ Will optimize across {len(st.session_state.project_rooms)} rooms")
     else:
         st.info(f"Need 3+ rooms for optimization\n\nCurrent: {len(st.session_state.get('project_rooms', []))} room(s)")
-```
-
----
-
-## **TESTING THE INTEGRATION**
-
-After adding the above integrations, test with this scenario:
-
-1. **Create 3 Rooms:**
-   - Room 1: Standard Conference (6-8 people)
-   - Room 2: Large Conference (8-12 people)
-   - Room 3: Training Room (15-25 people)
-
-2. **Generate BOQs for Each Room**
-
-3. **Check Download Button:**
-   - Should show optimization message
-   - Excel should have shared infrastructure items
-
-4. **Expected Output:**
-```
-   # 🔧 Multi-Room Optimization Applied
-   
-   Cost Savings: 12.5%
-   
-   Shared Infrastructure:
-   - 48-port Managed PoE+ Switch
-   - Centralized equipment racks: 1
-   - Eliminates 3 individual switches
