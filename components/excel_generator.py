@@ -1,5 +1,5 @@
 # components/excel_generator.py
-# PRODUCTION READY - Matches AllWave AV company format (Final Version)
+# PRODUCTION READY - Matches AllWave AV company format (w/ Individual BOQ Totals)
 
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -45,6 +45,7 @@ def _define_styles():
         "header_light_green_fill": PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
         "table_header_blue_fill": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
         "boq_category_fill": PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
+        "grand_total_fill": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),
         "black_bold_font": Font(color="000000", bold=True),
         "bold_font": Font(bold=True),
         "thin_border": thin_border,
@@ -270,9 +271,9 @@ def _add_terms_and_conditions_sheet(workbook, styles):
     ])
 
 
-# ==================== ROOM BOQ SHEET (FINAL FORMAT) ====================
+# ==================== ROOM BOQ SHEET (WITH TOTALS) ====================
 def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, gst_rates):
-    """ Creates detailed BOQ sheet with final format, colors, and column order. """
+    """ Creates detailed BOQ sheet with a grand total summary at the bottom. """
     _create_sheet_header(sheet)
     
     # Room Info Section
@@ -301,7 +302,11 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
     # Group items and add to sheet
     grouped_items = {}
     for item in items: grouped_items.setdefault(item.get('category', 'General AV'), []).append(item)
+    
+    # Initialize total trackers for the sheet
     total_before_gst_hardware, item_s_no = 0, 1
+    sheet_grand_total_tax, sheet_grand_total_amount = 0, 0
+    
     category_letters = [chr(ord('A') + i) for i in range(len(grouped_items))]
 
     for i, (category, cat_items) in enumerate(grouped_items.items()):
@@ -318,7 +323,11 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             sgst_amount, cgst_amount = subtotal * (sgst_rate / 100), subtotal * (cgst_rate / 100)
             total_tax = sgst_amount + cgst_amount
             total_with_gst = subtotal + total_tax
+            
             total_before_gst_hardware += subtotal
+            sheet_grand_total_tax += total_tax
+            sheet_grand_total_amount += total_with_gst
+            
             row_data = [item_s_no, item.get('name', ''), item.get('brand', 'Unknown'), item.get('model_number', 'N/A'), item.get('quantity', 1), unit_price_inr, subtotal, item.get('warranty', 'Not Specified'), f"{sgst_rate}%", sgst_amount, f"{cgst_rate}%", cgst_amount, total_tax, total_with_gst, '']
             sheet.append(row_data)
             current_row = sheet.max_row
@@ -347,10 +356,45 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
             service_amount_inr = total_before_gst_hardware * percentage
             sgst_rate = cgst_rate = services_gst_rate / 2
             service_sgst, service_cgst = service_amount_inr * (sgst_rate / 100), service_amount_inr * (cgst_rate / 100)
-            service_total = service_amount_inr + service_sgst + service_cgst
-            row_data = [item_s_no, service_name, "AllWave AV", "Professional Service", 1, service_amount_inr, service_amount_inr, "As per terms", f"{sgst_rate}%", service_sgst, f"{cgst_rate}%", service_cgst, service_sgst + service_cgst, service_total, '']
+            service_total_tax = service_sgst + service_cgst
+            service_total = service_amount_inr + service_total_tax
+
+            sheet_grand_total_tax += service_total_tax
+            sheet_grand_total_amount += service_total
+            
+            row_data = [item_s_no, service_name, "AllWave AV", "Professional Service", 1, service_amount_inr, service_amount_inr, "As per terms", f"{sgst_rate}%", service_sgst, f"{cgst_rate}%", service_cgst, service_total_tax, service_total, '']
             sheet.append(row_data)
             item_s_no += 1
+
+    # === ADD GRAND TOTAL ROW TO THE BOQ SHEET ===
+    sheet.append([]) # Spacer row
+    total_row_idx = sheet.max_row
+    sheet.merge_cells(f'A{total_row_idx}:L{total_row_idx}')
+    
+    # Label cell
+    label_cell = sheet[f'A{total_row_idx}']
+    label_cell.value = "GRAND TOTAL"
+    label_cell.font = styles['bold_font']
+    label_cell.fill = styles['grand_total_fill']
+    label_cell.alignment = Alignment(horizontal='right', vertical='center')
+    
+    # Tax amount cell
+    tax_cell = sheet[f'M{total_row_idx}']
+    tax_cell.value = sheet_grand_total_tax
+    tax_cell.font = styles['bold_font']
+    tax_cell.fill = styles['grand_total_fill']
+    tax_cell.number_format = styles['currency_format']
+    
+    # Total amount cell
+    total_cell = sheet[f'N{total_row_idx}']
+    total_cell.value = sheet_grand_total_amount
+    total_cell.font = styles['bold_font']
+    total_cell.fill = styles['grand_total_fill']
+    total_cell.number_format = styles['currency_format']
+    
+    # Apply borders to the whole total row
+    for col_idx in range(1, 16):
+        sheet.cell(row=total_row_idx, column=col_idx).border = styles['thin_border']
     
     # Column Widths and Final Formatting
     widths = {'A': 8, 'B': 45, 'C': 20, 'D': 30, 'E': 6, 'F': 15, 'G': 15, 'H': 15, 'I': 10, 'J': 15, 'K': 10, 'L': 15, 'M': 15, 'N': 18, 'O': 25}
@@ -359,8 +403,8 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
         for cell in row:
             if isinstance(cell, MergedCell): continue
             if cell.column in [6, 7, 10, 12, 13, 14] and isinstance(cell.value, (int, float)): cell.number_format = styles['currency_format']
-            cell.border = styles['thin_border']
-            cell.alignment = Alignment(horizontal='center', vertical='top') if cell.column in [1, 5] else Alignment(vertical='top', wrap_text=True)
+            if not cell.border: cell.border = styles['thin_border'] # Apply border if not already set (for total row cells)
+            if not cell.alignment: cell.alignment = Alignment(horizontal='center', vertical='top') if cell.column in [1, 5] else Alignment(vertical='top', wrap_text=True)
 
 
 # ==================== SCOPE OF WORK SHEET (FINAL CONTENT) ====================
@@ -486,12 +530,12 @@ def _add_proposal_summary_sheet(workbook, rooms_data, project_details, styles):
     row_cursor += 1
     sheet.merge_cells(f'A{row_cursor}:C{row_cursor}')
     total_label_cell = sheet[f'A{row_cursor}']
-    total_label_cell.value, total_label_cell.font, total_label_cell.fill = "GRAND TOTAL", Font(bold=True, size=12), PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    total_label_cell.value, total_label_cell.font, total_label_cell.fill = "GRAND TOTAL", Font(bold=True, size=12), styles['grand_total_fill']
     total_label_cell.alignment, total_label_cell.border = Alignment(horizontal='center', vertical='center'), styles['thin_border']
     grand_total_data = ['', grand_subtotal, grand_tax, grand_total]
     for col_idx, value in enumerate(grand_total_data, 4):
         cell = sheet.cell(row=row_cursor, column=col_idx)
-        cell.value, cell.font, cell.fill, cell.border = value, Font(bold=True, size=11), PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), styles['thin_border']
+        cell.value, cell.font, cell.fill, cell.border = value, Font(bold=True, size=11), styles['grand_total_fill'], styles['thin_border']
         if value: cell.number_format, cell.alignment = styles['currency_format'], Alignment(horizontal='right', vertical='center')
     sheet.row_dimensions[row_cursor].height = 25
     row_cursor += 3
@@ -561,13 +605,13 @@ def generate_budget_summary_sheet(workbook, rooms_data, project_details, styles)
     # Grand total row
     sheet.merge_cells(f'A{row}:B{row}')
     total_label = sheet[f'A{row}']
-    total_label.value, total_label.font, total_label.fill, total_label.border = "TOTAL PROJECT INVESTMENT", Font(bold=True, size=12), PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), styles['thin_border']
+    total_label.value, total_label.font, total_label.fill, total_label.border = "TOTAL PROJECT INVESTMENT", Font(bold=True, size=12), styles['grand_total_fill'], styles['thin_border']
     sheet[f'B{row}'].border = styles['thin_border']
     totals = [grand_equipment, grand_services, grand_tax, grand_total]
     for col_idx, value in enumerate(totals, 3):
         cell = sheet.cell(row=row, column=col_idx)
         if value is not None: cell.value, cell.number_format, cell.alignment = value, styles['currency_format'], Alignment(horizontal='right', vertical='center')
-        cell.font, cell.fill, cell.border = Font(bold=True, size=11), PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), styles['thin_border']
+        cell.font, cell.fill, cell.border = Font(bold=True, size=11), styles['grand_total_fill'], styles['thin_border']
     widths = {'A': 30, 'B': 15, 'C': 18, 'D': 18, 'E': 18, 'F': 20}
     for col, width in widths.items(): sheet.column_dimensions[col].width = width
 
