@@ -462,40 +462,44 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        # In sidebar, replace room type selector with:
-        st.markdown('<h3>🌐 Environment Design</h3>', unsafe_allow_html=True)
+        st.markdown('<h3>🌍 Environment Design</h3>', unsafe_allow_html=True)
         
-        # Mode selection
-        room_input_mode = st.radio(
-            "Room Type Input Method",
-            ["Select from Standard Types", "Describe Custom Room (AI)"],
-            key="room_input_mode"
+        # ============= APPLIED CHANGE HERE =============
+        # Determine default room type from questionnaire
+        use_case_to_room_type = {
+            'Video Conferencing': 'Standard Conference Room (6-8 People)',
+            'Presentations & Training': 'Training Room (15-25 People)',
+            'Hybrid Meetings': 'Large Conference Room (8-12 People)',
+            'Executive Boardroom': 'Executive Boardroom (10-16 People)',
+            'Event & Broadcast': 'Multipurpose Event Room (40+ People)',
+            'Multipurpose': 'Large Training/Presentation Room (25-40 People)'
+        }
+
+        default_room_type = 'Standard Conference Room (6-8 People)'
+        if 'client_requirements' in st.session_state:
+            req = st.session_state.client_requirements
+            default_room_type = use_case_to_room_type.get(
+                req.primary_use_case, 
+                default_room_type
+            )
+
+        # Get current value or use questionnaire-based default
+        current_room_type = st.session_state.get('room_type_select', default_room_type)
+        room_types_list = list(ROOM_SPECS.keys())
+
+        try:
+            default_index = room_types_list.index(current_room_type)
+        except ValueError:
+            default_index = 0
+
+        room_type_key = st.selectbox(
+            "Primary Space Type",
+            room_types_list,
+            index=default_index,
+            key="room_type_select",
+            on_change=update_dimensions_from_room_type
         )
-        
-        if room_input_mode == "Select from Standard Types":
-            # Existing dropdown with extended types
-            from components.room_profiles import get_all_room_specs
-            all_room_types = list(get_all_room_specs().keys())
-            
-            room_type_key = st.selectbox(
-                "Primary Space Type",
-                all_room_types,
-                key="room_type_select",
-                on_change=update_dimensions_from_room_type
-            )
-            
-        else:
-            # Custom room description (AI-powered)
-            custom_room_desc = st.text_area(
-                "Describe Your Room",
-                placeholder="Example: Divisible training room for 60 people that can split into 2 independent spaces. Heavy video conferencing use, recording capability needed, amphitheater seating.",
-                height=150,
-                key="custom_room_description"
-            )
-            
-            st.session_state.room_type_select = custom_room_desc if custom_room_desc else "Standard Conference Room"
-            
-            st.info("💡 AI will analyze your description and generate a custom BOQ using AVIXA standards")
+        # ===============================================
 
         if 'initial_load' not in st.session_state:
             update_dimensions_from_room_type()
@@ -508,7 +512,6 @@ def main():
             key="budget_tier_slider"
         )
         
-        room_type_key = st.session_state.get("room_type_select") # Get current room type
         if room_type_key in ROOM_SPECS:
             spec = ROOM_SPECS[room_type_key]
             area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
@@ -682,58 +685,104 @@ def main():
             if missing_fields:
                 st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
             
-            # In Tab 3: Generate BOQ section
+            # ======================= MODIFIED ERROR HANDLING BLOCK =======================
             if st.button("✨ Generate Optimized BOQ",
                           type="primary",
                           use_container_width=True,
                           disabled=generate_disabled):
                 try:
-                    progress_bar = st.progress(0, text="Analyzing room type...")
+                    progress_bar = st.progress(0, text="Initializing optimized generation...")
                     
-                    # Import enhanced analyzer
-                    from components.enhanced_room_analyzer import generate_boq_with_enhanced_room_analysis
-                    
-                    # Get room type input (text or dropdown)
-                    room_description = st.session_state.get('room_type_select', 'Standard Conference Room')
-                    
-                    # Prepare room dimensions
-                    room_dimensions = {
-                        'length': st.session_state.get('room_length_input', 28.0),
-                        'width': st.session_state.get('room_width_input', 20.0),
-                        'ceiling_height': st.session_state.get('ceiling_height_input', 10.0),
-                        'area': st.session_state.get('room_length_input', 28.0) * st.session_state.get('room_width_input', 20.0)
-                    }
-                    
-                    progress_bar.progress(25, text="🎯 Determining optimal generation method...")
-                    
-                    # Generate BOQ using hybrid approach
-                    boq_items, validation_results, analysis_metadata = generate_boq_with_enhanced_room_analysis(
-                        gemini_model=model,
+                    # Import the optimized generator
+                    from components.optimized_boq_generator import OptimizedBOQGenerator
+                    progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
+                    # Create generator with questionnaire requirements
+                    generator = OptimizedBOQGenerator(
                         product_df=product_df,
-                        room_description=room_description,
-                        room_dimensions=room_dimensions,
                         client_requirements=st.session_state.client_requirements
+                    )
+                    st.session_state.boq_selector = generator.selector
+                    progress_bar.progress(50, text="🔍 Selecting optimal products...")
+                    
+                    # Generate BOQ
+                    boq_items, validation_results = generator.generate_boq_for_room(
+                        room_type=room_type,
+                        room_length=room_length,
+                        room_width=room_width,
+                        ceiling_height=ceiling_height
                     )
                     
                     progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
-                    
-                    # Store results
-                    st.session_state.boq_items = boq_items
-                    st.session_state.validation_results = validation_results
-                    st.session_state.analysis_metadata = analysis_metadata
-                    
-                    progress_bar.progress(100, text="✅ BOQ generation complete!")
-                    
-                    # Show which method was used
-                    if analysis_metadata['analysis_type'] == 'AI_CUSTOM_ANALYSIS':
-                        st.info(f"🤖 AI-Powered Analysis | Confidence: {analysis_metadata['confidence']:.1%}")
+
+                    # Calculate quality score
+                    quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
+                    st.session_state.boq_quality_score = quality_score
+
+                    if boq_items:
+                        st.session_state.boq_items = boq_items
+                        st.session_state.validation_results = validation_results
+                        st.session_state.boq_selector = generator.selector
+                        
+                        # Display quality score prominently
+                        col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                        
+                        with col_q1:
+                            st.metric(
+                                "BOQ Quality Score",
+                                f"{quality_score['percentage']:.1f}%",
+                                f"Grade: {quality_score['grade']}"
+                            )
+                        
+                        with col_q2:
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
+                                         border-left: 4px solid {quality_score['color']}; 
+                                         padding: 1rem; 
+                                         border-radius: 8px; 
+                                         margin: 1rem 0;">
+                                <h3 style="margin: 0; color: {quality_score['color']};">
+                                    {quality_score['quality_level']}
+                                </h3>
+                                <p style="margin: 0.5rem 0 0 0; color: #666;">
+                                    This BOQ meets professional standards for {room_type}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col_q3:
+                            with st.expander("📊 Score Breakdown"):
+                                for category, score in quality_score['breakdown'].items():
+                                    max_score = quality_score['max_breakdown'][category]
+                                    pct = (score / max_score) * 100
+                                    st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
+                        
+                        update_boq_content_with_current_items()
+                        
+                        # Save to current room
+                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
+                        progress_bar.progress(100, text="✅ BOQ generation complete!")
+                        time.sleep(0.5)
+                        progress_bar.empty()
+                        show_success_message("BOQ Generated Successfully with AVIXA Compliance")
                     else:
-                        st.success(f"✅ Proven System | Room: {analysis_metadata['room_type']}")
-                    
-                    # Continue with quality scoring...
-                    
+                        progress_bar.empty()
+                        show_error_message("Failed to generate BOQ. Please check your inputs.")
+
+                except KeyError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Data Error: Missing required field - {e}")
+                    st.info("This usually means the product catalog is incomplete. Please check the catalog data file.")
+                except ValueError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Validation Error: {e}")
                 except Exception as e:
-                    st.error(f"❌ Generation failed: {e}")
+                    progress_bar.empty()
+                    st.error(f"❌ Unexpected Error: {e}")
+                    with st.expander("🔍 Technical Details"):
+                        st.code(traceback.format_exc())
+            # ======================= END MODIFIED BLOCK =======================
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
