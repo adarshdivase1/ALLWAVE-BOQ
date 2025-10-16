@@ -408,5 +408,38 @@ ROOM_SPECS = {
         'housing': {
             'type': 'Integrated into Room Architecture'
         }
+    },
+    'Amphitheater / Lecture Hall (100-300 People)': {
+        'area_sqft': (2500, 8000),
+        'capacity': (100, 300),
+        'primary_use': 'Large-scale presentations, lectures, keynotes',
+        'typical_dims_ft': (80, 60),
+        'table_size': None,
+        'chair_count': 250,
+        'chair_arrangement': 'theater',
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.65,
+            'requires_performance_verification': True
+        },
+        'displays': {
+            'quantity': 1,
+            'type': 'Large Projector or LED Wall',
+            'size_inches': 150  # Diagonal for projection
+        },
+        'audio_system': {
+            'type': 'Line Array Speaker System',
+            'dsp_required': True,
+            'microphone_type': 'Wireless Handheld + Lapel',
+            'speaker_type': 'Line Array + Delay Speakers',
+            'microphone_count': 4,
+            'speaker_count': 6  # Main arrays + delays
+        },
+        'video_system': {
+            'type': 'Multi-Camera Broadcast System',
+            'camera_type': 'Broadcast PTZ Cameras',
+            'camera_count': 3
+        }
     }
 }
