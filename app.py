@@ -849,213 +849,223 @@ def main():
             
             st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
         
+        # ======================= START: APPLIED CHANGE =======================
         # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
                      type="primary", 
                      use_container_width=True):
             
             try:
-                progress_bar = st.progress(0.0, text="Processing ACIM form data...")
+                progress_bar = st.progress(0.0, text="Analyzing room requirements...")
                 
-                from components.optimized_boq_generator import OptimizedBOQGenerator
-                from components.smart_questionnaire import ClientRequirements
+                acim_data = st.session_state.acim_form_responses
                 
-                # ✅ Parse ACIM form (NEW: better error handling)
-                try:
-                    requirements = parse_acim_to_client_requirements(acim_data)
-                    st.success(f"✅ Parsed: {requirements.vc_platform}, Budget: {requirements.budget_level}")
-                except Exception as parse_error:
-                    st.error(f"❌ Failed to parse ACIM form: {parse_error}")
-                    
-                    # ✅ FALLBACK: Use safe defaults
-                    st.warning("⚠️ Using default requirements as fallback")
-                    requirements = ClientRequirements(
-                        project_type='New Installation',
-                        room_count=len(acim_data.get('selected_rooms', [])),
-                        primary_use_case='Video Conferencing',
-                        budget_level='Standard',
-                        display_brand_preference='No Preference',
-                        display_size_preference=0,
-                        dual_display_needed=False,
-                        interactive_display_needed=False,
-                        vc_platform='Microsoft Teams',
-                        vc_brand_preference='No Preference',
-                        camera_type_preference='Auto',
-                        auto_tracking_needed=False,
-                        audio_brand_preference='No Preference',
-                        microphone_type='Auto',
-                        ceiling_vs_table_audio='Auto',
-                        voice_reinforcement_needed=False,
-                        control_brand_preference='No Preference',
-                        wireless_presentation_needed=False,
-                        room_scheduling_needed=False,
-                        lighting_control_integration=False,
-                        existing_network_capable=True,
-                        cable_management_type='Exposed',
-                        ada_compliance_required=False,
-                        power_infrastructure_adequate=True,
-                        recording_capability_needed=False,
-                        streaming_capability_needed=False,
-                        additional_requirements=''
-                    )
-                
-                progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
-                
-                # ✅ VALIDATE product_df exists
-                if product_df is None or product_df.empty:
-                    st.error("❌ CRITICAL: Product catalog not loaded")
+                # ========== CRITICAL: DETECT ROOM TYPE COMPLEXITY ==========
+                room_requirements = acim_data.get('room_requirements', [])
+                if not room_requirements:
+                    st.error("No room requirements found")
                     st.stop()
                 
-                generator = OptimizedBOQGenerator(
-                    product_df=product_df,
-                    client_requirements=requirements
-                )
+                first_room_type = room_requirements[0]['room_type']
                 
-                # ✅ FIXED: Process each room from ACIM form
-                all_boq_items = []
-                all_validations = {}
-                
-                for idx, room_req in enumerate(acim_data.get('room_requirements', [])):
-                    room_type = room_req['room_type']
-                    responses = room_req['responses']
+                # ========== AUDITORIUM DETECTION ==========
+                if 'auditorium' in first_room_type.lower() or 'town hall' in first_room_type.lower():
+                    st.info("🎭 **Auditorium Detected** - Using specialized enterprise-grade generator")
                     
-                    # Parse room dimensions from ACIM responses
-                    # Look for the room dimensions question response
-                    dimensions_response = responses.get('room_dimensions', '') or responses.get('seating_layout', '')
+                    progress_bar.progress(0.20, text="Loading auditorium system designer...")
                     
-                    # ✅ NEW: Smart dimension extraction
-                    room_length, room_width, ceiling_height = _extract_dimensions_from_text(
-                        dimensions_response,
-                        default_length=28.0,
-                        default_width=20.0,
-                        default_height=10.0
-                    )
+                    # Import specialized auditorium generator
+                    from components.acim_parser_enhanced import generate_auditorium_boq
                     
-                    st.info(f"Processing: {room_type} ({room_length}' x {room_width}')")
+                    progress_bar.progress(0.40, text="Analyzing seating capacity and stage requirements...")
                     
-                    # Map ACIM room type to standard room type
-                    standard_room_type = _map_acim_to_standard_room(room_type)
+                    # Generate auditorium BOQ
+                    boq_items, validation = generate_auditorium_boq(acim_data, product_df)
                     
-                    # Generate BOQ for this room
-                    boq_items, validation = generator.generate_boq_for_room(
-                        room_type=standard_room_type,
-                        room_length=room_length,
-                        room_width=room_width,
-                        ceiling_height=ceiling_height
-                    )
+                    progress_bar.progress(0.80, text="Finalizing enterprise system design...")
                     
-                    # Tag items with room name
-                    for item in boq_items:
-                        item['room_name'] = f"{room_type} ({idx+1})"
-                    
-                    all_boq_items.extend(boq_items)
-                    all_validations[room_type] = validation
-                    
-                    # ======================= START: APPLIED CHANGE =======================
-                    progress_value = 0.30 + (idx+1)/len(acim_data['room_requirements'])*0.60
-                    progress_bar.progress(progress_value, 
-                                         text=f"Processed room {idx+1}/{len(acim_data['room_requirements'])}")
-                    # ======================= END: APPLIED CHANGE =========================
-                
-                # ======================= START: APPLIED CHANGE =======================
-                progress_bar.progress(0.90, text="⚖️ Calculating Quality Score...")
-                # ======================= END: APPLIED CHANGE =========================
-                
-                if all_boq_items:
-                    # Combine all validations
-                    combined_validation = {
-                        'warnings': [],
-                        'issues': [],
-                        'compliance_score': 0
-                    }
-                    
-                    total_score = 0
-                    for room, val in all_validations.items():
-                        combined_validation['warnings'].extend(val.get('warnings', []))
-                        combined_validation['issues'].extend(val.get('issues', []))
-                        total_score += val.get('compliance_score', 0)
-                    
-                    if all_validations:
-                        combined_validation['compliance_score'] = total_score / len(all_validations)
-                    else:
-                        combined_validation['compliance_score'] = 0
-
-                    
-                    # Calculate quality score
-                    quality_score = generator.calculate_boq_quality_score(all_boq_items, combined_validation)
-                    st.session_state.boq_quality_score = quality_score
-                    
-                    st.session_state.boq_items = all_boq_items
-                    st.session_state.validation_results = combined_validation
-                    st.session_state.boq_selector = generator.selector
-                    
-                    # ✅ NEW: Display quality score with breakdown
-                    st.markdown("---")
-                    col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
-                    
-                    with col_q1:
-                        st.metric(
-                            "BOQ Quality Score",
-                            f"{quality_score['percentage']:.1f}%",
-                            f"Grade: {quality_score['grade']}"
-                        )
-                    
-                    with col_q2:
-                        st.markdown(f"""
-                        <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
-                                     border-left: 4px solid {quality_score['color']}; 
-                                     padding: 1rem; 
-                                     border-radius: 8px;">
-                            <h3 style="margin: 0; color: {quality_score['color']};">
-                                {quality_score['quality_level']}
-                            </h3>
-                            <p style="margin: 0.5rem 0 0 0; color: #666;">
-                                Generated BOQ for {len(acim_data['selected_rooms'])} room type(s)
-                            </p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_q3:
-                        with st.expander("📊 Score Breakdown"):
-                            for category, score in quality_score['breakdown'].items():
-                                max_score = quality_score['max_breakdown'][category]
-                                pct = (score / max_score) * 100 if max_score > 0 else 0
-                                st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
-                    
-                    update_boq_content_with_current_items()
-                    
-                    # ======================= START: APPLIED CHANGE =======================
-                    progress_bar.progress(1.0, text="✅ BOQ generation complete!")
-                    # ======================= END: APPLIED CHANGE =========================
-                    time.sleep(0.5)
-                    progress_bar.empty()
-                    
-                    show_success_message(f"BOQ Generated Successfully for {len(acim_data['selected_rooms'])} Room Type(s)")
-                    
-                    # ======================= START: APPLIED FIX 7.1 =======================
-                    # ✅ NEW: Show optimization status
-                    if len(acim_data.get('selected_rooms', [])) >= 3:
-                        st.info("""
-                        🔧 **Multi-Room Project Detected**
+                    if boq_items:
+                        st.session_state.boq_items = boq_items
+                        st.session_state.validation_results = validation
+                        st.session_state.boq_selector = None  # No selector for custom generation
                         
-                        When you export to Excel, the system will automatically:
-                        - Consolidate network switches
-                        - Optimize equipment racks
-                        - Reduce cabling costs
+                        update_boq_content_with_current_items()
                         
-                        💰 **Estimated Savings:** 8-15% on infrastructure
+                        progress_bar.progress(1.0, text="✅ Auditorium BOQ generated!")
+                        time.sleep(0.5)
+                        progress_bar.empty()
+                        
+                        # Show specialized summary
+                        st.success(f"""
+                        ✅ **Enterprise Auditorium System Generated**
+                        
+                        - **Seating Capacity**: {validation.get('seating_capacity', 'N/A')} seats
+                        - **System Components**: {len(boq_items)} items
+                        - **Estimated Investment**: ${validation.get('estimated_cost', 0):,.2f}
+                        - **System Grade**: Broadcast/Production Quality
                         """)
-                    # ======================= END: APPLIED FIX 7.1 =======================
                         
+                        st.rerun()
+                    else:
+                        st.error("Failed to generate auditorium BOQ")
+                
+                # ========== STANDARD ROOM TYPES ==========
                 else:
-                    progress_bar.empty()
-                    show_error_message("Failed to generate BOQ from ACIM form.")
+                    # Use existing generator for conference rooms, training rooms, etc.
+                    progress_bar.progress(0.30, text="Parsing client requirements...")
                     
+                    from components.optimized_boq_generator import OptimizedBOQGenerator
+                    from components.smart_questionnaire import ClientRequirements # Added this import for robustness
+                    
+                    requirements = parse_acim_to_client_requirements(acim_data)
+
+                    progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
+                
+                    # ✅ VALIDATE product_df exists
+                    if product_df is None or product_df.empty:
+                        st.error("❌ CRITICAL: Product catalog not loaded")
+                        st.stop()
+                    
+                    generator = OptimizedBOQGenerator(
+                        product_df=product_df,
+                        client_requirements=requirements
+                    )
+                    
+                    # ✅ FIXED: Process each room from ACIM form
+                    all_boq_items = []
+                    all_validations = {}
+                    
+                    for idx, room_req in enumerate(acim_data.get('room_requirements', [])):
+                        room_type = room_req['room_type']
+                        responses = room_req['responses']
+                        
+                        # Parse room dimensions from ACIM responses
+                        # Look for the room dimensions question response
+                        dimensions_response = responses.get('room_dimensions', '') or responses.get('seating_layout', '')
+                        
+                        # ✅ NEW: Smart dimension extraction
+                        room_length, room_width, ceiling_height = _extract_dimensions_from_text(
+                            dimensions_response,
+                            default_length=28.0,
+                            default_width=20.0,
+                            default_height=10.0
+                        )
+                        
+                        st.info(f"Processing: {room_type} ({room_length}' x {room_width}')")
+                        
+                        # Map ACIM room type to standard room type
+                        standard_room_type = _map_acim_to_standard_room(room_type)
+                        
+                        # Generate BOQ for this room
+                        boq_items, validation = generator.generate_boq_for_room(
+                            room_type=standard_room_type,
+                            room_length=room_length,
+                            room_width=room_width,
+                            ceiling_height=ceiling_height
+                        )
+                        
+                        # Tag items with room name
+                        for item in boq_items:
+                            item['room_name'] = f"{room_type} ({idx+1})"
+                        
+                        all_boq_items.extend(boq_items)
+                        all_validations[room_type] = validation
+                        
+                        progress_value = 0.30 + (idx+1)/len(acim_data['room_requirements'])*0.60
+                        progress_bar.progress(progress_value, 
+                                             text=f"Processed room {idx+1}/{len(acim_data['room_requirements'])}")
+                    
+                    progress_bar.progress(0.90, text="⚖️ Calculating Quality Score...")
+                    
+                    if all_boq_items:
+                        # Combine all validations
+                        combined_validation = {
+                            'warnings': [],
+                            'issues': [],
+                            'compliance_score': 0
+                        }
+                        
+                        total_score = 0
+                        for room, val in all_validations.items():
+                            combined_validation['warnings'].extend(val.get('warnings', []))
+                            combined_validation['issues'].extend(val.get('issues', []))
+                            total_score += val.get('compliance_score', 0)
+                        
+                        if all_validations:
+                            combined_validation['compliance_score'] = total_score / len(all_validations)
+                        else:
+                            combined_validation['compliance_score'] = 0
+
+                        
+                        # Calculate quality score
+                        quality_score = generator.calculate_boq_quality_score(all_boq_items, combined_validation)
+                        st.session_state.boq_quality_score = quality_score
+                        
+                        st.session_state.boq_items = all_boq_items
+                        st.session_state.validation_results = combined_validation
+                        st.session_state.boq_selector = generator.selector
+                        
+                        # ✅ NEW: Display quality score with breakdown
+                        st.markdown("---")
+                        col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                        
+                        with col_q1:
+                            st.metric(
+                                "BOQ Quality Score",
+                                f"{quality_score['percentage']:.1f}%",
+                                f"Grade: {quality_score['grade']}"
+                            )
+                        
+                        with col_q2:
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
+                                         border-left: 4px solid {quality_score['color']}; 
+                                         padding: 1rem; 
+                                         border-radius: 8px;">
+                                <h3 style="margin: 0; color: {quality_score['color']};">
+                                    {quality_score['quality_level']}
+                                </h3>
+                                <p style="margin: 0.5rem 0 0 0; color: #666;">
+                                    Generated BOQ for {len(acim_data['selected_rooms'])} room type(s)
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col_q3:
+                            with st.expander("📊 Score Breakdown"):
+                                for category, score in quality_score['breakdown'].items():
+                                    max_score = quality_score['max_breakdown'][category]
+                                    pct = (score / max_score) * 100 if max_score > 0 else 0
+                                    st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
+                        
+                        update_boq_content_with_current_items()
+                        
+                        progress_bar.progress(1.0, text="✅ BOQ generation complete!")
+                        time.sleep(0.5)
+                        progress_bar.empty()
+                        
+                        show_success_message(f"BOQ Generated Successfully for {len(acim_data['selected_rooms'])} Room Type(s)")
+                        
+                        # ✅ NEW: Show optimization status
+                        if len(acim_data.get('selected_rooms', [])) >= 3:
+                            st.info("""
+                            🔧 **Multi-Room Project Detected**
+                            
+                            When you export to Excel, the system will automatically:
+                            - Consolidate network switches
+                            - Optimize equipment racks
+                            - Reduce cabling costs
+                            
+                            💰 **Estimated Savings:** 8-15% on infrastructure
+                            """)
+                            
+                    else:
+                        progress_bar.empty()
+                        show_error_message("Failed to generate BOQ from ACIM form.")
+                        
             except Exception as e:
-                # ======================= START: APPLIED CHANGE =======================
                 if 'progress_bar' in locals():
                     progress_bar.empty()
-                # ======================= END: APPLIED CHANGE =========================
                 st.error(f"❌ Error: {e}")
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
