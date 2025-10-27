@@ -388,13 +388,12 @@ class OptimizedBOQGenerator:
         ceiling_height: float
     ) -> Tuple[List[Dict], Dict[str, Any]]:
         """
-        ENHANCED: Generate BOQ with comprehensive AVIXA calculations
+        UPDATED: Works for both standard AND custom rooms.
         """
         room_area = room_length * room_width
         room_volume = room_area * ceiling_height
-        room_profile = ROOM_SPECS.get(room_type, ROOM_SPECS['Standard Conference Room (6-8 People)'])
         
-        # === COMPREHENSIVE AVIXA CALCULATIONS ===
+        # Run AVIXA calculations (always needed)
         st.info("📊 Running AVIXA Standards Analysis...")
         
         # Display calculations (DISCAS)
@@ -402,8 +401,7 @@ class OptimizedBOQGenerator:
             room_length, room_width, content_type="BDM"
         )
         
-        # Audio coverage (A102.01) - Pass occupancy if available
-        occupancy = room_profile.get('capacity_max', None)
+        occupancy = ROOM_SPECS.get(room_type, {}).get('capacity_max', None)
         audio_calcs = self.avixa_calc.calculate_audio_coverage_a102(
             room_area, ceiling_height, room_type, occupancy
         )
@@ -423,10 +421,6 @@ class OptimizedBOQGenerator:
             room_width, display_calcs['selected_size_inches'], seating_rows=2
         )
         
-        # Network requirements (will be calculated after equipment is selected)
-        # Power requirements (will be calculated after equipment is selected)
-        
-        # Store all calculations
         avixa_calcs = {
             'display': display_calcs,
             'audio': audio_calcs,
@@ -444,11 +438,40 @@ class OptimizedBOQGenerator:
             'room_area': room_area,
             'avixa_calcs': avixa_calcs
         }
+
+        # NEW: Generate tags from room profile
+        if room_type in ROOM_SPECS:
+            room_profile = ROOM_SPECS[room_type]
+            tags = {
+                'capacity': room_profile.get('capacity', (6, 8))[1],  # Max capacity
+                'room_type_category': 'Conference',  # Derive from room_type
+                'display_quantity': room_profile.get('displays', {}).get('quantity', 1),
+                'display_type': 'Single Large',
+                'camera_type': room_profile.get('video_system', {}).get('camera_type', 'Video Bar'),
+                'microphone_type': room_profile.get('audio_system', {}).get('microphone_type', 'Table'),
+                'speaker_type': room_profile.get('audio_system', {}).get('speaker_type', 'Ceiling'),
+                'needs_dsp': room_profile.get('audio_system', {}).get('dsp_required', True),
+                'needs_rack': room_area > 400,
+                # ... extract all relevant tags from room_profile
+            }
+        else:
+            # Custom room - would use AI analyzer here
+            # For now, use defaults
+            tags = {
+                'capacity': int(room_area / 25),  # Estimate
+                'room_type_category': 'Conference',
+                'display_quantity': 1,
+                'display_type': 'Single Large',
+                'camera_type': 'Video Bar',
+                'microphone_type': 'Table',
+                'speaker_type': 'Ceiling',
+                'needs_dsp': room_area > 400,
+                'needs_rack': room_area > 400,
+                # ... defaults
+            }
         
-        # Build blueprint using AVIXA calculations
-        blueprint = self._build_avixa_compliant_blueprint(
-            room_type, room_area, room_profile, ceiling_height, avixa_calcs
-        )
+        # Build blueprint using unified function
+        blueprint = self._build_blueprint_from_tags(tags, room_area, ceiling_height, avixa_calcs)
         
         # Select products
         boq_items = []
@@ -503,278 +526,210 @@ class OptimizedBOQGenerator:
 
         return boq_items, validation_results
     
-    def _build_avixa_compliant_blueprint(
-        self, room_type: str, room_area: float, room_profile: Dict,
-        ceiling_height: float, avixa_calcs: Dict
+    def _build_blueprint_from_tags(
+        self, 
+        tags: Dict,  # NEW: Accept tags instead of room_profile
+        room_area: float, 
+        ceiling_height: float, 
+        avixa_calcs: Dict
     ) -> Dict[str, ProductRequirement]:
         """
-        ✅ ARCHITECTURE FIX: Route to room-specific blueprint builders.
-        This acts as a decision tree for different room types.
+        UNIFIED blueprint generator. Works for BOTH standard and custom rooms.
+        Uses tags (from room profile OR AI analysis) + AVIXA calculations.
         """
-        # ============ ROOM TYPE DECISION TREE ============
-        if room_type in ['Small Huddle Room (2-3 People)', 'Medium Huddle Room (4-6 People)']:
-            # In a full implementation, this would call a dedicated _build_huddle_room_blueprint
-            return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
-
-        elif room_type in ['Standard Conference Room (6-8 People)', 'Large Conference Room (8-12 People)']:
-            return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
-
-        elif room_type == 'Executive Boardroom (10-16 People)':
-            # Executive rooms have higher specs, but the standard logic is a good base
-            return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
-
-        elif room_type in ['Training Room (15-25 People)', 'Large Training/Presentation Room (25-40 People)']:
-            # Training rooms might need different audio/display configs
-            return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
         
-        # Add placeholders for other specialized room types
-        elif room_type in ['Multipurpose Event Room (40+ People)', 'Video Production Studio', 'Telepresence Suite']:
-             return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
-
-        else:
-            # Fallback to a generic conference room blueprint
-            return self._build_standard_conference_blueprint(room_type, room_area, room_profile, ceiling_height, avixa_calcs)
-            
-    def _build_standard_conference_blueprint(
-        self, room_type: str, room_area: float, room_profile: Dict,
-        ceiling_height: float, avixa_calcs: Dict
-    ) -> Dict[str, ProductRequirement]:
-        """
-        Builds the equipment blueprint for a standard conference or boardroom.
-        This contains the core logic and has been refactored from the old
-        _build_avixa_compliant_blueprint method.
-        """
         blueprint = {}
         req = self.requirements
         
-        # === DISPLAYS (Using AVIXA DISCAS WITH ROOM CONSTRAINTS) ===
+        # === DISPLAYS (Using tags + AVIXA) ===
         display_size_avixa = avixa_calcs['display']['selected_size_inches']
-        room_constraints = ROOM_DISPLAY_CONSTRAINTS.get(room_type, {'min': 55, 'max': 98})
-        display_size = max(room_constraints['min'], min(display_size_avixa, room_constraints['max']))
-
-        if 'Executive' in room_type or 'Boardroom' in room_type:
-            display_size = max(75, display_size)
-        elif room_area > 600:
-            display_size = max(75, display_size)
-
-        st.success(f"✅ AVIXA + Room Constraints: {display_size}\" display for {room_type}")
-        display_qty = 2 if (req.dual_display_needed or 'Executive' in room_type or 'Boardroom' in room_type or room_area > 600) else 1
-
-        blueprint['primary_display'] = ProductRequirement(
-            category='Displays',
-            sub_category='Interactive Display' if req.interactive_display_needed else 'Professional Display',
-            quantity=display_qty,
-            priority=1,
-            justification=f'AVIXA DISCAS + Room constraints: {display_size}" for {room_type}',
-            size_requirement=display_size,
-            required_keywords=['display', '4k', str(display_size)],
-            blacklist_keywords=['mount', 'bracket', 'stand', 'arm', 'cable', 'adapter', 'menu'],
-            min_price=500 if display_size < 70 else 1000,
-            max_price=30000,
-            client_preference_weight=1.0,
-            strict_category_match=True
-        )
-
-        # ✅ FIX 3: CORRECT MOUNT SELECTION
-        blueprint['display_mount'] = ProductRequirement(
-            category='Mounts',
-            sub_category='Display Mount / Cart',
-            quantity=display_qty,
-            priority=2,
-            justification=f'Articulating wall mounts for dual {display_size}" displays',
-            mounting_type='wall',
-            size_requirement=display_size,
-            required_keywords=['wall mount', 'articulating', 'heavy duty', str(display_size)],
-            blacklist_keywords=['video wall', 'tile', 'array', 'ceiling', 'floor', 'camera', 'mic', 'speaker', 'touch', 'panel', 'controller', 'menu'],
-            min_price=300 if display_size >= 75 else 150,
-            max_price=1500,
-            strict_category_match=True
-        )
-
-        # === VIDEO CONFERENCING (WITH ECOSYSTEM ENFORCEMENT) ===
-        is_large_room = room_area > 400
-
-        # CRITICAL: Determine VC brand FIRST based on platform
-        vc_brand_preference = None
-        if self.requirements.vc_platform.lower() == 'microsoft teams':
-            # Teams certified: Poly, Yealink, Logitech, Crestron
-            vc_brand_preference = 'Poly'  # Default to Poly for Teams
-        elif self.requirements.vc_platform.lower() == 'zoom':
-            # Zoom certified: Poly, Logitech, Yealink
-            vc_brand_preference = 'Poly'  # Default to Poly
-        elif 'cisco' in self.requirements.vc_platform.lower() or 'webex' in self.requirements.vc_platform.lower():
-            vc_brand_preference = 'Cisco'
+        display_size = display_size_avixa  # Start with AVIXA
+        
+        # Override with tags if special display type needed
+        if tags.get('needs_video_wall'):
+            display_size = 55  # Video walls use smaller tiles
+            display_qty = 4  # 2x2 configuration
+        elif tags.get('needs_led_wall'):
+            # LED walls are specified differently - skip standard display
+            blueprint['led_wall'] = ProductRequirement(
+                category='Displays',
+                sub_category='Direct-View LED',
+                quantity=1,
+                priority=1,
+                justification='AI-determined LED wall for immersive content',
+                min_price=5000
+            )
+            display_qty = 0  # No standard displays needed
         else:
-            # Check client preferences
-            vc_brand_preference = self.requirements.get_brand_preferences().get('video_conferencing', 'Poly')
-
-        # Store the selected VC brand for ecosystem enforcement
-        self.selector.vc_ecosystem_brand = vc_brand_preference
-        st.info(f"🎯 Video Conferencing Ecosystem: **{vc_brand_preference}** (enforced for camera, codec, and touch panel)")
-
-        if room_area <= 250:  # Small huddle
+            display_qty = tags.get('display_quantity', 1)
+        
+        if display_qty > 0:
+            blueprint['primary_display'] = ProductRequirement(
+                category='Displays',
+                sub_category='Professional Display',
+                quantity=display_qty,
+                priority=1,
+                justification=f'AVIXA DISCAS: {display_size}" display',
+                size_requirement=display_size,
+                required_keywords=['display', '4k', str(display_size)],
+                blacklist_keywords=['mount', 'bracket'],
+                min_price=500,
+                strict_category_match=True
+            )
+            
+            blueprint['display_mount'] = ProductRequirement(
+                category='Mounts',
+                sub_category='Display Mount / Cart',
+                quantity=display_qty,
+                priority=2,
+                justification=f'Wall mounts for {display_qty}x {display_size}" displays',
+                mounting_type='wall',
+                size_requirement=display_size,
+                min_price=300 if display_size >= 75 else 150
+            )
+        
+        # === VIDEO SYSTEM (Using tags) ===
+        camera_type = tags.get('camera_type', 'Video Bar')
+        camera_count = tags.get('camera_count', 1)
+        
+        if camera_type == 'Video Bar' or room_area <= 400:
             blueprint['vc_system'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='Video Bar',
                 quantity=1,
                 priority=3,
-                justification=f'All-in-one {vc_brand_preference} solution for small space',
-                required_keywords=['video bar', 'all-in-one', vc_brand_preference.lower()],
-                blacklist_keywords=['codec', 'ptz', 'camera'],
-                min_price=800,
-                max_price=3000,
-                client_preference_weight=1.0,  # ENFORCE brand
-                strict_category_match=True
+                justification='All-in-one solution for room size',
+                required_keywords=['video bar', 'all-in-one'],
+                min_price=800
             )
-
-        elif 250 < room_area <= 400:  # Medium rooms
-            blueprint['vc_system'] = ProductRequirement(
-                category='Video Conferencing',
-                sub_category='Video Bar',
-                quantity=1,
-                priority=3,
-                justification=f'{vc_brand_preference} video bar with expansion capability',
-                required_keywords=['video bar', 'expansion', vc_brand_preference.lower()],
-                min_price=1200,
-                max_price=5000,
-                client_preference_weight=1.0,  # ENFORCE brand
-                strict_category_match=True
-            )
-
-        else:  # Large rooms (>400 sqft) - Full codec + PTZ system with ENFORCED ECOSYSTEM
-            # CODEC
+        else:
+            # Full codec + PTZ system
             blueprint['vc_codec'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='Room Kit / Codec',
                 quantity=1,
                 priority=3,
-                justification=f'{vc_brand_preference} codec for {self.requirements.vc_platform}',
-                required_keywords=['codec', 'room kit', vc_brand_preference.lower()],
-                blacklist_keywords=['video bar', 'webcam', 'usb'],
-                min_price=1500,
-                max_price=15000,
-                client_preference_weight=1.0,  # ENFORCE brand
-                strict_category_match=True
+                justification=f'Codec for {self.requirements.vc_platform}',
+                compatibility_requirements=[self.requirements.vc_platform], # CHANGE 3.1 APPLIED
+                required_keywords=['codec', 'room kit'],
+                min_price=1500
             )
             
-            # PTZ CAMERA (SAME BRAND AS CODEC)
             blueprint['ptz_camera'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='PTZ Camera',
-                quantity=1,
+                quantity=camera_count,
                 priority=4,
-                justification=f'{vc_brand_preference} PTZ camera for ecosystem compatibility',
-                required_keywords=['ptz', 'camera', 'optical', 'zoom', vc_brand_preference.lower()],
-                blacklist_keywords=['controller', 'remote', 'mount', 'accessory', 'webcam'],
-                min_price=1000,
-                max_price=10000,
-                client_preference_weight=1.0,  # ENFORCE brand
-                strict_category_match=True
+                justification=f'{camera_count}x PTZ camera(s)',
+                required_keywords=['ptz', 'camera', 'optical', 'zoom'],
+                min_price=1000
             )
             
-            # CAMERA MOUNT
-            blueprint['camera_mount'] = ProductRequirement(
-                category='Mounts',
-                sub_category='Camera Mount',
-                quantity=1,
-                priority=4.5,
-                justification=f'Mounting hardware for {vc_brand_preference} PTZ camera',
-                required_keywords=['camera', 'mount', 'ptz', 'bracket'],
-                blacklist_keywords=['display', 'speaker', 'projector'],
-                min_price=150,
-                max_price=400
-            )
-            
-            # TOUCH CONTROLLER (SAME BRAND AS CODEC)
-            blueprint['touch_controller'] = ProductRequirement(
-                category='Video Conferencing',
-                sub_category='Touch Controller / Panel',
-                quantity=1,
-                priority=5,
-                justification=f'{vc_brand_preference} touch controller for native integration',
-                required_keywords=['touch', 'controller', 'panel', vc_brand_preference.lower()],
-                blacklist_keywords=['crestron', 'extron', 'amx'] if vc_brand_preference != 'Crestron' else [],
-                min_price=300,
-                client_preference_weight=1.0,  # ENFORCE brand
-                strict_category_match=True
-            )
-
-        # === AUDIO SYSTEM (Using AVIXA A102.01) ===
-        st.success(f"✅ AVIXA A102.01: {avixa_calcs['audio']['speakers_needed']} speakers needed for ±3dB uniformity")
-        st.success(f"✅ AVIXA Microphone Coverage: {avixa_calcs['microphones']['mics_needed']} microphones required")
+            if tags.get('needs_matrix_switcher'):
+                blueprint['matrix_switcher'] = ProductRequirement(
+                    category='Signal Management',
+                    sub_category='Matrix Switcher',
+                    quantity=1,
+                    priority=5,
+                    justification='Video switching for multi-camera setup',
+                    min_price=1000
+                )
         
-        mic_type_sub = 'Ceiling Microphone' if room_area > 400 else 'Table/Boundary Microphone'
-        min_mic_price = 400 if room_area > 400 else 150
-        blueprint['microphones'] = ProductRequirement(
-            category='Audio', sub_category=mic_type_sub, quantity=avixa_calcs['microphones']['mics_needed'], priority=6,
-            justification=f"AVIXA-calculated {avixa_calcs['microphones']['mics_needed']}x mics for {room_area:.0f} sqft",
-            required_keywords=['microphone', 'ceiling' if 'Ceiling' in mic_type_sub else 'table', 'array'],
-            blacklist_keywords=['usb', 'webcam'] if 'Ceiling' in mic_type_sub else ['usb'], min_price=min_mic_price
+        # === AUDIO SYSTEM (Using AVIXA + tags) ===
+        mics_needed = avixa_calcs['microphones']['mics_needed']
+        mic_type = tags.get('microphone_type', 'Table')
+        
+        # ✅ FIX: Host/Expansion Logic
+        mic_type_sub = 'Ceiling Microphone' if mic_type == 'Ceiling' else 'Table/Boundary Microphone'
+        preferred_audio_brand = self.requirements.get_brand_preferences().get('audio', 'No Preference')
+        
+        if mics_needed > 1 and preferred_audio_brand == 'Biamp' and 'Ceiling' in mic_type_sub:
+            # Special Biamp ecosystem logic
+            blueprint['mic_host'] = ProductRequirement(
+                category='Audio',
+                sub_category='Ceiling Microphone',
+                quantity=1,
+                priority=6,
+                justification='Biamp Tesira host microphone',
+                required_keywords=['host', 'tesira', 'tcm-x', 'tcm-xa', 'biamp'],
+                min_price=400
+            )
+            blueprint['mic_expansion'] = ProductRequirement(
+                category='Audio',
+                sub_category='Ceiling Microphone',
+                quantity=mics_needed - 1,
+                priority=6,
+                justification=f'{mics_needed - 1}x Biamp expansion microphones',
+                required_keywords=['expansion', 'tesira', 'tcm-xex', 'biamp'],
+                min_price=300
+            )
+        else:
+            # Standard microphone logic
+            blueprint['microphones'] = ProductRequirement(
+                category='Audio',
+                sub_category=mic_type_sub,
+                quantity=mics_needed,
+                priority=6,
+                justification=f'AVIXA: {mics_needed}x microphones',
+                min_price=400 if 'Ceiling' in mic_type_sub else 150
+            )
+        
+        # Speakers (AVIXA-calculated)
+        speakers_needed = avixa_calcs['audio']['speakers_needed']
+        speaker_type = tags.get('speaker_type', 'Ceiling')
+        speaker_sub = 'Ceiling Loudspeaker' if speaker_type == 'Ceiling' else 'Wall-mounted Loudspeaker'
+        
+        blueprint['ceiling_speakers'] = ProductRequirement(
+            category='Audio',
+            sub_category=speaker_sub,
+            quantity=speakers_needed,
+            priority=8,
+            justification=f'AVIXA A102.01: {speakers_needed}x speakers',
+            required_keywords=['ceiling' if speaker_type == 'Ceiling' else 'wall', 'speaker'],
+            blacklist_keywords=['portable', 'powered', 'grille'],
+            min_price=100
         )
         
-        if is_large_room:
-            # ✅ CRITICAL: Brand matching with microphones
-            mic_brand = None
-            if 'microphones' in blueprint:
-                # Get the brand preference for microphones
-                mic_brand_pref = self.requirements.get_brand_preferences().get('audio', 'No Preference')
-                if mic_brand_pref != 'No Preference':
-                    mic_brand = mic_brand_pref
-            
-            # Build DSP requirement with brand matching
-            dsp_keywords = ['dsp', 'processor', 'digital signal processor', 'tesira', 'qsc core', 'biamp']
-            dsp_blacklist = ['mixer', 'amplifier', 'speaker', 'touchmix', 'live sound', 'portable mixer', 
-                             'analog mixer', 'powered mixer', 'summing']
-            
-            if mic_brand:
-                # Add brand to keywords for ecosystem matching
-                dsp_keywords.append(mic_brand.lower())
-                st.info(f"🎯 Audio Ecosystem: Matching DSP to {mic_brand} microphones")
-            
+        # DSP (if needed)
+        if tags.get('needs_dsp'):
             blueprint['audio_dsp'] = ProductRequirement(
                 category='Audio',
                 sub_category='DSP / Audio Processor / Mixer',
                 quantity=1,
                 priority=7,
-                justification=f"AVIXA-required conferencing DSP with AEC for {room_area:.0f} sqft room",
-                required_keywords=dsp_keywords,
-                blacklist_keywords=dsp_blacklist,
-                min_price=1500,  # Real conferencing DSPs start at $1500
-                max_price=15000,
-                client_preference_weight=1.0 if mic_brand else 0.5,
-                strict_category_match=True
+                justification='AVIXA-required conferencing DSP with AEC',
+                required_keywords=['dsp', 'processor', 'tesira', 'qsc core', 'biamp'],
+                blacklist_keywords=['mixer', 'amplifier', 'touchmix'],
+                min_price=1500
             )
         
-        # ✅ FIX 6: PREVENT SELECTING GRILLES INSTEAD OF SPEAKERS
-        blueprint['ceiling_speakers'] = ProductRequirement(
-            category='Audio', sub_category='Ceiling Loudspeaker', quantity=avixa_calcs['audio']['speakers_needed'], priority=8,
-            justification=f"AVIXA A102.01: {avixa_calcs['audio']['speakers_needed']}x speakers for uniform coverage",
-            required_keywords=['ceiling', 'speaker', 'in-ceiling'], 
-            blacklist_keywords=['portable', 'powered', 'grille', 'cover', 'trim', 'accessory'], 
-            min_price=100
-        )
-        
+        # Amplifier (AVIXA SPL calculation)
         recommended_power = avixa_calcs['spl']['recommended_power_watts']
         blueprint['power_amplifier'] = ProductRequirement(
-            category='Audio', sub_category='Amplifier', quantity=1, priority=9,
-            justification=f"AVIXA SPL: {recommended_power:.0f}W amplifier for {avixa_calcs['spl']['target_spl_db']}dB SPL",
-            required_keywords=['amplifier', 'power', 'channel'], blacklist_keywords=['dsp', 'mixer'], min_price=500
+            category='Audio',
+            sub_category='Amplifier',
+            quantity=1,
+            priority=9,
+            justification=f'AVIXA SPL: {recommended_power:.0f}W amplifier',
+            required_keywords=['amplifier', 'power', 'channel'],
+            blacklist_keywords=['dsp', 'mixer', 'summing'],
+            min_price=500
         )
         
-        # === INFRASTRUCTURE & CONNECTIVITY ===
-        # ✅ FIX 1 & 2: ADD RACK AND PDU for systems with codecs/amps
-        if is_large_room:
+        # === INFRASTRUCTURE ===
+        if tags.get('needs_rack'):
             blueprint['av_rack'] = ProductRequirement(
                 category='Infrastructure',
                 sub_category='AV Rack',
                 quantity=1,
                 priority=10,
-                justification='Houses codec, DSP, amplifier, and network equipment (minimum 12U)',
-                required_keywords=['rack', '12u', 'equipment', 'enclosure'],
-                blacklist_keywords=['shelf', 'mount', 'bracket', 'accessory'],
-                min_price=500,
-                max_price=2500
+                justification='Houses codec, DSP, amplifier',
+                required_keywords=['rack', '12u', 'equipment'],
+                blacklist_keywords=['shelf', 'mount'],
+                min_price=500
             )
+            
+            # ✅ Also add PDU if rack is added
             blueprint['rack_pdu'] = ProductRequirement(
                 category='Infrastructure',
                 sub_category='Power (PDU/UPS)',
@@ -787,13 +742,16 @@ class OptimizedBOQGenerator:
             )
 
         blueprint['network_switch'] = ProductRequirement(
-            category='Networking', sub_category='Network Switch', quantity=1, priority=12,
-            justification='Managed PoE switch for VC system and other endpoints',
-            required_keywords=['switch', 'poe', 'managed', 'gigabit'],
-            blacklist_keywords=['unmanaged', 'hub'], min_price=300, max_price=1500
+            category='Networking',
+            sub_category='Network Switch',
+            quantity=1,
+            priority=12,
+            justification='Managed PoE switch',
+            required_keywords=['switch', 'poe', 'managed'],
+            min_price=300
         )
         
-        # ✅ FIX 5: ADD PROPER TABLE CONNECTIVITY BOX
+        # Table connectivity, cables, etc. (standard logic remains)
         blueprint['table_connectivity'] = ProductRequirement(
             category='Cables & Connectivity',
             sub_category='Wall & Table Plate Module',
@@ -1110,7 +1068,18 @@ class OptimizedBOQGenerator:
             'Town Hall': 'Multipurpose Event Room (40+ People)',
             'Auditorium': 'Multipurpose Event Room (40+ People)'
         }
-        return mapping.get(acim_room_type, 'Standard Conference Room (6-8 People)')
+        
+        # Try exact match first
+        if acim_room_type in mapping:
+            return mapping[acim_room_type]
+        
+        # Try partial match
+        for key, value in mapping.items():
+            if key.lower() in acim_room_type.lower() or acim_room_type.lower() in key.lower():
+                return value
+        
+        # Default fallback
+        return 'Standard Conference Room (6-8 People)'
     
     def calculate_boq_quality_score(self, boq_items: List[Dict], validation_results: Dict) -> Dict[str, Any]:
         """
