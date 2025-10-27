@@ -159,10 +159,9 @@ class AVIXADesigner:
     
     @staticmethod
     def calculate_microphone_coverage(room_area: float, table_config: str, 
-                                      room_type: str = "Conference") -> Dict:
+                                      room_type: str) -> Dict:
         """
-        AVIXA Microphone Coverage Standards
-        Section 2 of guidelines
+        AVIXA Microphone Coverage Standards - Section 2
         """
         if table_config == "round_table":
             # Boundary/table microphones

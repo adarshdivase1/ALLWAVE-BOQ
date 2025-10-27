@@ -241,64 +241,333 @@ Return ONLY valid JSON, no other text.
                 'closest_standard_profile': 'Standard Conference Room (6-8 People)',
                 'confidence': 0.5
             }
-
-    # --------------------------------------------------------------------
-    # CHANGE 1.1 (DELETE)
-    # The 'generate_custom_room_blueprint' function has been deleted.
-    # --------------------------------------------------------------------
-
-
-    # --------------------------------------------------------------------
-    # CHANGE 1.1 (ADD)
-    # New function to replace 'generate_custom_room_blueprint'.
-    # This converts AI analysis into tags for the unified blueprint generator.
-    # --------------------------------------------------------------------
-    def extract_requirements_tags(self, room_characteristics: Dict, room_dimensions: Dict) -> Dict:
+    
+    def generate_custom_room_blueprint(self, room_characteristics: Dict, 
+                                       room_dimensions: Dict, 
+                                       client_preferences: Any) -> List:
         """
-        NEW METHOD: Convert AI analysis into structured tags for the blueprint generator.
-        This REPLACES generate_custom_room_blueprint.
+        Generate equipment blueprint for custom room based on AI analysis
+        Uses AVIXA standards but adapts to unique requirements
         """
+        from components.intelligent_product_selector import ProductRequirement
         
+        blueprint = []
+        
+        # Extract characteristics
         capacity = room_characteristics.get('capacity', 8)
         audio_req = room_characteristics.get('audio_requirements', {})
         video_req = room_characteristics.get('video_requirements', {})
         control_req = room_characteristics.get('control_requirements', {})
         
-        tags = {
-            'capacity': capacity,
-            'room_type_category': room_characteristics.get('room_type_category', 'Conference'),
-            
-            # Display tags
-            'display_quantity': 2 if video_req.get('display_type') == 'Dual' else 1,
-            'display_type': video_req.get('display_type', 'Single Large'),
-            'needs_video_wall': 'Video Wall' in video_req.get('display_type', ''),
-            'needs_led_wall': 'LED Wall' in video_req.get('display_type', ''),
-            
-            # Video tags
-            'camera_type': video_req.get('camera_type', 'Video Bar'),
-            'camera_count': 2 if 'Multi-camera' in video_req.get('camera_type', '') else 1,
-            'needs_broadcast_cameras': 'Broadcast' in video_req.get('camera_type', ''),
-            'needs_matrix_switcher': 'Multi-camera' in video_req.get('camera_type', ''),
-            
-            # Audio tags
-            'microphone_type': audio_req.get('microphone_type', 'Table'),
-            'speaker_type': audio_req.get('speaker_type', 'Ceiling'),
-            'needs_dsp': audio_req.get('dsp_required', True),
-            'needs_voice_reinforcement': room_dimensions.get('area', 0) > 800,
-            
-            # Control tags
-            'control_complexity': control_req.get('complexity', 'Standard'),
-            'needs_advanced_control': control_req.get('complexity') in ['Advanced', 'Custom'],
-            
-            # Infrastructure tags
-            'needs_rack': room_dimensions.get('area', 0) > 400 or audio_req.get('dsp_required'),
-            'needs_wireless_presentation': True,  # Default
-            
-            # Special features
-            'special_features': room_characteristics.get('special_features', []),
-        }
+        # 1. DISPLAY SYSTEM (based on AI analysis)
+        display_type = video_req.get('display_type', 'Single Large')
         
-        return tags
+        if display_type == 'Video Wall':
+            blueprint.append(ProductRequirement(
+                category='Displays',
+                sub_category='Video Wall Display',
+                quantity=4,  # 2x2 video wall
+                priority=1,
+                justification='AI-determined video wall configuration for high-impact presentation',
+                min_price=1000,
+                strict_category_match=True
+            ))
+        elif display_type == 'LED Wall':
+            blueprint.append(ProductRequirement(
+                category='Displays',
+                sub_category='Direct-View LED',
+                quantity=1,
+                priority=1,
+                justification='AI-determined LED wall for immersive content',
+                min_price=5000,
+                strict_category_match=True
+            ))
+        elif display_type == 'Dual':
+            blueprint.append(ProductRequirement(
+                category='Displays',
+                sub_category='Professional Display',
+                quantity=2,
+                priority=1,
+                justification='AI-determined dual display configuration',
+                min_price=800,
+                strict_category_match=True
+            ))
+        else:
+            # Calculate display size based on room dimensions
+            from components.av_designer import AVIXADesigner
+            designer = AVIXADesigner()
+            display_calcs = designer.calculate_display_size_discas(
+                room_dimensions['length'],
+                room_dimensions['width'],
+                content_type='BDM'
+            )
+            
+            blueprint.append(ProductRequirement(
+                category='Displays',
+                sub_category='Professional Display',
+                quantity=1,
+                priority=1,
+                justification=f'AVIXA DISCAS: {display_calcs["selected_size_inches"]}" display',
+                size_requirement=display_calcs['selected_size_inches'],
+                min_price=500,
+                strict_category_match=True
+            ))
+        
+        # 2. VIDEO SYSTEM (based on AI analysis)
+        camera_type = video_req.get('camera_type', 'Video Bar')
+        
+        if camera_type == 'Broadcast' or camera_type == 'Multi-camera':
+            blueprint.append(ProductRequirement(
+                category='Video Conferencing',
+                sub_category='PTZ Camera',
+                quantity=2,
+                priority=2,
+                justification='AI-determined multi-camera broadcast setup',
+                min_price=1500,
+                strict_category_match=True
+            ))
+            
+            blueprint.append(ProductRequirement(
+                category='Signal Management',
+                sub_category='Matrix Switcher',
+                quantity=1,
+                priority=3,
+                justification='Video switching for multi-camera setup',
+                min_price=1000,
+                strict_category_match=True
+            ))
+        elif camera_type == 'PTZ':
+            blueprint.append(ProductRequirement(
+                category='Video Conferencing',
+                sub_category='PTZ Camera',
+                quantity=1,
+                priority=2,
+                justification='AI-determined PTZ camera for flexible coverage',
+                min_price=1000,
+                strict_category_match=True
+            ))
+        else:  # Video Bar
+            blueprint.append(ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Video Bar',
+                quantity=1,
+                priority=2,
+                justification='AI-determined all-in-one video bar solution',
+                min_price=800,
+                strict_category_match=True
+            ))
+        
+        # 3. AUDIO SYSTEM (based on AI analysis and AVIXA A102.01)
+        mic_type = audio_req.get('microphone_type', 'Table')
+        speaker_type = audio_req.get('speaker_type', 'Ceiling')
+        dsp_required = audio_req.get('dsp_required', True)
+        
+        # Calculate speaker coverage
+        from components.av_designer import AVIXADesigner
+        designer = AVIXADesigner()
+        audio_calcs = designer.calculate_audio_coverage_a102(
+            room_dimensions['area'],
+            room_dimensions['ceiling_height'],
+            room_characteristics['room_type_category'],
+            capacity
+        )
+        
+        # Microphones
+        if mic_type == 'Ceiling':
+            mic_count = max(2, int(room_dimensions['area'] / 150))
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Ceiling Microphone',
+                quantity=mic_count,
+                priority=4,
+                justification=f'AI-determined ceiling mic array ({mic_count} units for {room_dimensions["area"]:.0f} sq ft)',
+                min_price=400,
+                strict_category_match=True
+            ))
+        elif mic_type == 'Wireless':
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Wireless Microphone System',
+                quantity=2,
+                priority=4,
+                justification='AI-determined wireless microphone system for presenter mobility',
+                min_price=600,
+                strict_category_match=True
+            ))
+        else:  # Table
+            mic_count = max(2, int(room_dimensions['area'] / 80))
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Table/Boundary Microphone',
+                quantity=mic_count,
+                priority=4,
+                justification=f'AI-determined table microphones ({mic_count} units)',
+                min_price=150,
+                strict_category_match=True
+            ))
+        
+        # DSP (if required)
+        if dsp_required:
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='DSP / Audio Processor / Mixer',
+                quantity=1,
+                priority=5,
+                justification='AI-determined DSP for acoustic echo cancellation and audio processing',
+                min_price=1500,
+                strict_category_match=True
+            ))
+        
+        # Speakers
+        speaker_count = audio_calcs['speakers_needed']
+        
+        if speaker_type == 'Line Array':
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Loudspeaker / Speaker',
+                quantity=2,
+                priority=6,
+                justification='AI-determined line array speakers for large space coverage',
+                min_price=2000,
+                strict_category_match=True
+            ))
+        elif speaker_type == 'Wall':
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Wall-mounted Loudspeaker',
+                quantity=speaker_count,
+                priority=6,
+                justification=f'AVIXA A102.01: {speaker_count} wall speakers for uniform coverage',
+                min_price=200,
+                strict_category_match=True
+            ))
+        else:  # Ceiling (most common)
+            blueprint.append(ProductRequirement(
+                category='Audio',
+                sub_category='Ceiling Loudspeaker',
+                quantity=speaker_count,
+                priority=6,
+                justification=f'AVIXA A102.01: {speaker_count} ceiling speakers (±3dB uniformity)',
+                min_price=100,
+                strict_category_match=True
+            ))
+        
+        # Amplifier
+        spl_calcs = designer.calculate_required_amplifier_power(
+            room_dimensions['area'] * room_dimensions['ceiling_height'],
+            75  # Standard SPL target
+        )
+        
+        blueprint.append(ProductRequirement(
+            category='Audio',
+            sub_category='Amplifier',
+            quantity=1,
+            priority=7,
+            justification=f'AVIXA SPL: {spl_calcs["recommended_power_watts"]:.0f}W amplifier required',
+            min_price=500,
+            strict_category_match=True
+        ))
+        
+        # 4. CONTROL SYSTEM (based on complexity)
+        control_complexity = control_req.get('complexity', 'Standard')
+        
+        if control_complexity == 'Advanced' or control_complexity == 'Custom':
+            blueprint.append(ProductRequirement(
+                category='Control Systems',
+                sub_category='Control Processor',
+                quantity=1,
+                priority=8,
+                justification='AI-determined advanced control processor for complex system',
+                min_price=1000,
+                strict_category_match=True
+            ))
+            
+            blueprint.append(ProductRequirement(
+                category='Control Systems',
+                sub_category='Touch Panel',
+                quantity=1,
+                priority=9,
+                justification='AI-determined touch panel for advanced control',
+                min_price=500,
+                strict_category_match=True
+            ))
+        else:
+            # Use native VC control
+            blueprint.append(ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Touch Controller / Panel',
+                quantity=1,
+                priority=8,
+                justification='AI-determined native touch controller for VC system',
+                min_price=300,
+                strict_category_match=True
+            ))
+        
+        # 5. INFRASTRUCTURE (based on needs)
+        infrastructure_needs = room_characteristics.get('infrastructure_needs', [])
+        
+        # Always add essential infrastructure
+        blueprint.append(ProductRequirement(
+            category='Networking',
+            sub_category='Network Switch',
+            quantity=1,
+            priority=10,
+            justification='Managed PoE switch for AV endpoints',
+            required_keywords=['switch', 'poe', 'managed'],
+            min_price=300,
+            strict_category_match=True
+        ))
+        
+        # Add rack if complex system
+        if control_complexity in ['Advanced', 'Custom'] or dsp_required:
+            blueprint.append(ProductRequirement(
+                category='Infrastructure',
+                sub_category='AV Rack',
+                quantity=1,
+                priority=11,
+                justification='Equipment rack for centralized AV components',
+                min_price=500,
+                strict_category_match=True
+            ))
+        
+        # Connectivity
+        blueprint.append(ProductRequirement(
+            category='Cables & Connectivity',
+            sub_category='Wall & Table Plate Module',
+            quantity=1,
+            priority=12,
+            justification='Table connectivity for laptop input',
+            required_keywords=['table', 'connectivity', 'hdmi', 'usb-c'],
+            min_price=200,
+            strict_category_match=True
+        ))
+        
+        blueprint.append(ProductRequirement(
+            category='Cables & Connectivity',
+            sub_category='AV Cable',
+            quantity=6,
+            priority=13,
+            justification='HDMI and network cables for system interconnection',
+            required_keywords=['cable', 'hdmi'],
+            min_price=20,
+            strict_category_match=True
+        ))
+        
+        # Display mounts
+        display_mount_qty = blueprint[0].quantity if blueprint else 1
+        blueprint.append(ProductRequirement(
+            category='Mounts',
+            sub_category='Display Mount / Cart',
+            quantity=display_mount_qty,
+            priority=14,
+            justification=f'Wall mounts for {display_mount_qty} display(s)',
+            mounting_type='wall',
+            size_requirement=blueprint[0].size_requirement if blueprint and hasattr(blueprint[0], 'size_requirement') else None,
+            min_price=150,
+            strict_category_match=True
+        ))
+        
+        return blueprint
 
 
 # ============================================================================
@@ -320,12 +589,6 @@ def generate_boq_with_enhanced_room_analysis(
     """
     
     analyzer = EnhancedRoomAnalyzer(gemini_model, product_df)
-    
-    # Ensure dimensions have defaults
-    room_dimensions.setdefault('length', 20.0)
-    room_dimensions.setdefault('width', 15.0)
-    room_dimensions.setdefault('ceiling_height', 10.0)
-    room_dimensions.setdefault('area', room_dimensions['length'] * room_dimensions['width'])
     
     # Analyze room type
     analysis = analyzer.analyze_room_type(room_description, room_dimensions)
@@ -355,75 +618,19 @@ def generate_boq_with_enhanced_room_analysis(
         return boq_items, validation_results, analysis
     
     else:
-        # --------------------------------------------------------------------
-        # CHANGE 1.4 (MODIFY)
-        # This block is modified to use the new unified blueprint generator
-        # --------------------------------------------------------------------
-        
         # AI-powered custom room analysis
         st.info("🤖 Generating custom BOQ using AI analysis + AVIXA standards...")
         
         room_chars = analysis['room_characteristics']
         
-        # NEW: Convert AI analysis to tags (CHANGE 1.4)
-        tags = analyzer.extract_requirements_tags(room_chars, room_dimensions)
-
-        # NEW: Calculate AVIXA standards to pass to the unified blueprint generator
-        # (This logic was moved from the deleted 'generate_custom_room_blueprint' function
-        # to satisfy the dependency of the new '_build_blueprint_from_tags' method)
-        from components.av_designer import AVIXADesigner
-        designer = AVIXADesigner()
-        
-        display_calcs = designer.calculate_display_size_discas(
-            room_dimensions['length'],
-            room_dimensions['width'],
-            content_type='BDM'
-        )
-        audio_calcs = designer.calculate_audio_coverage_a102(
-            room_dimensions['area'],
-            room_dimensions['ceiling_height'],
-            room_chars.get('room_type_category', 'Conference'),
-            room_chars.get('capacity', 8)
-        )
-        spl_calcs = designer.calculate_required_amplifier_power(
-            room_dimensions['area'] * room_dimensions['ceiling_height'],
-            75  # Standard SPL target
-        )
-        # Estimate mic calcs based on deleted logic
-        mic_type = room_chars.get('audio_requirements', {}).get('microphone_type', 'Table')
-        if mic_type == 'Ceiling':
-            mics_needed = max(2, int(room_dimensions['area'] / 150))
-        else: # Table or other
-            mics_needed = max(2, int(room_dimensions['area'] / 80))
-        mic_calcs = {'mics_needed': mics_needed}
-        
-        avixa_calcs = {
-            'display': display_calcs,
-            'audio': audio_calcs,
-            'spl': spl_calcs,
-            'microphones': mic_calcs
-        }
-
-        # NEW: Use the SAME blueprint generator (CHANGE 1.4)
-        from components.optimized_boq_generator import OptimizedBOQGenerator
-        
-        generator = OptimizedBOQGenerator(
-            product_df=product_df,
-            client_requirements=client_requirements
+        # Generate custom blueprint
+        blueprint = analyzer.generate_custom_room_blueprint(
+            room_chars,
+            room_dimensions,
+            client_requirements
         )
         
-        # NEW: Generate blueprint using tags (CHANGE 1.4)
-        # This calls the new function from Step 1.2 (in the other file)
-        blueprint_dict = generator._build_blueprint_from_tags(
-            tags,
-            room_dimensions['area'],
-            room_dimensions['ceiling_height'],
-            avixa_calcs
-        )
-        # Convert blueprint dict to list for the selector loop
-        blueprint = list(blueprint_dict.values())
-        
-        # Use intelligent product selector (Original code)
+        # Use intelligent product selector
         from components.intelligent_product_selector import IntelligentProductSelector
         
         selector = IntelligentProductSelector(
@@ -451,7 +658,7 @@ def generate_boq_with_enhanced_room_analysis(
                 
                 boq_items.append(product)
         
-        # Validate (Original code)
+        # Validate
         validation_results = {
             'ai_analysis_used': True,
             'room_characteristics': room_chars,

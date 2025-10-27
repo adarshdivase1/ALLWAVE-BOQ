@@ -1,6 +1,5 @@
 # components/ui_components.py
 # COMPLETE ENHANCED VERSION - Aligned with boq_generator.py v2.0
-# INCLUDES CHANGES 5 & 7 from MASTER FIX PLAN
 
 import streamlit as st
 import pandas as pd
@@ -306,59 +305,6 @@ def create_multi_room_interface():
 
 # ==================== BOQ DISPLAY AND EDITING ====================
 
-# ✅ NEW FUNCTION (from Change 5)
-def show_validation_dashboard(boq_items, validation_results, selector):
-    """
-    NEW: Prominent validation dashboard at the TOP of BOQ display
-    """
-    
-    # Count issues by severity
-    critical = sum(1 for w in validation_results.get('warnings', []) if '🚨' in str(w))
-    high = sum(1 for w in validation_results.get('warnings', []) if '⚠️' in str(w) and '🚨' not in str(w))
-    medium = sum(1 for w in validation_results.get('warnings', []) if '💡' in str(w))
-    
-    if critical > 0:
-        st.error(f"### 🚨 {critical} CRITICAL ISSUE(S) - SYSTEM WILL NOT FUNCTION")
-        
-        for warning in validation_results.get('warnings', []):
-            if '🚨' in str(warning):
-                st.error(f"**{warning}**")
-        
-        st.markdown("---")
-        st.warning("⚠️ **Action Required:** Review and fix critical issues before proceeding.")
-    
-    elif high > 0:
-        st.warning(f"### ⚠️ {high} High-Priority Issue(s) Detected")
-        
-        for warning in validation_results.get('warnings', []):
-            if '⚠️' in str(warning) and '🚨' not in str(warning):
-                st.warning(f"{warning}")
-    
-    # Show metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total Items", len(boq_items))
-    
-    with col2:
-        matched = sum(1 for item in boq_items if item.get('matched'))
-        # Avoid division by zero if boq_items is empty (though dashboard shouldn't show)
-        if len(boq_items) > 0:
-            st.metric("Matched Products", matched, delta=f"{matched/len(boq_items)*100:.0f}%")
-        else:
-            st.metric("Matched Products", 0)
-
-    with col3:
-        avixa_score = validation_results.get('compliance_score', 0)
-        st.metric("AVIXA Compliance", f"{avixa_score:.0f}%", 
-                    delta="Compliant" if avixa_score >= 80 else "Review")
-    
-    with col4:
-        total_issues = critical + high + medium
-        st.metric("Total Issues", total_issues, 
-                    delta="Critical" if critical > 0 else "OK")
-
-
 def display_validation_summary(validation_results, selector):
     """Display comprehensive validation report with ECOSYSTEM WARNINGS"""
     
@@ -441,35 +387,6 @@ def update_boq_content_with_current_items():
 def display_boq_results(product_df, project_details):
     """Display BOQ results with EXPANDABLE CARDS showing Top 3 Reasons - PRODUCTION READY."""
     item_count = len(st.session_state.get('boq_items', []))
-
-    # ✅ NEW (from Change 5): Show validation dashboard FIRST
-    if st.session_state.get('validation_results') and st.session_state.get('boq_selector') and st.session_state.get('boq_items'):
-        show_validation_dashboard(
-            st.session_state.boq_items,
-            st.session_state.validation_results,
-            st.session_state.boq_selector
-        )
-
-    # ✅ NEW (from Change 7): Show optimization status
-    if len(st.session_state.get('project_rooms', [])) >= 3:
-        if st.session_state.get('multi_room_optimization_enabled', True):
-            st.info("""
-            🔧 **Multi-Room Optimization Active**
-            
-            Your BOQ has been optimized across all rooms:
-            - Shared network switch (eliminating individual switches)
-            - Centralized equipment rack (where feasible)
-            - Consolidated cabling infrastructure
-            
-            💰 **Estimated Savings:** 8-15% on infrastructure costs
-            """)
-        else:
-            st.warning("""
-            ℹ️ **Multi-Room Optimization Disabled**
-            
-            Each room will have independent equipment. Enable optimization in the sidebar 
-            to consolidate shared infrastructure and reduce costs.
-            """)
 
     st.subheader(f"📋 Generated Bill of Quantities ({item_count} items)")
 
