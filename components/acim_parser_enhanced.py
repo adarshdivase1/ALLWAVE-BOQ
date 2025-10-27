@@ -1,4 +1,3 @@
-# components/acim_parser_enhanced.py
 """
 CRITICAL FIX: Enhanced ACIM form parser that actually reads and uses client requirements
 """
@@ -86,14 +85,38 @@ def parse_auditorium_requirements(responses: Dict) -> AuditoriumRequirements:
     
     # Budget parsing
     budget_text = responses.get('budget', '')
-    budget_match = re.search(r'\$?([\d,]+)(?:\s*-\s*\$?([\d,]+))?', budget_text)
+    budget_match = re.search(r'\$?([\d,]+)?(?:\s*-\s*\$?([\d,]+))?', budget_text) # Regex modified to make groups optional
+    
+    # ======================= START: 🔴 CRITICAL FIX 🔴 =======================
     if budget_match:
-        low_budget = float(budget_match.group(1).replace(',', ''))
-        high_budget = float(budget_match.group(2).replace(',', '')) if budget_match.group(2) else low_budget * 1.2
-        estimated_budget = (low_budget + high_budget) / 2
+        # Get the matched strings, which might be None or empty
+        low_budget_str = budget_match.group(1).replace(',', '') if budget_match.group(1) else None
+        high_budget_str = budget_match.group(2).replace(',', '') if budget_match.group(2) else None
+
+        # CRITICAL FIX: Check if the string is non-empty before converting to float
+        low_budget = float(low_budget_str) if low_budget_str and low_budget_str.strip() else None
+        high_budget = float(high_budget_str) if high_budget_str and high_budget_str.strip() else None
+
+        # Logic to handle missing values
+        if low_budget is None and high_budget is None:
+             # Both are missing (e.g., " - "), fallback to capacity
+            estimated_budget = seating_capacity * 800
+        elif low_budget is None:
+            # Only low is missing (e.g., " - $2000"), use high to estimate
+            low_budget = high_budget * 0.8
+            estimated_budget = (low_budget + high_budget) / 2
+        elif high_budget is None:
+            # Only high is missing (e.g., "$1000 - " or just "$1000"), use low to estimate
+            high_budget = low_budget * 1.2
+            estimated_budget = (low_budget + high_budget) / 2
+        else:
+            # Both are present
+            estimated_budget = (low_budget + high_budget) / 2
+            
     else:
-        # Estimate based on capacity
+        # No budget match found, estimate based on capacity
         estimated_budget = seating_capacity * 800  # $800 per seat average
+    # ======================= END: 🔴 CRITICAL FIX 🔴 =========================
     
     return AuditoriumRequirements(
         seating_capacity=seating_capacity,
