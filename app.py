@@ -8,7 +8,7 @@ from pathlib import Path
 import logging
 import traceback
 import re  # <-- ADDED FOR CHANGE 6
-from typing import Tuple # <-- ADDED FOR CHANGE 6
+from typing import Tuple, List, Dict # <-- MODIFIED: ADDED List, Dict
 
 # Configure logging
 logging.basicConfig(
@@ -309,6 +309,143 @@ def show_login_page(logo_b64, page_icon_path):
             st.rerun()
         else:
             show_error_message("Access Denied. Use official AllWave credentials.")
+
+
+# ======================= START: NEW FUNCTION ADDED =======================
+def parse_acim_to_client_requirements(acim_responses: Dict) -> 'ClientRequirements':
+    """
+    Parse ACIM form responses into a ClientRequirements object.
+    Extracts all technical details from the form answers.
+    """
+    from components.smart_questionnaire import ClientRequirements
+    import json # Added import
+    
+    # Get the first room's responses (you filled out Conference/Meeting Room)
+    room_requirements = acim_responses.get('room_requirements', [])
+    if not room_requirements:
+        raise ValueError("No room requirements found in ACIM form")
+    
+    # Extract responses from the first room
+    responses = room_requirements[0]['responses']
+    
+    # Helper function to check if text contains keywords
+    def contains_any(text: str, keywords: List[str]) -> bool:
+        if not text:
+            return False
+        text_lower = text.lower()
+        return any(keyword.lower() in text_lower for keyword in keywords)
+    
+    # Parse each response
+    seating_layout = responses.get('seating_layout', '')
+    solution_type = responses.get('solution_type', '')
+    uc_platform = responses.get('uc_platform', '')
+    native_solution = responses.get('native_solution', '')
+    connectivity = responses.get('connectivity', '')
+    digital_whiteboard = responses.get('digital_whiteboard', '')
+    automation = responses.get('automation', '')
+    room_scheduler = responses.get('room_scheduler', '')
+    acoustic_solutions = responses.get('acoustic_solutions', '')
+    budget = responses.get('budget', '')
+    
+    # Extract capacity from seating_layout
+    capacity_match = re.search(r'(\d+)\s*people', seating_layout, re.IGNORECASE)
+    capacity = int(capacity_match.group(1)) if capacity_match else 12
+    
+    # Determine budget tier from budget response
+    budget_lower = budget.lower()
+    if any(term in budget_lower for term in ['25000', '25,000', '35000', '35,000']):
+        budget_tier = 'Premium'
+    elif any(term in budget_lower for term in ['15000', '20000']):
+        budget_tier = 'Standard'
+    else:
+        budget_tier = 'Standard'
+    
+    # Determine UC platform
+    if contains_any(uc_platform, ['teams', 'microsoft']):
+        vc_platform = 'Microsoft Teams'
+    elif contains_any(uc_platform, ['zoom']):
+        vc_platform = 'Zoom Rooms'
+    elif contains_any(uc_platform, ['webex', 'cisco']):
+        vc_platform = 'Cisco Webex'
+    else:
+        vc_platform = 'Microsoft Teams'
+    
+    # Determine display preferences
+    dual_display = contains_any(solution_type, ['dual', 'two displays', '2 displays'])
+    display_size = 75 if capacity >= 12 else 65
+    
+    # Determine if interactive display needed
+    interactive_display = contains_any(digital_whiteboard, ['yes', 'logitech scribe', 'kaptivo'])
+    
+    # Video conferencing preferences
+    native_vc = contains_any(native_solution, ['native', 'one-touch', 'touch panel'])
+    vc_brand = 'No Preference'  # Will be determined by UC platform
+    
+    # Camera preferences
+    auto_tracking = contains_any(native_solution, ['tracking', 'auto-track'])
+    camera_type = 'PTZ Camera' if capacity > 8 else 'Video Bar'
+    
+    # Audio preferences
+    voice_reinforcement = contains_any(acoustic_solutions, ['yes', 'acoustic', 'echo', 'reverberation'])
+    
+    # Connectivity
+    wireless_presentation = contains_any(connectivity, ['wireless', 'clickshare', 'solstice', 'miracast', 'airplay'])
+    
+    # Control and automation
+    lighting_control = contains_any(automation, ['yes', 'lighting', 'dimmable'])
+    
+    # Room scheduling
+    room_scheduling = contains_any(room_scheduler, ['yes', '10-inch', 'touch panel', 'outlook', '365'])
+    
+    # Recording/streaming
+    recording_needed = contains_any(solution_type, ['record', 'recording'])
+    streaming_needed = contains_any(solution_type, ['stream', 'streaming'])
+    
+    # Create ClientRequirements object with all parsed data
+    return ClientRequirements(
+        project_type='New Installation',
+        room_count=len(room_requirements),
+        primary_use_case='Video Conferencing' if native_vc else 'Presentations & Training',
+        budget_level=budget_tier,
+        
+        # Display preferences
+        display_brand_preference='No Preference',
+        display_size_preference=display_size,
+        dual_display_needed=dual_display,
+        interactive_display_needed=interactive_display,
+        
+        # Video conferencing
+        vc_platform=vc_platform,
+        vc_brand_preference=vc_brand,
+        camera_type_preference=camera_type,
+        auto_tracking_needed=auto_tracking,
+        
+        # Audio
+        audio_brand_preference='No Preference',
+        microphone_type='Ceiling Microphone' if capacity > 8 else 'Table/Boundary Microphones',
+        ceiling_vs_table_audio='Ceiling Audio' if capacity > 8 else 'Integrated in Video Bar',
+        voice_reinforcement_needed=voice_reinforcement,
+        
+        # Control
+        control_brand_preference='Crestron',  # Default for MTR
+        wireless_presentation_needed=wireless_presentation,
+        room_scheduling_needed=room_scheduling,
+        lighting_control_integration=lighting_control,
+        
+        # Infrastructure
+        existing_network_capable=True,
+        cable_management_type='In-Wall/Conduit',
+        ada_compliance_required=False,
+        power_infrastructure_adequate=True,
+        
+        # Special features
+        recording_capability_needed=recording_needed,
+        streaming_capability_needed=streaming_needed,
+        
+        # Additional requirements (raw text)
+        additional_requirements=f"ACIM Form Responses:\n{json.dumps(responses, indent=2)}"
+    )
+# ======================= END: NEW FUNCTION ADDED =======================
 
 
 def main():
@@ -717,7 +854,6 @@ def main():
             
             st.stop() # Stop execution if form not complete
         
-        # ======================= START: APPLIED CHANGE =======================
         # ✅ ENHANCED: Show ACIM form summary
         acim_data = st.session_state.acim_form_responses
         
@@ -736,7 +872,6 @@ def main():
                 st.write("**Company:** N/A")
             
             st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
-        # ======================= END: APPLIED CHANGE =======================
         
         # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
@@ -749,34 +884,44 @@ def main():
                 from components.optimized_boq_generator import OptimizedBOQGenerator
                 from components.smart_questionnaire import ClientRequirements
                 
-                # ✅ ENHANCED: Create requirements from ACIM + sidebar data
-                requirements = ClientRequirements(
-                    project_type='New Installation',
-                    room_count=len(acim_data['selected_rooms']),
-                    primary_use_case='Video Conferencing', # Default
-                    budget_level=st.session_state.get('budget_tier_slider', 'Standard'),
-                    
-                    # ✅ NEW: Extract from ACIM responses
-                    display_brand_preference=st.session_state.client_requirements.display_brand_preference 
-                        if 'client_requirements' in st.session_state 
-                        else 'No Preference',
-                    
-                    vc_platform=st.session_state.client_requirements.vc_platform
-                        if 'client_requirements' in st.session_state
-                        else 'Microsoft Teams',
-                    
-                    # Get from sidebar or defaults
-                    audio_brand_preference='No Preference',
-                    microphone_type='Table/Boundary Microphones',
-                    ceiling_vs_table_audio='Integrated in Video Bar',
-                    
-                    # Infrastructure from sidebar
-                    existing_network_capable=st.session_state.get('network_capability_select', 'Standard 1Gb') != 'Standard 1Gb',
-                    cable_management_type=st.session_state.get('cable_management_select', 'Exposed'),
-                    ada_compliance_required=st.session_state.get('ada_compliance_checkbox', False),
-                    
-                    additional_requirements=st.session_state.get('features_text_area', '')
-                )
+                # ======================= START: REPLACED BLOCK =======================
+                # ✅ PARSE ACIM FORM INTO CLIENT REQUIREMENTS
+                try:
+                    requirements = parse_acim_to_client_requirements(acim_data)
+                    st.success(f"✅ Parsed ACIM form: {requirements.vc_platform}, {requirements.primary_use_case}, Budget: {requirements.budget_level}")
+                except Exception as e:
+                    st.error(f"Failed to parse ACIM form: {e}")
+                    # Fallback to basic requirements
+                    requirements = ClientRequirements(
+                        project_type='New Installation',
+                        room_count=len(acim_data['selected_rooms']),
+                        primary_use_case='Video Conferencing',
+                        budget_level='Standard',
+                        display_brand_preference='No Preference',
+                        display_size_preference=65,
+                        dual_display_needed=False,
+                        interactive_display_needed=False,
+                        vc_platform='Microsoft Teams',
+                        vc_brand_preference='No Preference',
+                        camera_type_preference='Video Bar',
+                        auto_tracking_needed=False,
+                        audio_brand_preference='No Preference',
+                        microphone_type='Table/Boundary Microphones',
+                        ceiling_vs_table_audio='Integrated in Video Bar',
+                        voice_reinforcement_needed=False,
+                        control_brand_preference='No Preference',
+                        wireless_presentation_needed=False,
+                        room_scheduling_needed=False,
+                        lighting_control_integration=False,
+                        existing_network_capable=True,
+                        cable_management_type='Exposed',
+                        ada_compliance_required=False,
+                        power_infrastructure_adequate=True,
+                        recording_capability_needed=False,
+                        streaming_capability_needed=False,
+                        additional_requirements=''
+                    )
+                # ======================= END: REPLACED BLOCK =======================
                 
                 progress_bar.progress(30, text="🎯 Generating BOQ for each room...")
                 
@@ -838,12 +983,17 @@ def main():
                         'compliance_score': 0
                     }
                     
+                    total_score = 0
                     for room, val in all_validations.items():
                         combined_validation['warnings'].extend(val.get('warnings', []))
                         combined_validation['issues'].extend(val.get('issues', []))
-                        combined_validation['compliance_score'] += val.get('compliance_score', 0)
+                        total_score += val.get('compliance_score', 0)
                     
-                    combined_validation['compliance_score'] /= len(all_validations)
+                    if all_validations:
+                        combined_validation['compliance_score'] = total_score / len(all_validations)
+                    else:
+                        combined_validation['compliance_score'] = 0
+
                     
                     # Calculate quality score
                     quality_score = generator.calculate_boq_quality_score(all_boq_items, combined_validation)
@@ -883,7 +1033,7 @@ def main():
                         with st.expander("📊 Score Breakdown"):
                             for category, score in quality_score['breakdown'].items():
                                 max_score = quality_score['max_breakdown'][category]
-                                pct = (score / max_score) * 100
+                                pct = (score / max_score) * 100 if max_score > 0 else 0
                                 st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
                     
                     update_boq_content_with_current_items()
