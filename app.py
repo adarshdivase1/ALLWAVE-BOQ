@@ -137,9 +137,8 @@ def create_header(main_logo, partner_logos):
         </div>
         """, unsafe_allow_html=True)
 
-# ======================= START: ADDED HELPER FUNCTIONS (CHANGE 6) =======================
+# ======================= START: 🔴 REPLACED FUNCTION 🔴 =======================
 
-# 🔴 CFIX: Corrected this function to prevent `float('')` error
 def _extract_dimensions_from_text(text: str, default_length: float, default_width: float, default_height: float) -> Tuple[float, float, float]:
     """
     Extract room dimensions from ACIM form text response.
@@ -163,12 +162,12 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
             try:
                 g1 = match.group(1)
                 g2 = match.group(2)
-                g3 = match.group(3) # Can be None
+                g3 = match.group(3) if match.lastindex >= 3 else None
 
-                # Check for empty strings before float conversion
-                parsed_length = float(g1) if g1 else None
-                parsed_width = float(g2) if g2 else None
-                parsed_height = float(g3) if g3 else None
+                # ✅ CRITICAL FIX: Check for empty strings AND None before float conversion
+                parsed_length = float(g1) if g1 and g1.strip() else None
+                parsed_width = float(g2) if g2 and g2.strip() else None
+                parsed_height = float(g3) if g3 and g3.strip() else None
 
                 length = parsed_length if parsed_length is not None else default_length
                 width = parsed_width if parsed_width is not None else default_width
@@ -181,7 +180,7 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
                     if parsed_height is not None: height *= 3.281
                 
                 return length, width, height
-            except (ValueError, IndexError):
+            except (ValueError, IndexError, AttributeError):
                 continue
     
     # If no match, try to find just length and width
@@ -192,9 +191,9 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
             g1 = match.group(1)
             g2 = match.group(2)
             
-            # Check for empty strings before float conversion
-            parsed_length = float(g1) if g1 else None
-            parsed_width = float(g2) if g2 else None
+            # ✅ CRITICAL FIX: Check for empty strings before conversion
+            parsed_length = float(g1) if g1 and g1.strip() else None
+            parsed_width = float(g2) if g2 and g2.strip() else None
 
             length = parsed_length if parsed_length is not None else default_length
             width = parsed_width if parsed_width is not None else default_width
@@ -203,11 +202,13 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
                 if parsed_length is not None: length *= 3.281
                 if parsed_width is not None: width *= 3.281
             return length, width, default_height
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, AttributeError):
             pass
     
     # Fallback to defaults
     return default_length, default_width, default_height
+
+# ======================= END: 🔴 REPLACED FUNCTION 🔴 =======================
 
 
 def _map_acim_to_standard_room(acim_room_type: str) -> str:
@@ -822,7 +823,7 @@ def main():
         show_acim_form_questionnaire()
     # ==============================================================
         
-    # ======================= START: 🔴 REPLACED TAB 3 LOGIC 🔴 =======================
+    # ======================= START: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         
@@ -867,6 +868,7 @@ def main():
             
             st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
         
+        # ======================= START: APPLIED CHANGE =======================
         # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
                      type="primary", 
@@ -896,9 +898,25 @@ def main():
                     
                     progress_bar.progress(0.40, text="Analyzing seating capacity and stage requirements...")
                     
-                    # Generate auditorium BOQ
-                    boq_items, validation = generate_auditorium_boq(acim_data, product_df)
-                    
+                    # ======================= START: 🔴 APPLIED FIX 🔴 =======================
+                    try:
+                        # Generate auditorium BOQ
+                        boq_items, validation = generate_auditorium_boq(acim_data, product_df)
+                    except Exception as auditorium_error:
+                        st.error(f"❌ Auditorium BOQ generation failed: {auditorium_error}")
+                        
+                        # Show fallback message
+                        st.warning("⚠️ Attempting standard BOQ generation as fallback...")
+                        
+                        # Log the full error for debugging
+                        with st.expander("🔍 Technical Details"):
+                            st.code(traceback.format_exc())
+                        
+                        # Continue to fallback logic (don't stop completely)
+                        boq_items = []
+                        validation = {'warnings': ['Auditorium generation failed - using fallback']}
+                    # ======================= END: 🔴 APPLIED FIX 🔴 =========================
+
                     progress_bar.progress(0.80, text="Finalizing enterprise system design...")
                     
                     if boq_items:
@@ -932,49 +950,12 @@ def main():
                     progress_bar.progress(0.30, text="Parsing client requirements...")
                     
                     from components.optimized_boq_generator import OptimizedBOQGenerator
-                    from components.smart_questionnaire import ClientRequirements
+                    from components.smart_questionnaire import ClientRequirements # Added this import for robustness
                     
-                    # ✅ Parse ACIM form (NEW: better error handling)
-                    try:
-                        requirements = parse_acim_to_client_requirements(acim_data)
-                        st.success(f"✅ Parsed: {requirements.vc_platform}, Budget: {requirements.budget_level}")
-                    except Exception as parse_error:
-                        st.error(f"❌ Failed to parse ACIM form: {parse_error}")
-                        
-                        # ✅ FALLBACK: Use safe defaults
-                        st.warning("⚠️ Using default requirements as fallback")
-                        requirements = ClientRequirements(
-                            project_type='New Installation',
-                            room_count=len(acim_data.get('selected_rooms', [])),
-                            primary_use_case='Video Conferencing',
-                            budget_level='Standard',
-                            display_brand_preference='No Preference',
-                            display_size_preference=0,
-                            dual_display_needed=False,
-                            interactive_display_needed=False,
-                            vc_platform='Microsoft Teams',
-                            vc_brand_preference='No Preference',
-                            camera_type_preference='Auto',
-                            auto_tracking_needed=False,
-                            audio_brand_preference='No Preference',
-                            microphone_type='Auto',
-                            ceiling_vs_table_audio='Auto',
-                            voice_reinforcement_needed=False,
-                            control_brand_preference='No Preference',
-                            wireless_presentation_needed=False,
-                            room_scheduling_needed=False,
-                            lighting_control_integration=False,
-                            existing_network_capable=True,
-                            cable_management_type='Exposed',
-                            ada_compliance_required=False,
-                            power_infrastructure_adequate=True,
-                            recording_capability_needed=False,
-                            streaming_capability_needed=False,
-                            additional_requirements=''
-                        )
-                    
+                    requirements = parse_acim_to_client_requirements(acim_data)
+
                     progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
-                    
+                
                     # ✅ VALIDATE product_df exists
                     if product_df is None or product_df.empty:
                         st.error("❌ CRITICAL: Product catalog not loaded")
@@ -1124,7 +1105,7 @@ def main():
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
         
-        # ======================= END: 🔴 REPLACED TAB 3 LOGIC 🔴 =======================
+        # ======================= END: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
