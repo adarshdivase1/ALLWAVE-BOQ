@@ -7,6 +7,8 @@ import base64
 from pathlib import Path
 import logging
 import traceback
+import re  # <-- ADDED FOR CHANGE 6
+from typing import Tuple # <-- ADDED FOR CHANGE 6
 
 # Configure logging
 logging.basicConfig(
@@ -134,6 +136,87 @@ def create_header(main_logo, partner_logos):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+# ======================= START: ADDED HELPER FUNCTIONS (CHANGE 6) =======================
+
+def _extract_dimensions_from_text(text: str, default_length: float, default_width: float, default_height: float) -> Tuple[float, float, float]:
+    """
+    Extract room dimensions from ACIM form text response.
+    Looks for patterns like: "24ft x 18ft" or "7m x 6m x 3m" or "24' x 18' x 10'"
+    """
+    import re
+    
+    if not text:
+        return default_length, default_width, default_height
+    
+    # Try to find dimensions in various formats
+    patterns = [
+        r'(\d+\.?\d*)\s*(?:ft|feet|\')\s*[xX×]\s*(\d+\.?\d*)\s*(?:ft|feet|\')\s*[xX×]?\s*(\d+\.?\d*)\s*(?:ft|feet|\')?',  # 24ft x 18ft x 10ft
+        r'(\d+\.?\d*)\s*[xX×]\s*(\d+\.?\d*)\s*[xX×]?\s*(\d+\.?\d*)',  # 24 x 18 x 10
+        r'(\d+\.?\d*)m\s*[xX×]\s*(\d+\.?\d*)m\s*[xX×]?\s*(\d+\.?\d*)m?',  # 7m x 6m x 3m
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                length = float(match.group(1))
+                width = float(match.group(2))
+                height = float(match.group(3)) if match.group(3) else default_height
+                
+                # Convert meters to feet if needed
+                if 'm' in text.lower() and 'ft' not in text.lower():
+                    length *= 3.281
+                    width *= 3.281
+                    height *= 3.281
+                
+                return length, width, height
+            except (ValueError, IndexError):
+                continue
+    
+    # If no match, try to find just length and width
+    simple_pattern = r'(\d+\.?\d*)\s*(?:ft|feet|\'|m)?\s*[xX×]\s*(\d+\.?\d*)\s*(?:ft|feet|\'|m)?'
+    match = re.search(simple_pattern, text, re.IGNORECASE)
+    if match:
+        try:
+            length = float(match.group(1))
+            width = float(match.group(2))
+            if 'm' in text.lower() and 'ft' not in text.lower():
+                length *= 3.281
+                width *= 3.281
+            return length, width, default_height
+        except (ValueError, IndexError):
+            pass
+    
+    # Fallback to defaults
+    return default_length, default_width, default_height
+
+
+def _map_acim_to_standard_room(acim_room_type: str) -> str:
+    """Map ACIM room types to standard room profiles"""
+    mapping = {
+        'Conference/Meeting Room/Boardroom': 'Standard Conference Room (6-8 People)',
+        'Experience Center': 'Multipurpose Event Room (40+ People)',
+        'Reception/Digital Signage': 'Small Huddle Room (2-3 People)',
+        'Training Room': 'Training Room (15-25 People)',
+        'Network Operations Center/Command Center': 'Large Conference Room (8-12 People)',
+        'Town Hall': 'Multipurpose Event Room (40+ People)',
+        'Auditorium': 'Multipurpose Event Room (40+ People)'
+    }
+    
+    # Try exact match first
+    if acim_room_type in mapping:
+        return mapping[acim_room_type]
+    
+    # Try partial match
+    for key, value in mapping.items():
+        if key.lower() in acim_room_type.lower() or acim_room_type.lower() in key.lower():
+            return value
+    
+    # Default fallback
+    return 'Standard Conference Room (6-8 People)'
+
+# ======================= END: ADDED HELPER FUNCTIONS (CHANGE 6) =======================
 
 
 def validate_required_fields():
@@ -608,17 +691,41 @@ def main():
         show_acim_form_questionnaire()
     # ==============================================================
         
+    # ======================= START: REPLACED TAB 3 LOGIC (CHANGE 6) =======================
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-        
-        # ======================= ENTIRE TAB 3 LOGIC REPLACED =======================
         
         # Check if ACIM form is completed
         if 'acim_form_responses' not in st.session_state or not st.session_state.acim_form_responses.get('selected_rooms'):
             st.warning("⚠️ Please complete the ACIM Form in the previous tab first.")
-            st.info("📝 The ACIM Form collects all necessary details about your project and room requirements.")
-            st.stop() # Stops execution of this tab if form is not complete
-
+            
+            # ✅ NEW: Show what's needed
+            with st.expander("ℹ️ What information is needed?"):
+                st.markdown("""
+                        The ACIM Form collects:
+                - **Client Details** (Name, Company, Location)
+                - **Room Types** (Select all room types in your project)
+                - **Room-Specific Requirements** (Dimensions, features, equipment preferences)
+                
+                **📋 Quick Start:**
+                1. Go to the "ACIM Form" tab
+                2. Fill in your details
+                3. Select room type(s)
+                4. Answer the questions for each room
+                5. Return here to generate the BOQ
+                """)
+            
+            st.stop() # Stop execution if form not complete
+        
+        # ✅ ENHANCED: Show ACIM form summary
+        acim_data = st.session_state.acim_form_responses
+        
+        with st.expander("📊 ACIM Form Summary", expanded=False):
+            st.write(f"**Client:** {acim_data.get('client_details', {}).get('name', 'N/A')}")
+            st.write(f"**Company:** {acim_data.get('client_details', {}).get('company_name', 'N/A')}")
+            st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
+        
+        # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
                      type="primary", 
                      use_container_width=True):
@@ -627,41 +734,35 @@ def main():
                 progress_bar = st.progress(0, text="Processing ACIM form data...")
                 
                 from components.optimized_boq_generator import OptimizedBOQGenerator
-                
-                # Get ACIM form data
-                acim_data = st.session_state.acim_form_responses
-                
-                # Create requirements from ACIM form (using defaults for now)
                 from components.smart_questionnaire import ClientRequirements
                 
+                # ✅ ENHANCED: Create requirements from ACIM + sidebar data
                 requirements = ClientRequirements(
                     project_type='New Installation',
                     room_count=len(acim_data['selected_rooms']),
-                    primary_use_case='Video Conferencing',
+                    primary_use_case='Video Conferencing', # Default
                     budget_level=st.session_state.get('budget_tier_slider', 'Standard'),
-                    display_brand_preference='No Preference',
-                    display_size_preference='AVIXA Recommended (Automatic)',
-                    dual_display_needed=False,
-                    interactive_display_needed=False,
-                    vc_platform='Microsoft Teams',
-                    vc_brand_preference='No Preference',
-                    camera_type_preference='All-in-One Video Bar (Recommended for small/medium rooms)',
-                    auto_tracking_needed=False,
+                    
+                    # ✅ NEW: Extract from ACIM responses
+                    display_brand_preference=st.session_state.client_requirements.display_brand_preference 
+                        if 'client_requirements' in st.session_state 
+                        else 'No Preference',
+                    
+                    vc_platform=st.session_state.client_requirements.vc_platform
+                        if 'client_requirements' in st.session_state
+                        else 'Microsoft Teams',
+                    
+                    # Get from sidebar or defaults
                     audio_brand_preference='No Preference',
                     microphone_type='Table/Boundary Microphones',
                     ceiling_vs_table_audio='Integrated in Video Bar',
-                    voice_reinforcement_needed=False,
-                    control_brand_preference='Native Platform Control (Teams Rooms/Zoom Rooms)',
-                    wireless_presentation_needed=True,
-                    room_scheduling_needed=False,
-                    lighting_control_integration=False,
-                    existing_network_capable=True,
-                    power_infrastructure_adequate=False,
-                    cable_management_type='In-Wall/Conduit (Professional)',
-                    ada_compliance_required=False,
-                    recording_capability_needed=False,
-                    streaming_capability_needed=False,
-                    additional_requirements=''
+                    
+                    # Infrastructure from sidebar
+                    existing_network_capable=st.session_state.get('network_capability_select', 'Standard 1Gb') != 'Standard 1Gb',
+                    cable_management_type=st.session_state.get('cable_management_select', 'Exposed'),
+                    ada_compliance_required=st.session_state.get('ada_compliance_checkbox', False),
+                    
+                    additional_requirements=st.session_state.get('features_text_area', '')
                 )
                 
                 progress_bar.progress(30, text="🎯 Generating BOQ for each room...")
@@ -671,21 +772,76 @@ def main():
                     client_requirements=requirements
                 )
                 
-                # Generate BOQ from ACIM form
-                boq_items, validation_results = generator.generate_boq_from_acim_form(acim_data)
+                # ✅ FIXED: Process each room from ACIM form
+                all_boq_items = []
+                all_validations = {}
+                
+                for idx, room_req in enumerate(acim_data.get('room_requirements', [])):
+                    room_type = room_req['room_type']
+                    responses = room_req['responses']
+                    
+                    # Parse room dimensions from ACIM responses
+                    # Look for the room dimensions question response
+                    dimensions_response = responses.get('room_dimensions', '') or responses.get('seating_layout', '')
+                    
+                    # ✅ NEW: Smart dimension extraction
+                    room_length, room_width, ceiling_height = _extract_dimensions_from_text(
+                        dimensions_response,
+                        default_length=28.0,
+                        default_width=20.0,
+                        default_height=10.0
+                    )
+                    
+                    st.info(f"Processing: {room_type} ({room_length}' x {room_width}')")
+                    
+                    # Map ACIM room type to standard room type
+                    standard_room_type = _map_acim_to_standard_room(room_type)
+                    
+                    # Generate BOQ for this room
+                    boq_items, validation = generator.generate_boq_for_room(
+                        room_type=standard_room_type,
+                        room_length=room_length,
+                        room_width=room_width,
+                        ceiling_height=ceiling_height
+                    )
+                    
+                    # Tag items with room name
+                    for item in boq_items:
+                        item['room_name'] = f"{room_type} ({idx+1})"
+                    
+                    all_boq_items.extend(boq_items)
+                    all_validations[room_type] = validation
+                    
+                    progress_bar.progress(30 + (idx+1)/len(acim_data['room_requirements'])*60, 
+                                         text=f"Processed room {idx+1}/{len(acim_data['room_requirements'])}")
                 
                 progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
                 
-                if boq_items:
+                if all_boq_items:
+                    # Combine all validations
+                    combined_validation = {
+                        'warnings': [],
+                        'issues': [],
+                        'compliance_score': 0
+                    }
+                    
+                    for room, val in all_validations.items():
+                        combined_validation['warnings'].extend(val.get('warnings', []))
+                        combined_validation['issues'].extend(val.get('issues', []))
+                        combined_validation['compliance_score'] += val.get('compliance_score', 0)
+                    
+                    combined_validation['compliance_score'] /= len(all_validations)
+                    
                     # Calculate quality score
-                    quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
+                    quality_score = generator.calculate_boq_quality_score(all_boq_items, combined_validation)
                     st.session_state.boq_quality_score = quality_score
                     
-                    st.session_state.boq_items = boq_items
-                    st.session_state.validation_results = validation_results
+                    st.session_state.boq_items = all_boq_items
+                    st.session_state.validation_results = combined_validation
                     st.session_state.boq_selector = generator.selector
                     
-                    # Display quality score
+                    # ✅ NEW: Display quality score with breakdown
+                    st.markdown("---")
                     col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
                     
                     with col_q1:
@@ -700,13 +856,12 @@ def main():
                         <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
                                      border-left: 4px solid {quality_score['color']}; 
                                      padding: 1rem; 
-                                     border-radius: 8px; 
-                                     margin: 1rem 0;">
+                                     border-radius: 8px;">
                             <h3 style="margin: 0; color: {quality_score['color']};">
                                 {quality_score['quality_level']}
                             </h3>
                             <p style="margin: 0.5rem 0 0 0; color: #666;">
-                                BOQ generated for {len(acim_data['selected_rooms'])} room type(s)
+                                Generated BOQ for {len(acim_data['selected_rooms'])} room type(s)
                             </p>
                         </div>
                         """, unsafe_allow_html=True)
@@ -723,6 +878,7 @@ def main():
                     progress_bar.progress(100, text="✅ BOQ generation complete!")
                     time.sleep(0.5)
                     progress_bar.empty()
+                    
                     show_success_message(f"BOQ Generated Successfully for {len(acim_data['selected_rooms'])} Room Type(s)")
                 else:
                     progress_bar.empty()
@@ -734,7 +890,7 @@ def main():
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
         
-        # ======================= END OF REPLACED LOGIC =======================
+        # ======================= END: REPLACED TAB 3 LOGIC (CHANGE 6) =======================
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
@@ -779,7 +935,7 @@ def main():
             # ============================ END OF NEW CODE ===========================
 
         else:
-            st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
+            st.info("👆 Complete the ACIM form and click 'Generate BOQ' to create your Bill of Quantities")
 
     with tab4:
         st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
