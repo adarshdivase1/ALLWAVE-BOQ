@@ -311,56 +311,50 @@ def show_login_page(logo_b64, page_icon_path):
             show_error_message("Access Denied. Use official AllWave credentials.")
 
 
-# ======================= START: NEW FUNCTION ADDED =======================
+# ======================= START: REPLACED FUNCTION (FIX 2.1) =======================
 def parse_acim_to_client_requirements(acim_responses: Dict) -> 'ClientRequirements':
     """
     Parse ACIM form responses into a ClientRequirements object.
-    Extracts all technical details from the form answers.
+    Extracts CLIENT PREFERENCES ONLY - no engineering decisions.
     """
     from components.smart_questionnaire import ClientRequirements
-    import json # Added import
+    import json
     
-    # Get the first room's responses (you filled out Conference/Meeting Room)
     room_requirements = acim_responses.get('room_requirements', [])
     if not room_requirements:
         raise ValueError("No room requirements found in ACIM form")
     
-    # Extract responses from the first room
     responses = room_requirements[0]['responses']
     
-    # Helper function to check if text contains keywords
+    # Helper function
     def contains_any(text: str, keywords: List[str]) -> bool:
         if not text:
             return False
         text_lower = text.lower()
         return any(keyword.lower() in text_lower for keyword in keywords)
     
-    # Parse each response
+    # Parse responses - PREFERENCES ONLY
     seating_layout = responses.get('seating_layout', '')
     solution_type = responses.get('solution_type', '')
     uc_platform = responses.get('uc_platform', '')
-    native_solution = responses.get('native_solution', '')
     connectivity = responses.get('connectivity', '')
     digital_whiteboard = responses.get('digital_whiteboard', '')
-    automation = responses.get('automation', '')
-    room_scheduler = responses.get('room_scheduler', '')
-    acoustic_solutions = responses.get('acoustic_solutions', '')
     budget = responses.get('budget', '')
     
-    # Extract capacity from seating_layout
+    # Extract capacity (FACT, not decision)
     capacity_match = re.search(r'(\d+)\s*people', seating_layout, re.IGNORECASE)
     capacity = int(capacity_match.group(1)) if capacity_match else 12
     
-    # Determine budget tier from budget response
+    # Determine budget tier (PREFERENCE)
     budget_lower = budget.lower()
-    if any(term in budget_lower for term in ['25000', '25,000', '35000', '35,000']):
+    if any(term in budget_lower for term in ['25000', '35000']):
         budget_tier = 'Premium'
     elif any(term in budget_lower for term in ['15000', '20000']):
         budget_tier = 'Standard'
     else:
         budget_tier = 'Standard'
     
-    # Determine UC platform
+    # UC Platform (PREFERENCE)
     if contains_any(uc_platform, ['teams', 'microsoft']):
         vc_platform = 'Microsoft Teams'
     elif contains_any(uc_platform, ['zoom']):
@@ -370,64 +364,46 @@ def parse_acim_to_client_requirements(acim_responses: Dict) -> 'ClientRequiremen
     else:
         vc_platform = 'Microsoft Teams'
     
-    # Determine display preferences
-    dual_display = contains_any(solution_type, ['dual', 'two displays', '2 displays'])
-    display_size = 75 if capacity >= 12 else 65
+    # CLIENT PREFERENCES (not engineering specs)
+    dual_display = contains_any(solution_type, ['dual', 'two displays'])
+    interactive_display = contains_any(digital_whiteboard, ['yes', 'logitech', 'kaptivo'])
+    native_vc = contains_any(responses.get('native_solution', ''), ['native', 'one-touch'])
+    auto_tracking = contains_any(responses.get('native_solution', ''), ['tracking'])
+    wireless_presentation = contains_any(connectivity, ['wireless', 'clickshare'])
+    lighting_control = contains_any(responses.get('automation', ''), ['yes', 'lighting'])
+    room_scheduling = contains_any(responses.get('room_scheduler', ''), ['yes', 'touch panel'])
+    voice_reinforcement = contains_any(responses.get('acoustic_solutions', ''), ['yes', 'acoustic'])
+    recording_needed = contains_any(solution_type, ['record'])
+    streaming_needed = contains_any(solution_type, ['stream'])
     
-    # Determine if interactive display needed
-    interactive_display = contains_any(digital_whiteboard, ['yes', 'logitech scribe', 'kaptivo'])
+    # ✅ REMOVED all display_size, camera_type decisions - let AVIXA decide!
     
-    # Video conferencing preferences
-    native_vc = contains_any(native_solution, ['native', 'one-touch', 'touch panel'])
-    vc_brand = 'No Preference'  # Will be determined by UC platform
-    
-    # Camera preferences
-    auto_tracking = contains_any(native_solution, ['tracking', 'auto-track'])
-    camera_type = 'PTZ Camera' if capacity > 8 else 'Video Bar'
-    
-    # Audio preferences
-    voice_reinforcement = contains_any(acoustic_solutions, ['yes', 'acoustic', 'echo', 'reverberation'])
-    
-    # Connectivity
-    wireless_presentation = contains_any(connectivity, ['wireless', 'clickshare', 'solstice', 'miracast', 'airplay'])
-    
-    # Control and automation
-    lighting_control = contains_any(automation, ['yes', 'lighting', 'dimmable'])
-    
-    # Room scheduling
-    room_scheduling = contains_any(room_scheduler, ['yes', '10-inch', 'touch panel', 'outlook', '365'])
-    
-    # Recording/streaming
-    recording_needed = contains_any(solution_type, ['record', 'recording'])
-    streaming_needed = contains_any(solution_type, ['stream', 'streaming'])
-    
-    # Create ClientRequirements object with all parsed data
     return ClientRequirements(
         project_type='New Installation',
         room_count=len(room_requirements),
         primary_use_case='Video Conferencing' if native_vc else 'Presentations & Training',
         budget_level=budget_tier,
         
-        # Display preferences
+        # Display PREFERENCES (not specs)
         display_brand_preference='No Preference',
-        display_size_preference=display_size,
+        display_size_preference=0,  # ✅ CHANGED: Let AVIXA calculate
         dual_display_needed=dual_display,
         interactive_display_needed=interactive_display,
         
-        # Video conferencing
+        # Video conferencing PREFERENCES
         vc_platform=vc_platform,
-        vc_brand_preference=vc_brand,
-        camera_type_preference=camera_type,
+        vc_brand_preference='No Preference',
+        camera_type_preference='Auto',  # ✅ CHANGED: Let generator decide
         auto_tracking_needed=auto_tracking,
         
-        # Audio
+        # Audio PREFERENCES
         audio_brand_preference='No Preference',
-        microphone_type='Ceiling Microphone' if capacity > 8 else 'Table/Boundary Microphones',
-        ceiling_vs_table_audio='Ceiling Audio' if capacity > 8 else 'Integrated in Video Bar',
+        microphone_type='Auto',  # ✅ CHANGED: Let AVIXA decide based on room
+        ceiling_vs_table_audio='Auto',
         voice_reinforcement_needed=voice_reinforcement,
         
-        # Control
-        control_brand_preference='Crestron',  # Default for MTR
+        # Control PREFERENCES
+        control_brand_preference='Crestron',
         wireless_presentation_needed=wireless_presentation,
         room_scheduling_needed=room_scheduling,
         lighting_control_integration=lighting_control,
@@ -442,10 +418,10 @@ def parse_acim_to_client_requirements(acim_responses: Dict) -> 'ClientRequiremen
         recording_capability_needed=recording_needed,
         streaming_capability_needed=streaming_needed,
         
-        # Additional requirements (raw text)
-        additional_requirements=f"ACIM Form Responses:\n{json.dumps(responses, indent=2)}"
+        # Raw data for reference
+        additional_requirements=f"Room capacity: {capacity}\n" + json.dumps(responses, indent=2)
     )
-# ======================= END: NEW FUNCTION ADDED =======================
+# ======================= END: REPLACED FUNCTION (FIX 2.1) =======================
 
 
 def main():
@@ -828,7 +804,7 @@ def main():
         show_acim_form_questionnaire()
     # ==============================================================
         
-    # ======================= START: REPLACED TAB 3 LOGIC (CHANGE 6) =======================
+    # ======================= START: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         
@@ -879,36 +855,36 @@ def main():
                      use_container_width=True):
             
             try:
-                # ======================= START: APPLIED CHANGE =======================
                 progress_bar = st.progress(0.0, text="Processing ACIM form data...")
-                # ======================= END: APPLIED CHANGE =========================
                 
                 from components.optimized_boq_generator import OptimizedBOQGenerator
                 from components.smart_questionnaire import ClientRequirements
                 
-                # ✅ PARSE ACIM FORM INTO CLIENT REQUIREMENTS
+                # ✅ Parse ACIM form (NEW: better error handling)
                 try:
                     requirements = parse_acim_to_client_requirements(acim_data)
-                    st.success(f"✅ Parsed ACIM form: {requirements.vc_platform}, {requirements.primary_use_case}, Budget: {requirements.budget_level}")
-                except Exception as e:
-                    st.error(f"Failed to parse ACIM form: {e}")
-                    # Fallback to basic requirements
+                    st.success(f"✅ Parsed: {requirements.vc_platform}, Budget: {requirements.budget_level}")
+                except Exception as parse_error:
+                    st.error(f"❌ Failed to parse ACIM form: {parse_error}")
+                    
+                    # ✅ FALLBACK: Use safe defaults
+                    st.warning("⚠️ Using default requirements as fallback")
                     requirements = ClientRequirements(
                         project_type='New Installation',
-                        room_count=len(acim_data['selected_rooms']),
+                        room_count=len(acim_data.get('selected_rooms', [])),
                         primary_use_case='Video Conferencing',
                         budget_level='Standard',
                         display_brand_preference='No Preference',
-                        display_size_preference=65,
+                        display_size_preference=0,
                         dual_display_needed=False,
                         interactive_display_needed=False,
                         vc_platform='Microsoft Teams',
                         vc_brand_preference='No Preference',
-                        camera_type_preference='Video Bar',
+                        camera_type_preference='Auto',
                         auto_tracking_needed=False,
                         audio_brand_preference='No Preference',
-                        microphone_type='Table/Boundary Microphones',
-                        ceiling_vs_table_audio='Integrated in Video Bar',
+                        microphone_type='Auto',
+                        ceiling_vs_table_audio='Auto',
                         voice_reinforcement_needed=False,
                         control_brand_preference='No Preference',
                         wireless_presentation_needed=False,
@@ -923,9 +899,12 @@ def main():
                         additional_requirements=''
                     )
                 
-                # ======================= START: APPLIED CHANGE =======================
                 progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
-                # ======================= END: APPLIED CHANGE =========================
+                
+                # ✅ VALIDATE product_df exists
+                if product_df is None or product_df.empty:
+                    st.error("❌ CRITICAL: Product catalog not loaded")
+                    st.stop()
                 
                 generator = OptimizedBOQGenerator(
                     product_df=product_df,
@@ -1052,6 +1031,22 @@ def main():
                     progress_bar.empty()
                     
                     show_success_message(f"BOQ Generated Successfully for {len(acim_data['selected_rooms'])} Room Type(s)")
+                    
+                    # ======================= START: APPLIED FIX 7.1 =======================
+                    # ✅ NEW: Show optimization status
+                    if len(acim_data.get('selected_rooms', [])) >= 3:
+                        st.info("""
+                        🔧 **Multi-Room Project Detected**
+                        
+                        When you export to Excel, the system will automatically:
+                        - Consolidate network switches
+                        - Optimize equipment racks
+                        - Reduce cabling costs
+                        
+                        💰 **Estimated Savings:** 8-15% on infrastructure
+                        """)
+                    # ======================= END: APPLIED FIX 7.1 =======================
+                        
                 else:
                     progress_bar.empty()
                     show_error_message("Failed to generate BOQ from ACIM form.")
@@ -1065,7 +1060,7 @@ def main():
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
         
-        # ======================= END: REPLACED TAB 3 LOGIC (CHANGE 6) =======================
+        # ======================= END: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
