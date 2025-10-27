@@ -32,7 +32,7 @@ try:
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
-    from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
+    # from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab # <-- REMOVED
     from components.acim_form_questionnaire import show_acim_form_questionnaire # <-- ADDED IMPORT
     
     # ✅ ADD THESE TWO CRITICAL IMPORTS
@@ -527,7 +527,8 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============= MAIN TABS =============
-    tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    # --- CHANGED TAB TITLES ---
+    tab_titles = ["📋 Project Scope", "📝 ACIM Form", "🛠️ Generate BOQ", "✨ 3D Visualization"]
     tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
 
     with tab1:
@@ -610,272 +611,130 @@ def main():
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         
-        # ======================= NEW ACIM FORM LOGIC =======================
-        # Check if ACIM form was submitted
-        if 'acim_form_responses' in st.session_state and st.session_state.acim_form_responses.get('selected_rooms'):
-            st.info("ℹ️ ACIM Form detected. Using form data for BOQ generation.")
+        # ======================= ENTIRE TAB 3 LOGIC REPLACED =======================
+        
+        # Check if ACIM form is completed
+        if 'acim_form_responses' not in st.session_state or not st.session_state.acim_form_responses.get('selected_rooms'):
+            st.warning("⚠️ Please complete the ACIM Form in the previous tab first.")
+            st.info("📝 The ACIM Form collects all necessary details about your project and room requirements.")
+            st.stop() # Stops execution of this tab if form is not complete
+
+        if st.button("✨ Generate BOQ from ACIM Form", 
+                     type="primary", 
+                     use_container_width=True):
             
-            if st.button("✨ Generate BOQ from ACIM Form", 
-                         type="primary", 
-                         use_container_width=True):
+            try:
+                progress_bar = st.progress(0, text="Processing ACIM form data...")
                 
-                try:
-                    progress_bar = st.progress(0, text="Processing ACIM form data...")
-                    
-                    from components.optimized_boq_generator import OptimizedBOQGenerator
-                    
-                    # Create a mock client requirements from ACIM form
-                    acim_data = st.session_state.acim_form_responses
-                    
-                    # Extract requirements from form
-                    from components.smart_questionnaire import ClientRequirements
-                    
-                    # Create requirements with defaults
-                    requirements = ClientRequirements(
-                        project_type='New Installation',
-                        room_count=len(acim_data['selected_rooms']),
-                        primary_use_case='Video Conferencing',
-                        budget_level='Standard',
-                        display_brand_preference='No Preference',
-                        display_size_preference='AVIXA Recommended (Automatic)',
-                        dual_display_needed=False,
-                        interactive_display_needed=False,
-                        vc_platform='Microsoft Teams',
-                        vc_brand_preference='No Preference',
-                        camera_type_preference='All-in-One Video Bar (Recommended for small/medium rooms)',
-                        auto_tracking_needed=False,
-                        audio_brand_preference='No Preference',
-                        microphone_type='Table/Boundary Microphones',
-                        ceiling_vs_table_audio='Integrated in Video Bar',
-                        voice_reinforcement_needed=False,
-                        control_brand_preference='Native Platform Control (Teams Rooms/Zoom Rooms)',
-                        wireless_presentation_needed=True,
-                        room_scheduling_needed=False,
-                        lighting_control_integration=False,
-                        existing_network_capable=True,
-                        power_infrastructure_adequate=False,
-                        cable_management_type='In-Wall/Conduit (Professional)',
-                        ada_compliance_required=False,
-                        recording_capability_needed=False,
-                        streaming_capability_needed=False,
-                        additional_requirements=''
-                    )
-                    
-                    progress_bar.progress(30, text="🎯 Generating BOQ for each room...")
-                    
-                    generator = OptimizedBOQGenerator(
-                        product_df=product_df,
-                        client_requirements=requirements
-                    )
-                    
-                    boq_items, validation_results = generator.generate_boq_from_acim_form(acim_data)
-                    
-                    progress_bar.progress(90, text="⚖️ Validating results...")
-                    
-                    if boq_items:
-                        st.session_state.boq_items = boq_items
-                        st.session_state.validation_results = validation_results
-                        update_boq_content_with_current_items()
-                        
-                        progress_bar.progress(100, text="✅ BOQ generation complete!")
-                        time.sleep(0.5)
-                        progress_bar.empty()
-                        show_success_message("BOQ Generated Successfully from ACIM Form")
-                    else:
-                        progress_bar.empty()
-                        show_error_message("Failed to generate BOQ from ACIM form.")
-                        
-                except Exception as e:
-                    progress_bar.empty()
-                    st.error(f"❌ Error: {e}")
-                    with st.expander("🔍 Technical Details"):
-                        st.code(traceback.format_exc())
-            
-            st.markdown("---")
-            st.markdown("**OR generate using standard method below:**")
-        # ======================= END NEW ACIM FORM LOGIC =======================
-
-        # Check if questionnaire is completed (Original Logic)
-        if 'client_requirements' not in st.session_state:
-            if 'acim_form_responses' not in st.session_state: # Only show warning if NEITHER form is done
-                st.warning("⚠️ Please complete a Questionnaire in the previous tab first.")
-                st.info("The questionnaire gathers all necessary information to generate an optimized BOQ.")
-        else:
-            # Show summary of requirements
-            with st.expander("📋 Your Requirements Summary (Standard Form)", expanded=False):
-                requirements = st.session_state.client_requirements
-                st.write(f"**Primary Use:** {requirements.primary_use_case}")
-                st.write(f"**Budget Level:** {requirements.budget_level}")
-                st.write(f"**VC Platform:** {requirements.vc_platform}")
-                # Show brand preferences
-                brand_prefs = requirements.get_brand_preferences()
-                if any(v != 'No Preference' for v in brand_prefs.values()):
-                    st.write("**Brand Preferences:**")
-                    for category, brand in brand_prefs.items():
-                        if brand != 'No Preference':
-                            st.write(f"  • {category.replace('_', ' ').title()}: {brand}")
-            
-            # Get room dimensions from sidebar (already captured)
-            room_length = st.session_state.get('room_length_input', 28.0)
-            room_width = st.session_state.get('room_width_input', 20.0)
-            ceiling_height = st.session_state.get('ceiling_height_input', 10.0)
-            room_type = st.session_state.get('room_type_select', 'Standard Conference Room')
-
-            # Just show summary (no input fields)
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Room Length", f"{room_length:.0f} ft")
-            with col2:
-                st.metric("Room Width", f"{room_width:.0f} ft")
-            with col3:
-                st.metric("Ceiling Height", f"{ceiling_height:.0f} ft")
-
-            room_area = room_length * room_width
-            st.metric("Room Area", f"{room_area:.0f} sq ft")
-            st.info(f"📐 Room Type: {room_type}")
-            
-            # Pre-Generation Checklist
-            st.markdown("### 📋 Pre-Generation Checklist (Standard)")
-            checklist_items = []
-
-            # Check questionnaire completion
-            if 'client_requirements' in st.session_state:
-                req = st.session_state.client_requirements
-                checklist_items.append(("✅", "Questionnaire completed"))
+                from components.optimized_boq_generator import OptimizedBOQGenerator
                 
-                # Check for brand preferences
-                prefs = req.get_brand_preferences()
-                pref_count = sum(1 for v in prefs.values() if v != 'No Preference')
-                if pref_count > 0:
-                    checklist_items.append(("✅", f"{pref_count} brand preferences set"))
-                else:
-                    checklist_items.append(("⚠️", "No brand preferences (using best available)"))
-            else:
-                checklist_items.append(("❌", "Questionnaire not completed"))
-
-            # Check room dimensions
-            if room_area > 0:
-                checklist_items.append(("✅", f"Room: {room_length:.0f}' × {room_width:.0f}' = {room_area:.0f} sqft"))
-            else:
-                checklist_items.append(("❌", "Invalid room dimensions"))
-
-            # Check project details
-            missing_fields = validate_required_fields()
-            if not missing_fields:
-                checklist_items.append(("✅", "All project details filled"))
-            else:
-                checklist_items.append(("⚠️", f"{len(missing_fields)} project detail(s) missing"))
-
-            # Display checklist
-            for icon, text in checklist_items:
-                st.markdown(f"{icon} {text}")
-
-            st.markdown("---")
-            
-            generate_disabled = bool(missing_fields) or 'client_requirements' not in st.session_state
-            if missing_fields:
-                st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
-            if 'client_requirements' not in st.session_state:
-                 st.warning("⚠️ Standard questionnaire not completed.")
-            
-            # ======================= MODIFIED ERROR HANDLING BLOCK =======================
-            if st.button("✨ Generate Optimized BOQ (Standard)",
-                          type="primary",
-                          use_container_width=True,
-                          disabled=generate_disabled):
-                try:
-                    progress_bar = st.progress(0, text="Initializing optimized generation...")
-                    
-                    # Import the optimized generator
-                    from components.optimized_boq_generator import OptimizedBOQGenerator
-                    progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
-                    # Create generator with questionnaire requirements
-                    generator = OptimizedBOQGenerator(
-                        product_df=product_df,
-                        client_requirements=st.session_state.client_requirements
-                    )
-                    st.session_state.boq_selector = generator.selector
-                    progress_bar.progress(50, text="🔍 Selecting optimal products...")
-                    
-                    # Generate BOQ
-                    boq_items, validation_results = generator.generate_boq_for_room(
-                        room_type=room_type,
-                        room_length=room_length,
-                        room_width=room_width,
-                        ceiling_height=ceiling_height
-                    )
-                    
-                    progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
-
+                # Get ACIM form data
+                acim_data = st.session_state.acim_form_responses
+                
+                # Create requirements from ACIM form (using defaults for now)
+                from components.smart_questionnaire import ClientRequirements
+                
+                requirements = ClientRequirements(
+                    project_type='New Installation',
+                    room_count=len(acim_data['selected_rooms']),
+                    primary_use_case='Video Conferencing',
+                    budget_level=st.session_state.get('budget_tier_slider', 'Standard'),
+                    display_brand_preference='No Preference',
+                    display_size_preference='AVIXA Recommended (Automatic)',
+                    dual_display_needed=False,
+                    interactive_display_needed=False,
+                    vc_platform='Microsoft Teams',
+                    vc_brand_preference='No Preference',
+                    camera_type_preference='All-in-One Video Bar (Recommended for small/medium rooms)',
+                    auto_tracking_needed=False,
+                    audio_brand_preference='No Preference',
+                    microphone_type='Table/Boundary Microphones',
+                    ceiling_vs_table_audio='Integrated in Video Bar',
+                    voice_reinforcement_needed=False,
+                    control_brand_preference='Native Platform Control (Teams Rooms/Zoom Rooms)',
+                    wireless_presentation_needed=True,
+                    room_scheduling_needed=False,
+                    lighting_control_integration=False,
+                    existing_network_capable=True,
+                    power_infrastructure_adequate=False,
+                    cable_management_type='In-Wall/Conduit (Professional)',
+                    ada_compliance_required=False,
+                    recording_capability_needed=False,
+                    streaming_capability_needed=False,
+                    additional_requirements=''
+                )
+                
+                progress_bar.progress(30, text="🎯 Generating BOQ for each room...")
+                
+                generator = OptimizedBOQGenerator(
+                    product_df=product_df,
+                    client_requirements=requirements
+                )
+                
+                # Generate BOQ from ACIM form
+                boq_items, validation_results = generator.generate_boq_from_acim_form(acim_data)
+                
+                progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
+                
+                if boq_items:
                     # Calculate quality score
                     quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
                     st.session_state.boq_quality_score = quality_score
-
-                    if boq_items:
-                        st.session_state.boq_items = boq_items
-                        st.session_state.validation_results = validation_results
-                        st.session_state.boq_selector = generator.selector
-                        
-                        # Display quality score prominently
-                        col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
-                        
-                        with col_q1:
-                            st.metric(
-                                "BOQ Quality Score",
-                                f"{quality_score['percentage']:.1f}%",
-                                f"Grade: {quality_score['grade']}"
-                            )
-                        
-                        with col_q2:
-                            st.markdown(f"""
-                            <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
-                                         border-left: 4px solid {quality_score['color']}; 
-                                         padding: 1rem; 
-                                         border-radius: 8px; 
-                                         margin: 1rem 0;">
-                                <h3 style="margin: 0; color: {quality_score['color']};">
-                                    {quality_score['quality_level']}
-                                </h3>
-                                <p style="margin: 0.5rem 0 0 0; color: #666;">
-                                    This BOQ meets professional standards for {room_type}
-                                </p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        
-                        with col_q3:
-                            with st.expander("📊 Score Breakdown"):
-                                for category, score in quality_score['breakdown'].items():
-                                    max_score = quality_score['max_breakdown'][category]
-                                    pct = (score / max_score) * 100
-                                    st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
-                        
-                        update_boq_content_with_current_items()
-                        
-                        # Save to current room
-                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
-                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
-                        
-                        progress_bar.progress(100, text="✅ BOQ generation complete!")
-                        time.sleep(0.5)
-                        progress_bar.empty()
-                        show_success_message("BOQ Generated Successfully with AVIXA Compliance")
-                    else:
-                        progress_bar.empty()
-                        show_error_message("Failed to generate BOQ. Please check your inputs.")
-
-                except KeyError as e:
+                    
+                    st.session_state.boq_items = boq_items
+                    st.session_state.validation_results = validation_results
+                    st.session_state.boq_selector = generator.selector
+                    
+                    # Display quality score
+                    col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                    
+                    with col_q1:
+                        st.metric(
+                            "BOQ Quality Score",
+                            f"{quality_score['percentage']:.1f}%",
+                            f"Grade: {quality_score['grade']}"
+                        )
+                    
+                    with col_q2:
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
+                                     border-left: 4px solid {quality_score['color']}; 
+                                     padding: 1rem; 
+                                     border-radius: 8px; 
+                                     margin: 1rem 0;">
+                            <h3 style="margin: 0; color: {quality_score['color']};">
+                                {quality_score['quality_level']}
+                            </h3>
+                            <p style="margin: 0.5rem 0 0 0; color: #666;">
+                                BOQ generated for {len(acim_data['selected_rooms'])} room type(s)
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_q3:
+                        with st.expander("📊 Score Breakdown"):
+                            for category, score in quality_score['breakdown'].items():
+                                max_score = quality_score['max_breakdown'][category]
+                                pct = (score / max_score) * 100
+                                st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
+                    
+                    update_boq_content_with_current_items()
+                    
+                    progress_bar.progress(100, text="✅ BOQ generation complete!")
+                    time.sleep(0.5)
                     progress_bar.empty()
-                    st.error(f"❌ Data Error: Missing required field - {e}")
-                    st.info("This usually means the product catalog is incomplete. Please check the catalog data file.")
-                except ValueError as e:
+                    show_success_message(f"BOQ Generated Successfully for {len(acim_data['selected_rooms'])} Room Type(s)")
+                else:
                     progress_bar.empty()
-                    st.error(f"❌ Validation Error: {e}")
-                except Exception as e:
-                    progress_bar.empty()
-                    st.error(f"❌ Unexpected Error: {e}")
-                    with st.expander("🔍 Technical Details"):
-                        st.code(traceback.format_exc())
-            # ======================= END MODIFIED BLOCK =======================
+                    show_error_message("Failed to generate BOQ from ACIM form.")
+                    
+            except Exception as e:
+                progress_bar.empty()
+                st.error(f"❌ Error: {e}")
+                with st.expander("🔍 Technical Details"):
+                    st.code(traceback.format_exc())
+        
+        # ======================= END OF REPLACED LOGIC =======================
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
