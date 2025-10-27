@@ -849,6 +849,7 @@ def show_acim_form_questionnaire():
                     
                     # Store parsed data
                     st.session_state.nlp_parsed_data = parsed
+                    st.session_state.nlp_data_processed = False # Mark as unprocessed
                     
                     # Show summary
                     summary = parser.generate_summary_report(parsed)
@@ -862,7 +863,9 @@ def show_acim_form_questionnaire():
                 st.error(f"An error occurred during parsing: {e}")
 
     # ✅ NEW: Pre-fill form from parsed data
-    if 'nlp_parsed_data' in st.session_state:
+    # --- FIX 8.1 Start ---
+    if 'nlp_parsed_data' in st.session_state and not st.session_state.get('nlp_data_processed', False):
+    # --- FIX 8.1 End (Part 1) ---
         parsed = st.session_state.nlp_parsed_data
         
         # Pre-fill client details
@@ -893,8 +896,10 @@ def show_acim_form_questionnaire():
                 st.session_state.selected_room_types = [matched_room]
                 st.info(f"💡 Auto-selected room type: {matched_room}")
         
-        # Delete the parsed data so it doesn't pre-fill again after manual changes
-        del st.session_state.nlp_parsed_data
+        # --- FIX 8.1 Start ---
+        # ✅ SAFE: Mark as processed instead of deleting
+        st.session_state.nlp_data_processed = True
+        # --- FIX 8.1 End (Part 2) ---
     # --- END: CHANGE 4 ---
     
     # Render the complete form
