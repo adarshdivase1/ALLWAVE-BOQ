@@ -216,9 +216,10 @@ class IntelligentProductSelector:
                 'must_not_contain': ['video', 'display'],
                 'price_range': (50, 10000),
                 'sub_category_validators': {
+                    # ✅ FIX 5.1: Fix Audio Amplifier Validator
                     'Amplifier': {
-                        'must_contain': ['amplifier', 'amp', 'power', 'channel', 'watts'],
-                        'must_not_contain': ['dsp', 'processor', 'mixer', 'interface', 'summing']
+                        'must_contain': ['amplifier', 'power amp', 'power amplifier', 'watt'],
+                        'must_not_contain': ['dsp', 'processor', 'mixer', 'interface', 'summing', 'line driver', 'distribution amp']
                     }
                 }
             },
@@ -458,6 +459,7 @@ class IntelligentProductSelector:
         return selected
     
     # ✅ CHANGE 3.2: REPLACED FUNCTION
+    # ✅ FIX 3.1: Add Audio Ecosystem Logic
     def select_product_with_fallback(self, requirement: ProductRequirement) -> Optional[Dict]:
         """ENHANCED: Now handles ecosystem state"""
         
@@ -494,7 +496,17 @@ class IntelligentProductSelector:
             # The _apply_client_preferences function will handle enforcement
         
         # Continue with normal selection
-        return self.select_product(requirement)
+        selected = self.select_product(requirement)
+
+        # ✅ NEW (FIX 3.1): Also track Audio DSP ecosystem
+        if requirement.category == 'Audio' and 'DSP' in requirement.sub_category:
+            if 'Audio' not in self.selected_ecosystem_brands:
+                # First DSP selection - set the audio ecosystem
+                if selected:
+                    self.selected_ecosystem_brands['Audio'] = selected.get('brand')
+                    self.log(f"🎵 Audio Ecosystem: Selected {selected.get('brand')} (DSP)")
+        
+        return selected
     
     def suggest_alternatives(self, selected_product: Dict, requirement: ProductRequirement, count: int = 3) -> List[Dict]:
         """
