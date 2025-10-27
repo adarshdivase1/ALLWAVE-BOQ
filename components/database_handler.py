@@ -8,6 +8,11 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+# ✅ Firestore requires composite index for this query
+# Create index at: https://console.firebase.google.com/project/_/firestore/indexes
+# Collection: users/{userId}/projects
+# Fields: last_saved (Descending), name (Ascending)
+
 @st.cache_resource
 def initialize_firebase():
     """Initializes the Firebase connection using credentials from Streamlit secrets."""
