@@ -498,6 +498,24 @@ class IntelligentProductSelector:
         # Continue with normal selection
         selected = self.select_product(requirement)
 
+        # === START CRITICAL FIX 3 INSERTION ===
+        if requirement.category == 'Audio' and 'Microphone' in requirement.sub_category:
+            # Check if we already have a DSP selected
+            dsp_items = [item for item in self.existing_selections if 'DSP' in item.get('sub_category', '')]
+            
+            if dsp_items and selected:
+                is_compatible, reason = self._validate_mic_dsp_interface_compatibility(selected, dsp_items[0])
+                
+                if not is_compatible:
+                    self.log(f"     🚨 CRITICAL: {reason}")
+                    self.validation_warnings.append({
+                        'component': requirement.sub_category,
+                        'issue': f"🚨 {reason}",
+                        'severity': 'CRITICAL'
+                    })
+                    # (Add fallback logic here)
+        # === END CRITICAL FIX 3 INSERTION ===
+
         # ✅ NEW (FIX 3.1): Also track Audio DSP ecosystem
         if requirement.category == 'Audio' and 'DSP' in requirement.sub_category:
             if 'Audio' not in self.selected_ecosystem_brands:
@@ -952,15 +970,43 @@ class IntelligentProductSelector:
         
         return df
 
+    # === START CRITICAL FIX 1 REPLACEMENT ===
     def _select_by_budget(self, df, req: ProductRequirement, existing_selections=None):
         """
-        ENHANCED: Select product by budget but also consider ecosystem consistency
+        FIXED: Strict size enforcement for displays
         """
         
         if df.empty:
             return None
         
-        # Check if this brand has already been selected in same category
+        # === CRITICAL FIX: STRICT SIZE FILTERING FOR DISPLAYS ===
+        if req.category == 'Displays' and req.size_requirement:
+            # Remove products that don't match the required size (±3 inch tolerance)
+            size_range = range(int(req.size_requirement) - 3, int(req.size_requirement) + 4)
+            
+            size_matched = []
+            for _, product in df.iterrows():
+                product_size = self._extract_display_size_from_product(product)
+                if product_size and product_size in size_range:
+                    size_matched.append(product)
+            
+            if size_matched:
+                df = pd.DataFrame(size_matched)
+                self.log(f"     ✅ Filtered to {len(df)} displays matching {req.size_requirement}\" (±3\")")
+            else:
+                self.log(f"     ⚠️ NO displays found matching {req.size_requirement}\" - using closest")
+                # Find closest size
+                df['size_diff'] = df.apply(
+                    lambda x: abs(self._extract_display_size_from_product(x) - req.size_requirement) 
+                    if self._extract_display_size_from_product(x) else 999,
+                    axis=1
+                )
+                df = df.nlargest(5, 'size_diff')
+                df = df.drop(columns=['size_diff'])
+        
+        # Rest of budget selection logic...
+        # (Keep existing ecosystem consistency check)
+        
         existing_brand_for_category = None
         if existing_selections:
             for sel in existing_selections:
@@ -968,14 +1014,13 @@ class IntelligentProductSelector:
                     existing_brand_for_category = sel.get('brand')
                     break
         
-        # Prefer products from already-selected brands (ecosystem consistency)
         if existing_brand_for_category:
             brand_consistency = df[df['brand'].str.lower() == existing_brand_for_category.lower()]
             if not brand_consistency.empty:
                 df = brand_consistency
-                self.log(f"    ✅ ECOSYSTEM CONSISTENCY: Selecting from {existing_brand_for_category} to match previous selections")
+                self.log(f"     ✅ ECOSYSTEM CONSISTENCY: Selecting from {existing_brand_for_category}")
         
-        # Now apply budget tier selection
+        # Apply budget tier selection
         df_sorted = df.sort_values('price')
         
         if self.budget_tier in ['Premium', 'Executive', 'Enterprise']:
@@ -992,8 +1037,12 @@ class IntelligentProductSelector:
         if selection_pool.empty:
             selection_pool = df_sorted
         
+        if selection_pool.empty:
+             return None # CRITICAL: Added check in case df_sorted is also empty
+            
         selected_idx = len(selection_pool) // 2
         return selection_pool.iloc[selected_idx].to_dict()
+    # === END CRITICAL FIX 1 REPLACEMENT ===
 
     def _validate_compatibility(self, product: Dict, req: ProductRequirement) -> bool:
         """Stage 7: Validate product compatibility"""
@@ -1128,6 +1177,44 @@ class IntelligentProductSelector:
                 )
         
         return warnings
+
+    # === START CRITICAL FIX 3 (PART 1) INSERTION ===
+    def _validate_mic_dsp_interface_compatibility(self, mic_product: Dict, dsp_product: Dict) -> Tuple[bool, str]:
+        """
+        NEW: Validate that microphone can physically connect to DSP
+        """
+        mic_name = mic_product.get('name', '').lower()
+        mic_specs = mic_product.get('specifications', '').lower()
+        dsp_name = dsp_product.get('name', '').lower()
+        dsp_specs = dsp_product.get('specifications', '').lower()
+        
+        mic_text = f"{mic_name} {mic_specs}"
+        dsp_text = f"{dsp_name} {dsp_specs}"
+        
+        # Check for interface types
+        mic_is_dante = any(term in mic_text for term in ['dante', 'aes67', 'audio over ip'])
+        mic_is_usb = any(term in mic_text for term in ['usb', 'usb-c', 'usb audio'])
+        mic_is_analog = any(term in mic_text for term in ['xlr', 'analog', 'balanced', '48v phantom'])
+        
+        dsp_has_dante = any(term in dsp_text for term in ['dante', 'aes67', 'audio over ip'])
+        dsp_has_usb = any(term in dsp_text for term in ['usb', 'usb audio'])
+        dsp_has_analog = any(term in dsp_text for term in ['xlr', 'analog', 'mic input', 'preamp'])
+        
+        # Poly mics are typically USB/proprietary - incompatible with most DSPs
+        if 'poly' in mic_product.get('brand', '').lower() and 'biamp' in dsp_product.get('brand', '').lower():
+            return False, "Poly microphones (USB/proprietary) incompatible with Biamp DSP (requires Dante/Analog)"
+        
+        # Check compatibility
+        if mic_is_dante and dsp_has_dante:
+            return True, "Dante interface compatible"
+        if mic_is_analog and dsp_has_analog:
+            return True, "Analog interface compatible"
+        if mic_is_usb and dsp_has_usb:
+            return True, "USB interface compatible"
+        
+        # If we can't determine, allow but warn
+        return True, "Interface compatibility unclear - review recommended"
+    # === END CRITICAL FIX 3 (PART 1) INSERTION ===
 
     def log(self, message: str):
         """Add to selection log"""
