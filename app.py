@@ -717,13 +717,26 @@ def main():
             
             st.stop() # Stop execution if form not complete
         
+        # ======================= START: APPLIED CHANGE =======================
         # ✅ ENHANCED: Show ACIM form summary
         acim_data = st.session_state.acim_form_responses
         
         with st.expander("📊 ACIM Form Summary", expanded=False):
-            st.write(f"**Client:** {acim_data.get('client_details', {}).get('name', 'N/A')}")
-            st.write(f"**Company:** {acim_data.get('client_details', {}).get('company_name', 'N/A')}")
+            # FIXED: client_details is a dataclass, not a dict
+            client_details = acim_data.get('client_details')
+            
+            if client_details:
+                # Access dataclass attributes directly
+                client_name = getattr(client_details, 'name', 'N/A')
+                company_name = getattr(client_details, 'company_name', 'N/A')
+                st.write(f"**Client:** {client_name}")
+                st.write(f"**Company:** {company_name}")
+            else:
+                st.write("**Client:** N/A")
+                st.write("**Company:** N/A")
+            
             st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
+        # ======================= END: APPLIED CHANGE =======================
         
         # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
