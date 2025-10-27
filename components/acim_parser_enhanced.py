@@ -7,6 +7,7 @@ Generates a complete and logical blueprint based on detailed client input.
 import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
+import math
 
 # Define constants for clarity
 DEFAULT_AUDITORIUM_LENGTH = 80.0
