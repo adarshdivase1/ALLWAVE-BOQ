@@ -824,6 +824,78 @@ def show_acim_form_questionnaire():
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # --- START: CHANGE 4 ---
+    # ✅ NEW: NLP Parser Integration
+    with st.expander("💡 Smart Requirements Parser", expanded=False):
+        st.markdown("Paste your client's requirements and we'll auto-fill the form.")
+        
+        nlp_input = st.text_area(
+            "Paste requirements here:",
+            placeholder="e.g., We need a 12-person boardroom with dual 85\" Samsung displays...",
+            height=150,
+            key="nlp_input_acim"
+        )
+        
+        if st.button("🔍 Parse Requirements", key="parse_nlp_btn"):
+            try:
+                from components.nlp_requirements_parser import NLPRequirementsParser
+                
+                parser = NLPRequirementsParser()
+                parsed = parser.parse(nlp_input)
+                
+                if parsed.get('confidence_score', 0) > 0.3:
+                    st.success(f"✅ Parsed with {parsed['confidence_score']*100:.0f}% confidence. Form will be pre-filled.")
+                    
+                    # Store parsed data
+                    st.session_state.nlp_parsed_data = parsed
+                    
+                    # Show summary
+                    summary = parser.generate_summary_report(parsed)
+                    st.code(summary)
+                    st.rerun() # Rerun to apply pre-fill
+                else:
+                    st.warning("Could not parse requirements reliably")
+            except ImportError:
+                st.error("Error: `nlp_requirements_parser` component not found.")
+            except Exception as e:
+                st.error(f"An error occurred during parsing: {e}")
+
+    # ✅ NEW: Pre-fill form from parsed data
+    if 'nlp_parsed_data' in st.session_state:
+        parsed = st.session_state.nlp_parsed_data
+        
+        # Pre-fill client details
+        if parsed.get('client_preferences'):
+            prefs = parsed['client_preferences']
+            # Set session state keys that match the st.text_input keys in render_client_details_section
+            if 'name' in prefs:
+                st.session_state.client_name = prefs.get('name', '')
+            if 'company' in prefs:
+                st.session_state.client_company = prefs.get('company', '')
+        
+        # Auto-detect quantities
+        if 'quantities' in parsed:
+            if 'displays' in parsed['quantities']:
+                st.info(f"💡 Detected: {parsed['quantities']['displays']} displays")
+        
+        # Auto-select room type
+        if 'room_type' in parsed:
+            nlp_room = parsed['room_type'].lower()
+            form_rooms = acim_form.room_types # acim_form is already instantiated
+            matched_room = None
+            for room in form_rooms:
+                if nlp_room in room.lower():
+                    matched_room = room
+                    break
+            if matched_room:
+                # Key from render_room_type_selection
+                st.session_state.selected_room_types = [matched_room]
+                st.info(f"💡 Auto-selected room type: {matched_room}")
+        
+        # Delete the parsed data so it doesn't pre-fill again after manual changes
+        del st.session_state.nlp_parsed_data
+    # --- END: CHANGE 4 ---
     
     # Render the complete form
     all_responses = acim_form.render_complete_form()
@@ -891,7 +963,7 @@ def show_acim_form_questionnaire():
         if st.button("🔄 Clear Form", use_container_width=True):
             # Clear session state
             for key in list(st.session_state.keys()):
-                if key.startswith('client_') or key.startswith('selected_') or 'acim' in key:
+                if key.startswith('client_') or key.startswith('selected_') or 'acim' in key or 'nlp' in key:
                     del st.session_state[key]
             st.rerun()
     
