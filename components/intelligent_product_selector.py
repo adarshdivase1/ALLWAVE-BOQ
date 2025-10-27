@@ -149,6 +149,9 @@ class IntelligentProductSelector:
         
         # NEW: Build category validation database
         self._build_category_validators()
+        
+        # ✅ NEW: State for ecosystem enforcement (CHANGE 3.2)
+        self.selected_ecosystem_brands = {}  # category: brand mapping
     
     def _standardize_price_column(self):
         """Ensure consistent 'price' column"""
@@ -454,57 +457,44 @@ class IntelligentProductSelector:
         
         return selected
     
+    # ✅ CHANGE 3.2: REPLACED FUNCTION
     def select_product_with_fallback(self, requirement: ProductRequirement) -> Optional[Dict]:
-        """
-        ENHANCED: Try strict selection first, then intelligent fallbacks
-        """
+        """ENHANCED: Now handles ecosystem state"""
         
-        # Attempt 1: Strict selection
-        selected = self.select_product(requirement)
-        
-        if selected:
-            return selected
-        
-        # Attempt 2: Relax brand preference if nothing found
-        if requirement.client_preference_weight == 1.0:
-            self.log(f"    🔄 No products found with strict brand preference, trying alternates...")
-            requirement.client_preference_weight = 0.5
-            selected = self.select_product(requirement)
+        # Check if this category has an ecosystem constraint
+        if requirement.category == 'Video Conferencing':
+            # First selection in VC category - determine the ecosystem
+            if 'Video Conferencing' not in self.selected_ecosystem_brands:
+                # Determine VC brand based on platform + client preference
+                # This assumes self.requirements is set externally by the generator
+                vc_platform = 'Microsoft Teams'
+                if hasattr(self, 'requirements'):
+                    vc_platform = self.requirements.vc_platform.lower()
+                
+                client_pref = 'No Preference'
+                if hasattr(self, 'requirements'):
+                     client_pref = self.requirements.get_brand_preferences().get('video_conferencing', 'No Preference')
+                
+                if client_pref != 'No Preference':
+                    ecosystem_brand = client_pref
+                elif 'teams' in vc_platform:
+                    ecosystem_brand = 'Poly'  # Or Logitech, Yealink
+                elif 'zoom' in vc_platform:
+                    ecosystem_brand = 'Poly'
+                elif 'cisco' in vc_platform or 'webex' in vc_platform:
+                    ecosystem_brand = 'Cisco'
+                else:
+                    ecosystem_brand = 'Poly'  # Default
+                
+                self.selected_ecosystem_brands['Video Conferencing'] = ecosystem_brand
+                self.log(f"🎯 VC Ecosystem: Selected {ecosystem_brand} (Platform: {vc_platform})")
             
-            if selected:
-                self.validation_warnings.append({
-                    'component': requirement.sub_category,
-                    'issue': f'Client-preferred brand not available, using {selected.get("brand")}',
-                    'severity': 'MEDIUM'
-                })
-                return selected
+            # Enforce the ecosystem brand for all VC components
+            requirement.client_preference_weight = 1.0  # Force brand match
+            # The _apply_client_preferences function will handle enforcement
         
-        # Attempt 3: Broaden category search
-        self.log(f"    🔄 Attempting broader category search...")
-        
-        if requirement.category == 'Video Conferencing' and 'PTZ Camera' in requirement.sub_category:
-            # Try room kits that include cameras
-            requirement.sub_category = 'Room Kit / Codec'
-            requirement.required_keywords = ['room kit', 'camera', 'system']
-            selected = self.select_product(requirement)
-            
-            if selected:
-                self.validation_warnings.append({
-                    'component': requirement.sub_category,
-                    'issue': 'Using room kit instead of standalone PTZ camera',
-                    'severity': 'LOW'
-                })
-                return selected
-        
-        # Attempt 4: Log failure for manual intervention
-        self.log(f"    ❌ FAILED: Could not find suitable product for {requirement.sub_category}")
-        self.validation_warnings.append({
-            'component': requirement.sub_category,
-            'issue': f'No suitable products found in catalog',
-            'severity': 'CRITICAL'
-        })
-        
-        return None
+        # Continue with normal selection
+        return self.select_product(requirement)
     
     def suggest_alternatives(self, selected_product: Dict, requirement: ProductRequirement, count: int = 3) -> List[Dict]:
         """
@@ -706,166 +696,23 @@ class IntelligentProductSelector:
         self.log(f"    Stage 3 - Keyword filter: {len(df)} products")
         return df
 
+    # ✅ CHANGE 2.3: REPLACED FUNCTION (SIMPLIFIED)
     def _apply_category_specific_filters(self, df, req: ProductRequirement):
-        """Enhanced category-specific filtering"""
+        """Much simpler now that data is clean at source"""
         
+        # Only keep filters for ambiguous cases
         if req.category == 'Mounts' and 'Display Mount' in req.sub_category:
             df = df[df['name'].str.contains(
-                r'(wall.*mount|ceiling.*mount|floor.*stand|display.*mount|tv.*mount|large.*format.*mount)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(tlp|tsw-|touch|panel|controller|ipad|camera|speaker|mic)',
+                r'(wall.*mount|ceiling.*mount|display.*mount)',
                 case=False, na=False, regex=True
             )]
         
-        elif req.category == 'Cables & Connectivity' and 'AV Cable' in req.sub_category:
-            df = df[df['name'].str.contains(
-                r'(cat6|cat7|ethernet|network.*cable|patch.*cable)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(vga|svideo|composite|component)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Infrastructure' and 'Power' in req.sub_category:
-            df = df[df['price'] > 100]
-            df = df[df['name'].str.contains(
-                r'(rack.*mount|1u|2u|metered|switched)',
-                case=False, na=False, regex=True
-            )]
-        
-        elif req.category == 'Audio' and req.sub_category == 'Amplifier':
-            # CRITICAL: Only select POWER amplifiers, NOT signal processors
-            df = df[df['name'].str.contains(
-                r'(power.*amp|amplifier.*\d+w|multi.*channel.*amp|netpa|xpa|spa|ma\d{4}|'
-                r'70v.*amp|100v.*amp|class.*d.*amp|installation.*amplifier)',
-                case=False, na=False, regex=True
-            )]
-            
-            # BLACKLIST: Exclude DSPs, mixers, line-level amps, and summing amps
-            df = df[~df['name'].str.contains(
-                r'(dsp|mixer|processor|summing|line.*driver|distribution.*amplifier.*audio|'
-                r'active.*summing|line.*level)',
-                case=False, na=False, regex=True
-            )]
-            
-            # Price floor: Real power amps cost more
-            df = df[df['price'] > 300]
-            
-            self.log(f"    🔍 Filtered for power amplifiers only (excluded DSPs/processors): {len(df)} products")
-
-        # === MODIFICATION 4: ENHANCED DSP FILTERING WITH AEC VALIDATION ===
+        # DSP filter is now MUCH simpler
         elif req.category == 'Audio' and req.sub_category == 'DSP / Audio Processor / Mixer':
-            # ✅ CRITICAL: Only select CONFERENCING DSPs with AEC, NOT live sound mixers
-            
-            # WHITELIST: Known conferencing DSP brands/models
-            conferencing_dsp_patterns = [
-                r'tesira',           # Biamp Tesira series
-                r'qsc.*core',        # QSC Q-SYS Core
-                r'biamp',            # Any Biamp processor
-                r'dmp.*\d+',         # Extron DMP series
-                r'bss.*blu',         # BSS Blu series
-                r'avhub',            # Biamp AVHub
-                r'intellimix',       # Shure IntelliMix
-                r'uc.*engine',       # Yamaha UC Engine
-                r'dante.*processor', # Dante-enabled processors
-            ]
-            
-            # First filter: Must match conferencing DSP patterns
-            conferencing_matches = pd.DataFrame()
-            for pattern in conferencing_dsp_patterns:
-                matches = df[df['name'].str.contains(pattern, case=False, na=False, regex=True)]
-                conferencing_matches = pd.concat([conferencing_matches, matches]).drop_duplicates()
-            
-            if not conferencing_matches.empty:
-                df = conferencing_matches
-                self.log(f"    ✅ Filtered to {len(df)} conferencing DSP products")
-            else:
-                # No conferencing DSPs found - try generic "dsp" + "processor"
-                df = df[df['name'].str.contains(r'dsp|processor', case=False, na=False, regex=True)]
-                self.log(f"    ⚠️ No known conferencing DSPs, trying generic DSP/processor: {len(df)} products")
-            
-            # BLACKLIST: Exclude mixers, amplifiers, and non-conferencing equipment
-            blacklist_patterns = [
-                r'mixer(?!.*dsp)',          # Mixers (unless they're DSP-mixers)
-                r'touchmix',                # QSC TouchMix (live sound)
-                r'live.*sound',             # Live sound equipment
-                r'portable.*mixer',         # Portable mixers
-                r'analog.*mixer',           # Analog mixers
-                r'powered.*mixer',          # Powered mixers
-                r'amplifier',               # Amplifiers
-                r'power.*amp',              # Power amps
-                r'summing',                 # Summing amps
-                r'speaker|loudspeaker',     # Speakers
-                r'active.*speaker',         # Active speakers
-                r'line.*driver',            # Line drivers
-                r'distribution.*amp',       # Distribution amps
-                r'mg\d+',                   # Yamaha MG series (live sound mixers)
-                r'zm\d+',                   # Yamaha ZM series (zone mixers, not DSPs)
-            ]
-            
-            for pattern in blacklist_patterns:
-                before = len(df)
-                df = df[~df['name'].str.contains(pattern, case=False, na=False, regex=True)]
-                removed = before - len(df)
-                if removed > 0:
-                    self.log(f"    🚫 Excluded {removed} products matching '{pattern}'")
-            
-            # CRITICAL: Price floor validation (conferencing DSPs are expensive)
-            df = df[df['price'] > 1500]  # Real conferencing DSPs start at $1500
-            
-            # CRITICAL: Check for AEC capability in specifications
-            if 'specifications' in df.columns:
-                aec_capable = df[df['specifications'].str.contains(
-                    r'aec|acoustic.*echo.*cancel|echo.*cancellation|conferenc',
-                    case=False, na=False, regex=True
-                )]
-                
-                if not aec_capable.empty:
-                    df = aec_capable
-                    self.log(f"    ✅ Filtered to {len(df)} DSPs with confirmed AEC capability")
-                else:
-                    self.log(f"    ⚠️ Could not confirm AEC in specifications, using price-filtered DSPs")
-            
-            self.log(f"    ✅ Final DSP selection pool: {len(df)} products")
-            
-            if df.empty:
-                self.validation_warnings.append({
-                    'component': req.sub_category,
-                    'issue': '🚨 CRITICAL: No conferencing DSPs found in catalog! System will lack AEC.',
-                    'severity': 'CRITICAL'
-                })
-
-        elif req.category == 'Video Conferencing' and 'PTZ Camera' in req.sub_category:
-            df = df[df['name'].str.contains(
-                r'(ptz|pan.*tilt.*zoom|eagleeye.*iv|eagleeye.*director|eptz)',
-                case=False, na=False, regex=True
-            )]
-            df = df[~df['name'].str.contains(
-                r'(webcam|usb.*camera|c920|c930|brio)',
-                case=False, na=False, regex=True
-            )]
-            df = df[df['price'] > 1000]
+            # Just verify it's not suspiciously cheap
+            df = df[df['price'] > 1000]  # That's it!
         
-        elif req.category == 'Infrastructure' and 'AV Rack' in req.sub_category:
-            # CRITICAL: Ensure we get actual racks, not shelves
-            df = df[df['name'].str.contains(
-                r'(\d+u.*rack|\d+u.*cabinet|\d+u.*enclosure|equipment.*rack|relay.*rack|wall.*mount.*rack|open.*frame.*rack)',
-                case=False, na=False, regex=True
-            )]
-            
-            # NEW: Explicitly exclude shelves and small accessories
-            df = df[~df['name'].str.contains(
-                r'(shelf|bracket|mount(?!.*rack)|camera|wall.*mount(?!.*rack)|1u(?!.*rack)|2u(?!.*rack))',
-                case=False, na=False, regex=True
-            )]
-            
-            # NEW: Price validation - real racks cost more
-            df = df[df['price'] > 300]  # Minimum $300 for actual rack
-            
-            self.log(f"    🔍 Filtered for actual racks (not shelves): {len(df)} products")
+        # Most other filters can be DELETED
         
         return df
 
@@ -942,40 +789,35 @@ class IntelligentProductSelector:
             self.log(f"    ⚠️ Strict validation found no mounts - using all candidates")
             return df
 
-    # === MODIFICATION 2: ADDED ECOSYSTEM ENFORCEMENT ===
+    # ✅ CHANGE 3.3: REPLACED FUNCTION
     def _apply_client_preferences(self, df, req: ProductRequirement):
-        """
-        ENHANCED: Strict brand preference enforcement with ecosystem validation.
-        Now respects vc_ecosystem_brand for VC components.
-        """
+        """ENHANCED: Now enforces ecosystem brands"""
         
         if df.empty:
             return df
         
-        # ✅ CRITICAL: Check if this is a VC ecosystem component
-        if req.category == 'Video Conferencing' and hasattr(self, 'vc_ecosystem_brand'):
-            enforced_brand = self.vc_ecosystem_brand
+        # ✅ NEW: Check for ecosystem enforcement
+        if req.category in self.selected_ecosystem_brands:
+            enforced_brand = self.selected_ecosystem_brands[req.category]
             
-            self.log(f"    🔒 ECOSYSTEM ENFORCEMENT: Filtering for {enforced_brand} (VC ecosystem)")
+            self.log(f"    🔒 ECOSYSTEM ENFORCEMENT: Filtering for {enforced_brand}")
             
-            # STRICT filtering for ecosystem brand
             exact_matches = df[df['brand'].str.lower() == enforced_brand.lower()]
             
             if not exact_matches.empty:
-                self.log(f"    ✅ ECOSYSTEM MATCH: {len(exact_matches)} {enforced_brand} products found")
+                self.log(f"    ✅ Found {len(exact_matches)} {enforced_brand} products")
                 return exact_matches
             else:
-                # CRITICAL ERROR: If ecosystem brand not available, flag it
                 self.log(f"    ❌ CRITICAL: {enforced_brand} not available for {req.sub_category}")
-                
                 self.validation_warnings.append({
                     'component': req.sub_category,
-                    'issue': f'🚨 ECOSYSTEM VIOLATION: {enforced_brand} not available. System will NOT be compatible!',
+                    'issue': f'🚨 ECOSYSTEM VIOLATION: {enforced_brand} not available',
                     'severity': 'CRITICAL'
                 })
-                
-                # DO NOT fall back to other brands - return empty to force review
-                return pd.DataFrame()
+                return pd.DataFrame()  # Return empty - force review
+        
+        # Rest of existing logic for non-ecosystem categories
+        # (This part is from the original file, as requested by '...')
         
         # Get preferred brand for non-VC categories
         preferred_brand = self._get_client_preference_for_category(req.category)
