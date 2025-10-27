@@ -139,6 +139,7 @@ def create_header(main_logo, partner_logos):
 
 # ======================= START: ADDED HELPER FUNCTIONS (CHANGE 6) =======================
 
+# 🔴 CFIX: Corrected this function to prevent `float('')` error
 def _extract_dimensions_from_text(text: str, default_length: float, default_width: float, default_height: float) -> Tuple[float, float, float]:
     """
     Extract room dimensions from ACIM form text response.
@@ -160,15 +161,24 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             try:
-                length = float(match.group(1))
-                width = float(match.group(2))
-                height = float(match.group(3)) if match.group(3) else default_height
+                g1 = match.group(1)
+                g2 = match.group(2)
+                g3 = match.group(3) # Can be None
+
+                # Check for empty strings before float conversion
+                parsed_length = float(g1) if g1 else None
+                parsed_width = float(g2) if g2 else None
+                parsed_height = float(g3) if g3 else None
+
+                length = parsed_length if parsed_length is not None else default_length
+                width = parsed_width if parsed_width is not None else default_width
+                height = parsed_height if parsed_height is not None else default_height
                 
                 # Convert meters to feet if needed
                 if 'm' in text.lower() and 'ft' not in text.lower():
-                    length *= 3.281
-                    width *= 3.281
-                    height *= 3.281
+                    if parsed_length is not None: length *= 3.281
+                    if parsed_width is not None: width *= 3.281
+                    if parsed_height is not None: height *= 3.281
                 
                 return length, width, height
             except (ValueError, IndexError):
@@ -179,11 +189,19 @@ def _extract_dimensions_from_text(text: str, default_length: float, default_widt
     match = re.search(simple_pattern, text, re.IGNORECASE)
     if match:
         try:
-            length = float(match.group(1))
-            width = float(match.group(2))
+            g1 = match.group(1)
+            g2 = match.group(2)
+            
+            # Check for empty strings before float conversion
+            parsed_length = float(g1) if g1 else None
+            parsed_width = float(g2) if g2 else None
+
+            length = parsed_length if parsed_length is not None else default_length
+            width = parsed_width if parsed_width is not None else default_width
+            
             if 'm' in text.lower() and 'ft' not in text.lower():
-                length *= 3.281
-                width *= 3.281
+                if parsed_length is not None: length *= 3.281
+                if parsed_width is not None: width *= 3.281
             return length, width, default_height
         except (ValueError, IndexError):
             pass
@@ -804,7 +822,7 @@ def main():
         show_acim_form_questionnaire()
     # ==============================================================
         
-    # ======================= START: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
+    # ======================= START: 🔴 REPLACED TAB 3 LOGIC 🔴 =======================
     with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         
@@ -849,7 +867,6 @@ def main():
             
             st.write(f"**Selected Rooms:** {', '.join(acim_data.get('selected_rooms', []))}")
         
-        # ======================= START: APPLIED CHANGE =======================
         # Main generation button
         if st.button("✨ Generate BOQ from ACIM Form", 
                      type="primary", 
@@ -915,12 +932,49 @@ def main():
                     progress_bar.progress(0.30, text="Parsing client requirements...")
                     
                     from components.optimized_boq_generator import OptimizedBOQGenerator
-                    from components.smart_questionnaire import ClientRequirements # Added this import for robustness
+                    from components.smart_questionnaire import ClientRequirements
                     
-                    requirements = parse_acim_to_client_requirements(acim_data)
-
+                    # ✅ Parse ACIM form (NEW: better error handling)
+                    try:
+                        requirements = parse_acim_to_client_requirements(acim_data)
+                        st.success(f"✅ Parsed: {requirements.vc_platform}, Budget: {requirements.budget_level}")
+                    except Exception as parse_error:
+                        st.error(f"❌ Failed to parse ACIM form: {parse_error}")
+                        
+                        # ✅ FALLBACK: Use safe defaults
+                        st.warning("⚠️ Using default requirements as fallback")
+                        requirements = ClientRequirements(
+                            project_type='New Installation',
+                            room_count=len(acim_data.get('selected_rooms', [])),
+                            primary_use_case='Video Conferencing',
+                            budget_level='Standard',
+                            display_brand_preference='No Preference',
+                            display_size_preference=0,
+                            dual_display_needed=False,
+                            interactive_display_needed=False,
+                            vc_platform='Microsoft Teams',
+                            vc_brand_preference='No Preference',
+                            camera_type_preference='Auto',
+                            auto_tracking_needed=False,
+                            audio_brand_preference='No Preference',
+                            microphone_type='Auto',
+                            ceiling_vs_table_audio='Auto',
+                            voice_reinforcement_needed=False,
+                            control_brand_preference='No Preference',
+                            wireless_presentation_needed=False,
+                            room_scheduling_needed=False,
+                            lighting_control_integration=False,
+                            existing_network_capable=True,
+                            cable_management_type='Exposed',
+                            ada_compliance_required=False,
+                            power_infrastructure_adequate=True,
+                            recording_capability_needed=False,
+                            streaming_capability_needed=False,
+                            additional_requirements=''
+                        )
+                    
                     progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
-                
+                    
                     # ✅ VALIDATE product_df exists
                     if product_df is None or product_df.empty:
                         st.error("❌ CRITICAL: Product catalog not loaded")
@@ -1070,7 +1124,7 @@ def main():
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
         
-        # ======================= END: REPLACED TAB 3 LOGIC (FIX 4.1 & 7.1) =======================
+        # ======================= END: 🔴 REPLACED TAB 3 LOGIC 🔴 =======================
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         
