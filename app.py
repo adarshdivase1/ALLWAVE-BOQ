@@ -525,85 +525,14 @@ def main():
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============= MAIN TABS =============
-    tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
-    tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
+    # ============= MAIN TABS (MODIFIED) =============
+    tab_titles = ["🎯 Smart Questionnaire", "🛠️ BOQ Generation", "📊 Results"]
+    tab1, tab2, tab3 = st.tabs(tab_titles)
 
     with tab1:
-        st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
-        
-        # Display messages
-        if 'project_loaded_successfully' in st.session_state:
-            show_success_message(f"Project '{st.session_state.project_loaded_successfully}' loaded successfully!")
-            del st.session_state.project_loaded_successfully
-        
-        if 'project_load_failed' in st.session_state:
-            show_error_message("Failed to load project. Please try again.")
-            del st.session_state.project_load_failed
-        
-        project_name = st.session_state.get('project_name_input', '')
-        
-        col_save, col_load = st.columns(2)
-        with col_save:
-            if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
-                if db:
-                    # Save all relevant project data
-                    project_data = {
-                        'name': project_name,
-                        'project_name_input': project_name,
-                        'client_name_input': st.session_state.get('client_name_input', ''),
-                        'location_input': st.session_state.get('location_input', ''),
-                        'design_engineer_input': st.session_state.get('design_engineer_input', ''),
-                        'account_manager_input': st.session_state.get('account_manager_input', ''),
-                        'client_personnel_input': st.session_state.get('client_personnel_input', ''),
-                        'comments_input': st.session_state.get('comments_input', ''),
-                        'rooms': st.session_state.get('project_rooms', []),
-                        'gst_rates': st.session_state.get('gst_rates', {}),
-                        'currency': st.session_state.get('currency_select', 'USD'),
-                        'room_type': st.session_state.get('room_type_select', ''),
-                        'budget_tier': st.session_state.get('budget_tier_slider', 'Standard'),
-                        'room_length': st.session_state.get('room_length_input', 28.0),
-                        'room_width': st.session_state.get('room_width_input', 20.0),
-                        'features': st.session_state.get('features_text_area', '')
-                    }
-                    if save_project(db, st.session_state.user_email, project_data):
-                        show_success_message(f"Project '{project_name}' saved successfully!")
-                        # Refresh project list from the database
-                        st.session_state.user_projects = load_projects(db, st.session_state.user_email)
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        show_error_message("Failed to save project.")
-                else:
-                    show_error_message("Database connection not available.")
-        
-        with col_load:
-            if st.session_state.get('user_projects'):
-                project_names = [p.get('name', 'Unnamed Project') for p in st.session_state.user_projects]
-                
-                if project_names:
-                    selected_project = st.selectbox(
-                        "Select Project to Load", 
-                        project_names,
-                        key="project_selector_dropdown"
-                    )
-                    
-                    # Use a button to trigger the load
-                    if st.button("📂 Load Selected Project", use_container_width=True, key="load_project_btn"):
-                        st.session_state.project_to_load = selected_project
-                        st.rerun()
-                else:
-                    st.info("No saved projects found.")
-            else:
-                st.info("No saved projects found. Save your current project to see it here.")
-
-        st.markdown("---")
-        create_multi_room_interface()
-
-    with tab2:
         show_smart_questionnaire_tab()
         
-    with tab3:
+    with tab2:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
         # Check if questionnaire is completed
         if 'client_requirements' not in st.session_state:
@@ -785,7 +714,8 @@ def main():
             # ======================= END MODIFIED BLOCK =======================
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        
+
+    with tab3:
         # Display BOQ results
         if st.session_state.get('boq_items'):
             project_details = {
@@ -829,29 +759,6 @@ def main():
         else:
             st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
 
-    with tab4:
-        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
-        
-        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
-            with st.spinner("Rendering 3D environment..."):
-                viz_html = create_3d_visualization()
-                
-                if viz_html:
-                    st.components.v1.html(viz_html, height=700, scrolling=False)
-                    show_success_message("3D Visualization rendered successfully")
-                else:
-                    show_error_message("Failed to generate 3D visualization")
-        
-        st.markdown("""
-        <div class="info-box" style="margin-top: 1.5rem;">
-            <p>
-                <b>💡 Visualization Controls:</b><br>
-                • <b>Rotate:</b> Left-click and drag<br>
-                • <b>Zoom:</b> Scroll wheel<br>
-                • <b>Pan:</b> Right-click and drag<br>
-                • Equipment placement is based on AVIXA standards and room acoustics
-            </p>
-        </div>""", unsafe_allow_html=True)
 
     # --- Footer ---
     st.markdown(f"""
