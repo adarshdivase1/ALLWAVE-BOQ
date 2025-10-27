@@ -224,11 +224,26 @@ def categorize_product_comprehensively(description: str, model: str) -> Dict[str
                     'bluetooth.*speaker.*phone', 'conference speaker', 'personal.*speakerphone']):
         return {'category': 'Audio', 'sub_category': 'Speakerphone', 'needs_review': False}
 
+    # --- START: MODIFIED PER CHANGE 2.1 ---
+    # IMPROVED DSP CATEGORIZATION
     if matches_any(['dsp(?!.*cable)', 'digital signal processor', 'audio processor', 'tesira',
                     'q-sys core', 'biamp', r'p300\b', 'intellimix', 'audio conferencing processor',
-                    r'dmp \d+', 'bss blu', 'avhub', 'sound processor', 'audio.*dsp', 'mixer.*processor',
-                    'dante.*processor', 'networked.*audio.*processor']):
-        return {'category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
+                    r'dmp \d+', 'bss blu', 'avhub', 'sound processor']):
+        
+        # ✅ NEW: Blacklist live sound mixers and non-conferencing gear
+        if matches_any(['touchmix', 'live.*sound', 'portable.*mixer', 'analog.*mixer',
+                        'powered.*mixer', r'mg\d+', r'zm\d+', 'yamaha.*mixer']):
+            return {'category': 'Audio', 'sub_category': 'Loudspeaker / Speaker', 'needs_review': True}
+        
+        # ✅ NEW: Verify it has conferencing features
+        has_conferencing_features = matches_any(['aec', 'acoustic.*echo', 'conferenc', 
+                                                 'dante', 'voip', 'usb.*audio'])
+        
+        if has_conferencing_features or 'tesira' in text_to_search or 'qsc.*core' in text_to_search:
+            return {'category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': False}
+        else:
+            return {'category': 'Audio', 'sub_category': 'DSP / Audio Processor / Mixer', 'needs_review': True}
+    # --- END: MODIFIED PER CHANGE 2.1 ---
 
     if matches_any(['audio mixer(?!.*power)', 'mixing console', 'mixer(?!.*dsp|.*power|.*amp)', 
                     'sound.*mixer', 'analog.*mixer', 'digital.*mixer']) and not matches_any(['amplifier', 'power amp']):
@@ -539,6 +554,29 @@ def score_product_quality(product: Dict[str, Any]) -> Tuple[int, List[str]]:
         score -= 15; issues.append("Missing model number")
     if product.get('needs_review', False):
         score -= 30; issues.append("Category could not be classified")
+
+    # --- START: MODIFIED PER CHANGE 2.2 ---
+    # ✅ NEW: Category-specific price validation
+    category = product.get('category', '')
+    sub_category = product.get('sub_category', '')
+    # price = product.get('price_usd', 0) # Already defined above
+    
+    price_rules = {
+        ('Audio', 'DSP / Audio Processor / Mixer'): (1500, 15000),
+        ('Audio', 'Amplifier'): (300, 10000),
+        ('Video Conferencing', 'PTZ Camera'): (1000, 10000),
+        ('Video Conferencing', 'Video Bar'): (800, 5000),
+        ('Displays', 'Professional Display'): (500, 30000),
+    }
+    
+    rule_key = (category, sub_category)
+    if rule_key in price_rules:
+        min_price, max_price = price_rules[rule_key]
+        if price < min_price or price > max_price:
+            score -= 40
+            issues.append(f"Price ${price:.2f} outside expected range ${min_price}-${max_price} for {sub_category}")
+    # --- END: MODIFIED PER CHANGE 2.2 ---
+    
     return max(0, score), issues
 
 
