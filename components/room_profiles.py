@@ -408,5 +408,62 @@ ROOM_SPECS = {
         'housing': {
             'type': 'Integrated into Room Architecture'
         }
+    },
+
+    # New ACIM Room Types
+    'Reception/Digital Signage': {
+        'area_sqft': (100, 300),
+        'capacity': (0, 5),
+        'primary_use': 'Digital signage, reception area',
+        'typical_dims_ft': (20, 15),
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': False
+        },
+        'displays': {
+            'quantity': 1,
+            'type': 'Commercial Display or Video Wall'
+        }
+    },
+    
+    'Network Operations Center/Command Center': {
+        'area_sqft': (600, 1500),
+        'capacity': (10, 30),
+        'primary_use': 'Monitoring, control operations',
+        'typical_dims_ft': (40, 30),
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        }
+    },
+    
+    'Town Hall': {
+        'area_sqft': (1500, 3000),
+        'capacity': (100, 300),
+        'primary_use': 'Company meetings, presentations',
+        'typical_dims_ft': (60, 50),
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.60,
+            'requires_performance_verification': True
+        }
+    },
+    
+    'Auditorium': {
+        'area_sqft': (2000, 5000),
+        'capacity': (200, 500),
+        'primary_use': 'Large presentations, events',
+        'typical_dims_ft': (80, 60),
+        'avixa_requirements': {
+            'display_sizing_method': 'DISCAS',
+            'audio_standard': 'A102.01:2017',
+            'target_sti': 0.70,
+            'requires_performance_verification': True
+        }
     }
 }
