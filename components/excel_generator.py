@@ -609,6 +609,11 @@ def _populate_room_boq_sheet(sheet, items, room_name, styles, usd_to_inr_rate, g
                     sheet.row_dimensions[current_row].height = 85 # INCREASED from 80
                     
                     print(f"DEBUG: Added image for {item.get('name', 'Unknown')[:30]}")
+                    
+                    # ✅ CRITICAL: Free memory immediately
+                    img_buffer.close()
+                    del img_buffer
+                    del excel_img
                 else:
                     print(f"DEBUG: No image buffer generated for {item.get('name', 'Unknown')}")
                     
