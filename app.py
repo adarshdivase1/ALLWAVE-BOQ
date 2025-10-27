@@ -306,7 +306,7 @@ def main():
         else:
             st.session_state.currency_select = "USD"
     
-    # Room dimensions (DEPRECATED - now from questionnaire, but keep for fallback)
+    # Room dimensions
     if 'room_length_input' not in st.session_state:
         st.session_state.room_length_input = 28.0
     if 'room_width_input' not in st.session_state:
@@ -364,7 +364,7 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Sidebar function (DEPRECATED, but kept for compatibility)
+    # Sidebar function
     def update_dimensions_from_room_type():
         room_type = st.session_state.room_type_select
         if room_type in ROOM_SPECS and 'typical_dims_ft' in ROOM_SPECS[room_type]:
@@ -423,9 +423,7 @@ def main():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown('<h3>🔧 Multi-Room Options</h3>', unsafe_allow_html=True)
         
-        # This part is now driven by the questionnaire
-        room_count = len(st.session_state.get('questionnaire_room_data', []))
-        if room_count >= 3:
+        if len(st.session_state.get('project_rooms', [])) >= 3:
             enable_optimization = st.checkbox(
                 "Enable Multi-Room Optimization",
                 value=True,
@@ -434,11 +432,11 @@ def main():
             )
             
             if enable_optimization:
-                st.success(f"✅ Optimizing across {room_count} rooms")
+                st.success(f"✅ Optimizing across {len(st.session_state.project_rooms)} rooms")
             else:
                 st.info("ℹ️ Each room will have independent equipment")
         else:
-            st.info(f"ℹ️ Multi-room optimization requires 3+ rooms\n\nCurrent: {room_count} room(s)")
+            st.info(f"ℹ️ Multi-room optimization requires 3+ rooms\n\nCurrent: {len(st.session_state.get('project_rooms', []))} room(s)")
         
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -463,12 +461,11 @@ def main():
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # This section is now deprecated as it's handled by the questionnaire
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h3>🌍 Environment Design (Legacy)</h3>', unsafe_allow_html=True)
-        st.info("This is now controlled by the 'Smart Questionnaire' tab.")
+        st.markdown('<h3>🌍 Environment Design</h3>', unsafe_allow_html=True)
         
         # ============= APPLIED CHANGE HERE =============
+        # Determine default room type from questionnaire
         use_case_to_room_type = {
             'Video Conferencing': 'Standard Conference Room (6-8 People)',
             'Presentations & Training': 'Training Room (15-25 People)',
@@ -485,7 +482,8 @@ def main():
                 req.primary_use_case, 
                 default_room_type
             )
-        
+
+        # Get current value or use questionnaire-based default
         current_room_type = st.session_state.get('room_type_select', default_room_type)
         room_types_list = list(ROOM_SPECS.keys())
 
@@ -495,34 +493,118 @@ def main():
             default_index = 0
 
         room_type_key = st.selectbox(
-            "Primary Space Type (Legacy)",
+            "Primary Space Type",
             room_types_list,
             index=default_index,
             key="room_type_select",
-            on_change=update_dimensions_from_room_type,
-            disabled=True # Disable as it's now driven by questionnaire
+            on_change=update_dimensions_from_room_type
         )
         # ===============================================
 
+        if 'initial_load' not in st.session_state:
+            update_dimensions_from_room_type()
+            st.session_state.initial_load = True
+
         st.select_slider(
-            "Budget Tier (Legacy)",
+            "Budget Tier",
             options=["Economy", "Standard", "Premium", "Enterprise"],
             value=st.session_state.get('budget_tier_slider', 'Standard'),
-            key="budget_tier_slider",
-            disabled=True # Disable as it's now driven by questionnaire
+            key="budget_tier_slider"
         )
+        
+        if room_type_key in ROOM_SPECS:
+            spec = ROOM_SPECS[room_type_key]
+            area_start, area_end = spec.get('area_sqft', ('N/A', 'N/A'))
+            cap_start, cap_end = spec.get('capacity', ('N/A', 'N/A'))
+            primary_use = spec.get('primary_use', 'N/A')
+            st.markdown(f"""
+            <div class="info-box">
+                <p><b>📏 Area:</b> {area_start}-{area_end} sq ft<br>
+                    <b>👥 Capacity:</b> {cap_start}-{cap_end} people<br>
+                    <b>🎯 Primary Use:</b> {primary_use}</p>
+            </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============= MAIN TABS (MODIFIED) =============
-    tab_titles = ["🎯 Smart Questionnaire", "🛠️ BOQ Generation", "📊 Results"]
-    tab1, tab2, tab3 = st.tabs(tab_titles)
+    # ============= MAIN TABS =============
+    tab_titles = ["📋 Project Scope", "🎯 Smart Questionnaire", "🛠️ Generate BOQ", "✨ 3D Visualization"]
+    tab1, tab2, tab3, tab4 = st.tabs(tab_titles)
 
     with tab1:
+        st.markdown('<h2 class="section-header section-header-project">Project Management</h2>', unsafe_allow_html=True)
+        
+        # Display messages
+        if 'project_loaded_successfully' in st.session_state:
+            show_success_message(f"Project '{st.session_state.project_loaded_successfully}' loaded successfully!")
+            del st.session_state.project_loaded_successfully
+        
+        if 'project_load_failed' in st.session_state:
+            show_error_message("Failed to load project. Please try again.")
+            del st.session_state.project_load_failed
+        
+        project_name = st.session_state.get('project_name_input', '')
+        
+        col_save, col_load = st.columns(2)
+        with col_save:
+            if st.button("💾 Save Current Project", type="primary", use_container_width=True, disabled=not project_name):
+                if db:
+                    # Save all relevant project data
+                    project_data = {
+                        'name': project_name,
+                        'project_name_input': project_name,
+                        'client_name_input': st.session_state.get('client_name_input', ''),
+                        'location_input': st.session_state.get('location_input', ''),
+                        'design_engineer_input': st.session_state.get('design_engineer_input', ''),
+                        'account_manager_input': st.session_state.get('account_manager_input', ''),
+                        'client_personnel_input': st.session_state.get('client_personnel_input', ''),
+                        'comments_input': st.session_state.get('comments_input', ''),
+                        'rooms': st.session_state.get('project_rooms', []),
+                        'gst_rates': st.session_state.get('gst_rates', {}),
+                        'currency': st.session_state.get('currency_select', 'USD'),
+                        'room_type': st.session_state.get('room_type_select', ''),
+                        'budget_tier': st.session_state.get('budget_tier_slider', 'Standard'),
+                        'room_length': st.session_state.get('room_length_input', 28.0),
+                        'room_width': st.session_state.get('room_width_input', 20.0),
+                        'features': st.session_state.get('features_text_area', '')
+                    }
+                    if save_project(db, st.session_state.user_email, project_data):
+                        show_success_message(f"Project '{project_name}' saved successfully!")
+                        # Refresh project list from the database
+                        st.session_state.user_projects = load_projects(db, st.session_state.user_email)
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        show_error_message("Failed to save project.")
+                else:
+                    show_error_message("Database connection not available.")
+        
+        with col_load:
+            if st.session_state.get('user_projects'):
+                project_names = [p.get('name', 'Unnamed Project') for p in st.session_state.user_projects]
+                
+                if project_names:
+                    selected_project = st.selectbox(
+                        "Select Project to Load", 
+                        project_names,
+                        key="project_selector_dropdown"
+                    )
+                    
+                    # Use a button to trigger the load
+                    if st.button("📂 Load Selected Project", use_container_width=True, key="load_project_btn"):
+                        st.session_state.project_to_load = selected_project
+                        st.rerun()
+                else:
+                    st.info("No saved projects found.")
+            else:
+                st.info("No saved projects found. Save your current project to see it here.")
+
+        st.markdown("---")
+        create_multi_room_interface()
+
+    with tab2:
         show_smart_questionnaire_tab()
         
-    with tab2:
+    with tab3:
         st.markdown('<h2 class="section-header section-header-boq">BOQ Generation Engine</h2>', unsafe_allow_html=True)
-        
         # Check if questionnaire is completed
         if 'client_requirements' not in st.session_state:
             st.warning("⚠️ Please complete the Smart Questionnaire in the previous tab first.")
@@ -542,142 +624,168 @@ def main():
                         if brand != 'No Preference':
                             st.write(f"  • {category.replace('_', ' ').title()}: {brand}")
             
+            # Get room dimensions from sidebar (already captured)
+            room_length = st.session_state.get('room_length_input', 28.0)
+            room_width = st.session_state.get('room_width_input', 20.0)
+            ceiling_height = st.session_state.get('ceiling_height_input', 10.0)
+            room_type = st.session_state.get('room_type_select', 'Standard Conference Room')
+
+            # Just show summary (no input fields)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Room Length", f"{room_length:.0f} ft")
+            with col2:
+                st.metric("Room Width", f"{room_width:.0f} ft")
+            with col3:
+                st.metric("Ceiling Height", f"{ceiling_height:.0f} ft")
+
+            room_area = room_length * room_width
+            st.metric("Room Area", f"{room_area:.0f} sq ft")
+            st.info(f"📐 Room Type: {room_type}")
+            
+            # Pre-Generation Checklist
+            st.markdown("### 📋 Pre-Generation Checklist")
+            checklist_items = []
+
+            # Check questionnaire completion
+            if 'client_requirements' in st.session_state:
+                req = st.session_state.client_requirements
+                checklist_items.append(("✅", "Questionnaire completed"))
+                
+                # Check for brand preferences
+                prefs = req.get_brand_preferences()
+                pref_count = sum(1 for v in prefs.values() if v != 'No Preference')
+                if pref_count > 0:
+                    checklist_items.append(("✅", f"{pref_count} brand preferences set"))
+                else:
+                    checklist_items.append(("⚠️", "No brand preferences (using best available)"))
+            else:
+                checklist_items.append(("❌", "Questionnaire not completed"))
+
+            # Check room dimensions
+            if room_area > 0:
+                checklist_items.append(("✅", f"Room: {room_length:.0f}' × {room_width:.0f}' = {room_area:.0f} sqft"))
+            else:
+                checklist_items.append(("❌", "Invalid room dimensions"))
+
+            # Check project details
+            missing_fields = validate_required_fields()
+            if not missing_fields:
+                checklist_items.append(("✅", "All project details filled"))
+            else:
+                checklist_items.append(("⚠️", f"{len(missing_fields)} project detail(s) missing"))
+
+            # Display checklist
+            for icon, text in checklist_items:
+                st.markdown(f"{icon} {text}")
+
             st.markdown("---")
             
-            # ======================= NEW PROGRAMMATIC GENERATION BLOCK =======================
-            if st.session_state.get('trigger_boq_generation'):
-                # Unset trigger immediately to prevent re-generation on rerun
-                st.session_state.trigger_boq_generation = False
-                
-                client_requirements = st.session_state.get('client_requirements')
-                room_data = st.session_state.get('questionnaire_room_data', [])
-                
-                if not room_data:
-                    show_error_message("No room data found from questionnaire. Please complete the questionnaire again.")
-                else:
-                    try:
-                        progress_bar = st.progress(0, text="Initializing multi-room generation...")
+            generate_disabled = bool(missing_fields)
+            if missing_fields:
+                st.warning(f"⚠️ Please fill required fields in sidebar: {', '.join(missing_fields)}")
+            
+            # ======================= MODIFIED ERROR HANDLING BLOCK =======================
+            if st.button("✨ Generate Optimized BOQ",
+                          type="primary",
+                          use_container_width=True,
+                          disabled=generate_disabled):
+                try:
+                    progress_bar = st.progress(0, text="Initializing optimized generation...")
+                    
+                    # Import the optimized generator
+                    from components.optimized_boq_generator import OptimizedBOQGenerator
+                    progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
+                    # Create generator with questionnaire requirements
+                    generator = OptimizedBOQGenerator(
+                        product_df=product_df,
+                        client_requirements=st.session_state.client_requirements
+                    )
+                    st.session_state.boq_selector = generator.selector
+                    progress_bar.progress(50, text="🔍 Selecting optimal products...")
+                    
+                    # Generate BOQ
+                    boq_items, validation_results = generator.generate_boq_for_room(
+                        room_type=room_type,
+                        room_length=room_length,
+                        room_width=room_width,
+                        ceiling_height=ceiling_height
+                    )
+                    
+                    progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
+
+                    # Calculate quality score
+                    quality_score = generator.calculate_boq_quality_score(boq_items, validation_results)
+                    st.session_state.boq_quality_score = quality_score
+
+                    if boq_items:
+                        st.session_state.boq_items = boq_items
+                        st.session_state.validation_results = validation_results
+                        st.session_state.boq_selector = generator.selector
                         
-                        # Import and setup the generator
-                        from components.optimized_boq_generator import OptimizedBOQGenerator
-                        boq_generator = OptimizedBOQGenerator(
-                            product_df=product_df,
-                            client_requirements=client_requirements
-                        )
-                        st.session_state.boq_selector = boq_generator.selector
+                        # Display quality score prominently
+                        col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
                         
-                        # Initialize accumulators
-                        all_boq_items = []
-                        all_validation_results = {}
-                        total_rooms = len(room_data)
-                        
-                        # For each room from questionnaire
-                        for i, room_info in enumerate(room_data):
-                            room_name = room_info.get('name', f'Room {i+1}')
-                            progress_bar.progress((i+1)/total_rooms, text=f"Generating BOQ for: {room_name}...")
-                            
-                            room_type_spec = room_info['room_spec_mapping']  # Maps to ROOM_SPECS
-                            responses = room_info['responses']
-                            
-                            # Extract dimensions
-                            if 'extracted_dimensions' in responses:
-                                dims = responses['extracted_dimensions']
-                                room_length = dims.get('length', 20.0) # Use .get for safety
-                                room_width = dims.get('width', 15.0)
-                                ceiling_height = dims.get('ceiling_height', 9.0)
-                            else:
-                                # Fallback to defaults
-                                room_length = 20.0
-                                room_width = 15.0
-                                ceiling_height = 9.0
-                            
-                            # Generate BOQ for this room
-                            boq_items, validation = boq_generator.generate_boq_for_room(
-                                room_type=room_type_spec,
-                                room_length=room_length,
-                                room_width=room_width,
-                                ceiling_height=ceiling_height
+                        with col_q1:
+                            st.metric(
+                                "BOQ Quality Score",
+                                f"{quality_score['percentage']:.1f}%",
+                                f"Grade: {quality_score['grade']}"
                             )
-                            
-                            # Accumulate results
-                            if boq_items:
-                                all_boq_items.extend(boq_items)
-                                all_validation_results.update(validation) # Merge validation dicts
-
-                        progress_bar.progress(90, text="⚖️ Calculating overall Quality Score...")
-
-                        if all_boq_items:
-                            # Store aggregated results in session state for Tab 3
-                            st.session_state.boq_items = all_boq_items
-                            st.session_state.validation_results = all_validation_results
-                            
-                            # Calculate quality score on the *entire* aggregated BOQ
-                            quality_score = boq_generator.calculate_boq_quality_score(all_boq_items, all_validation_results)
-                            st.session_state.boq_quality_score = quality_score
-
-                            # Display quality score prominently
-                            col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
-                            
-                            with col_q1:
-                                st.metric(
-                                    "BOQ Quality Score",
-                                    f"{quality_score['percentage']:.1f}%",
-                                    f"Grade: {quality_score['grade']}"
-                                )
-                            
-                            with col_q2:
-                                st.markdown(f"""
-                                <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
-                                             border-left: 4px solid {quality_score['color']}; 
-                                             padding: 1rem; 
-                                             border-radius: 8px; 
-                                             margin: 1rem 0;">
-                                    <h3 style="margin: 0; color: {quality_score['color']};">
-                                        {quality_score['quality_level']}
-                                    </h3>
-                                    <p style="margin: 0.5rem 0 0 0; color: #666;">
-                                        This BOQ meets professional standards.
-                                    </p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            with col_q3:
-                                with st.expander("📊 Score Breakdown"):
-                                    for category, score in quality_score['breakdown'].items():
-                                        max_score = quality_score['max_breakdown'][category]
-                                        pct = (score / max_score) * 100
-                                        st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
-                            
-                            update_boq_content_with_current_items()
-                            
-                            progress_bar.progress(100, text="✅ BOQ generation complete!")
-                            time.sleep(0.5)
-                            progress_bar.empty()
-                            show_success_message(f"BOQ Generated Successfully for {total_rooms} room(s)")
-                            st.info("View the aggregated results in the 'Results' tab.")
-                        else:
-                            progress_bar.empty()
-                            show_error_message("Failed to generate BOQ. Please check your inputs.")
-
-                    except KeyError as e:
+                        
+                        with col_q2:
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, {quality_score['color']}22, {quality_score['color']}44); 
+                                         border-left: 4px solid {quality_score['color']}; 
+                                         padding: 1rem; 
+                                         border-radius: 8px; 
+                                         margin: 1rem 0;">
+                                <h3 style="margin: 0; color: {quality_score['color']};">
+                                    {quality_score['quality_level']}
+                                </h3>
+                                <p style="margin: 0.5rem 0 0 0; color: #666;">
+                                    This BOQ meets professional standards for {room_type}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col_q3:
+                            with st.expander("📊 Score Breakdown"):
+                                for category, score in quality_score['breakdown'].items():
+                                    max_score = quality_score['max_breakdown'][category]
+                                    pct = (score / max_score) * 100
+                                    st.progress(pct / 100, text=f"{category.replace('_', ' ').title()}: {score:.0f}/{max_score}")
+                        
+                        update_boq_content_with_current_items()
+                        
+                        # Save to current room
+                        if st.session_state.project_rooms and st.session_state.current_room_index < len(st.session_state.project_rooms):
+                            st.session_state.project_rooms[st.session_state.current_room_index]['boq_items'] = boq_items
+                        
+                        progress_bar.progress(100, text="✅ BOQ generation complete!")
+                        time.sleep(0.5)
                         progress_bar.empty()
-                        st.error(f"❌ Data Error: Missing required field - {e}")
-                        st.info("This usually means the product catalog is incomplete. Please check the catalog data file.")
-                    except ValueError as e:
+                        show_success_message("BOQ Generated Successfully with AVIXA Compliance")
+                    else:
                         progress_bar.empty()
-                        st.error(f"❌ Validation Error: {e}")
-                    except Exception as e:
-                        progress_bar.empty()
-                        st.error(f"❌ Unexpected Error: {e}")
-                        with st.expander("🔍 Technical Details"):
-                            st.code(traceback.format_exc())
-            else:
-                st.info("🔄 Waiting for questionnaire completion...")
-                st.info("Complete the Smart Questionnaire in the first tab to trigger the BOQ generation. Once submitted, the generation process and quality score will appear here.")
+                        show_error_message("Failed to generate BOQ. Please check your inputs.")
+
+                except KeyError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Data Error: Missing required field - {e}")
+                    st.info("This usually means the product catalog is incomplete. Please check the catalog data file.")
+                except ValueError as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Validation Error: {e}")
+                except Exception as e:
+                    progress_bar.empty()
+                    st.error(f"❌ Unexpected Error: {e}")
+                    with st.expander("🔍 Technical Details"):
+                        st.code(traceback.format_exc())
             # ======================= END MODIFIED BLOCK =======================
 
-    with tab3:
-        st.markdown('<h2 class="section-header section-header-results">Aggregated BOQ Results</h2>', unsafe_allow_html=True)
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        
         # Display BOQ results
         if st.session_state.get('boq_items'):
             project_details = {
@@ -706,8 +814,8 @@ def main():
                             suggestions = generate_cost_optimization_suggestions(
                                 model=model,
                                 boq_items=st.session_state.boq_items,
-                                room_type="Multiple Rooms", # Use a generic descriptor
-                                budget_tier=st.session_state.client_requirements.budget_level
+                                room_type=st.session_state.get('room_type_select', 'Conference Room'),
+                                budget_tier=st.session_state.get('budget_tier_slider', 'Standard')
                             )
                             
                             if suggestions:
@@ -719,8 +827,31 @@ def main():
             # ============================ END OF NEW CODE ===========================
 
         else:
-            st.info("👆 Complete the questionnaire and wait for generation to see your aggregated Bill of Quantities")
+            st.info("👆 Complete the questionnaire and click 'Generate BOQ' to create your Bill of Quantities")
 
+    with tab4:
+        st.markdown('<h2 class="section-header section-header-viz">Interactive 3D Room Visualization</h2>', unsafe_allow_html=True)
+        
+        if st.button("🎨 Generate 3D Visualization", use_container_width=True, key="generate_viz_btn"):
+            with st.spinner("Rendering 3D environment..."):
+                viz_html = create_3d_visualization()
+                
+                if viz_html:
+                    st.components.v1.html(viz_html, height=700, scrolling=False)
+                    show_success_message("3D Visualization rendered successfully")
+                else:
+                    show_error_message("Failed to generate 3D visualization")
+        
+        st.markdown("""
+        <div class="info-box" style="margin-top: 1.5rem;">
+            <p>
+                <b>💡 Visualization Controls:</b><br>
+                • <b>Rotate:</b> Left-click and drag<br>
+                • <b>Zoom:</b> Scroll wheel<br>
+                • <b>Pan:</b> Right-click and drag<br>
+                • Equipment placement is based on AVIXA standards and room acoustics
+            </p>
+        </div>""", unsafe_allow_html=True)
 
     # --- Footer ---
     st.markdown(f"""
