@@ -1068,6 +1068,50 @@ class OptimizedBOQGenerator:
         
         return warnings
     
+    def generate_boq_from_acim_form(self, acim_responses: Dict) -> Tuple[List[Dict], Dict[str, Any]]:
+        """
+        Generate BOQ from ACIM form responses
+        """
+        all_boq_items = []
+        all_validations = {}
+        
+        for room_req in acim_responses.get('room_requirements', []):
+            room_type = room_req['room_type']
+            responses = room_req['responses']
+            
+            # Extract room dimensions from responses
+            dimensions_text = responses.get('room_dimensions', '')
+            # Parse dimensions (simplified - you may need more robust parsing)
+            room_length = 28.0  # Default
+            room_width = 20.0   # Default
+            ceiling_height = 10.0  # Default
+            
+            # Generate BOQ for this room
+            boq_items, validation = self.generate_boq_for_room(
+                room_type=self._map_acim_to_standard_room(room_type),
+                room_length=room_length,
+                room_width=room_width,
+                ceiling_height=ceiling_height
+            )
+            
+            all_boq_items.extend(boq_items)
+            all_validations[room_type] = validation
+        
+        return all_boq_items, all_validations
+
+    def _map_acim_to_standard_room(self, acim_room_type: str) -> str:
+        """Map ACIM room types to standard room profiles"""
+        mapping = {
+            'Conference/Meeting Room/Boardroom': 'Standard Conference Room (6-8 People)',
+            'Experience Center': 'Multipurpose Event Room (40+ People)',
+            'Reception/Digital Signage': 'Small Huddle Room (2-3 People)',
+            'Training Room': 'Training Room (15-25 People)',
+            'Network Operations Center/Command Center': 'Large Conference Room (8-12 People)',
+            'Town Hall': 'Multipurpose Event Room (40+ People)',
+            'Auditorium': 'Multipurpose Event Room (40+ People)'
+        }
+        return mapping.get(acim_room_type, 'Standard Conference Room (6-8 People)')
+    
     def calculate_boq_quality_score(self, boq_items: List[Dict], validation_results: Dict) -> Dict[str, Any]:
         """
         ENHANCED: Quality score now includes AVIXA compliance
