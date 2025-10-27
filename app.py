@@ -879,12 +879,13 @@ def main():
                      use_container_width=True):
             
             try:
-                progress_bar = st.progress(0, text="Processing ACIM form data...")
+                # ======================= START: APPLIED CHANGE =======================
+                progress_bar = st.progress(0.0, text="Processing ACIM form data...")
+                # ======================= END: APPLIED CHANGE =========================
                 
                 from components.optimized_boq_generator import OptimizedBOQGenerator
                 from components.smart_questionnaire import ClientRequirements
                 
-                # ======================= START: REPLACED BLOCK =======================
                 # ✅ PARSE ACIM FORM INTO CLIENT REQUIREMENTS
                 try:
                     requirements = parse_acim_to_client_requirements(acim_data)
@@ -921,9 +922,10 @@ def main():
                         streaming_capability_needed=False,
                         additional_requirements=''
                     )
-                # ======================= END: REPLACED BLOCK =======================
                 
-                progress_bar.progress(30, text="🎯 Generating BOQ for each room...")
+                # ======================= START: APPLIED CHANGE =======================
+                progress_bar.progress(0.30, text="🎯 Generating BOQ for each room...")
+                # ======================= END: APPLIED CHANGE =========================
                 
                 generator = OptimizedBOQGenerator(
                     product_df=product_df,
@@ -970,10 +972,15 @@ def main():
                     all_boq_items.extend(boq_items)
                     all_validations[room_type] = validation
                     
-                    progress_bar.progress(30 + (idx+1)/len(acim_data['room_requirements'])*60, 
+                    # ======================= START: APPLIED CHANGE =======================
+                    progress_value = 0.30 + (idx+1)/len(acim_data['room_requirements'])*0.60
+                    progress_bar.progress(progress_value, 
                                          text=f"Processed room {idx+1}/{len(acim_data['room_requirements'])}")
+                    # ======================= END: APPLIED CHANGE =========================
                 
-                progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
+                # ======================= START: APPLIED CHANGE =======================
+                progress_bar.progress(0.90, text="⚖️ Calculating Quality Score...")
+                # ======================= END: APPLIED CHANGE =========================
                 
                 if all_boq_items:
                     # Combine all validations
@@ -1038,7 +1045,9 @@ def main():
                     
                     update_boq_content_with_current_items()
                     
-                    progress_bar.progress(100, text="✅ BOQ generation complete!")
+                    # ======================= START: APPLIED CHANGE =======================
+                    progress_bar.progress(1.0, text="✅ BOQ generation complete!")
+                    # ======================= END: APPLIED CHANGE =========================
                     time.sleep(0.5)
                     progress_bar.empty()
                     
@@ -1048,7 +1057,10 @@ def main():
                     show_error_message("Failed to generate BOQ from ACIM form.")
                     
             except Exception as e:
-                progress_bar.empty()
+                # ======================= START: APPLIED CHANGE =======================
+                if 'progress_bar' in locals():
+                    progress_bar.empty()
+                # ======================= END: APPLIED CHANGE =========================
                 st.error(f"❌ Error: {e}")
                 with st.expander("🔍 Technical Details"):
                     st.code(traceback.format_exc())
