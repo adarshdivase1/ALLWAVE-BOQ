@@ -145,9 +145,24 @@ class OptimizedBOQGenerator:
             product = self.selector.select_product_with_fallback(requirement)
             
             if product:
+                # === CRITICAL FIX 6: Pass FRESH avixa_calcs ===
                 justification = self._generate_avixa_justification(
                     component_key, product, avixa_calcs
                 )
+                
+                # === CRITICAL FIX 6: Verify display size matches AVIXA ===
+                if product.get('category') == 'Displays':
+                    avixa_size = avixa_calcs['display']['selected_size_inches']
+                    # Note: Assumes _extract_display_size_from_product exists in IntelligentProductSelector
+                    actual_size = self.selector._extract_display_size_from_product(product)
+                    
+                    if actual_size and abs(actual_size - avixa_size) > 5:
+                        self.selector.log(f"    🚨 WARNING: Selected {actual_size}\" display but AVIXA requires {avixa_size}\"")
+                        self.selector.validation_warnings.append({
+                            'component': 'Display',
+                            'issue': f"Selected {actual_size}\" display is {avixa_size - actual_size:.0f}\" smaller than AVIXA DISCAS requirement ({avixa_size}\")",
+                            'severity': 'CRITICAL'
+                        })
                 
                 product.update({
                     'quantity': requirement.quantity,
@@ -178,6 +193,7 @@ class OptimizedBOQGenerator:
         validation_results = self._validate_avixa_compliance(boq_items, avixa_calcs)
 
         # ✅ NEW: Validate audio ecosystem
+        # === FIX 4 applied here ===
         audio_warnings = self._validate_audio_ecosystem(boq_items)
         if audio_warnings:
             if 'warnings' not in validation_results:
@@ -280,11 +296,26 @@ class OptimizedBOQGenerator:
                 min_price=1500
             )
             
+            # === CRITICAL FIX 2: ADD TOUCH CONTROLLER ===
+            blueprint['vc_touch_controller'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Touch Controller / Panel',
+                quantity=1,
+                priority=4,
+                justification=f'Touch controller for {self.requirements.vc_platform} codec',
+                compatibility_requirements=[self.requirements.vc_platform],
+                required_keywords=['touch', 'controller', 'panel'],
+                blacklist_keywords=['display', 'monitor', 'tv'],
+                min_price=300,
+                max_price=1500
+            )
+            
             blueprint['ptz_camera'] = ProductRequirement(
                 category='Video Conferencing',
                 sub_category='PTZ Camera',
                 quantity=camera_count,
-                priority=4,
+                # === FIX 2: Priority updated ===
+                priority=5,
                 justification=f'{camera_count}x PTZ camera(s)',
                 required_keywords=['ptz', 'camera', 'optical', 'zoom'],
                 min_price=1000
@@ -439,6 +470,72 @@ class OptimizedBOQGenerator:
             required_keywords=['cat6', 'ethernet', 'network', 'cable'], min_price=15, max_price=80
         )
         
+        # === CRITICAL FIX 5: HANDLE CLIENT-REQUESTED FEATURES ===
+
+        # Check if client wants digital whiteboard
+        if self.requirements.interactive_display_needed or \
+           any(term in str(self.requirements.additional_requirements).lower() 
+               for term in ['whiteboard', 'scribe', 'kaptivo', 'logitech scribe']):
+            
+            blueprint['digital_whiteboard'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Whiteboard Capture',
+                quantity=1,
+                priority=15,
+                justification='Client requested digital whiteboard capture (Kaptivo/Scribe)',
+                required_keywords=['whiteboard', 'capture', 'scribe', 'kaptivo'],
+                min_price=2000,
+                max_price=5000
+            )
+
+        # Check if client wants room scheduling
+        if self.requirements.room_scheduling_needed or \
+           any(term in str(self.requirements.additional_requirements).lower() 
+               for term in ['scheduling', 'room panel', 'booking']):
+            
+            blueprint['room_scheduler'] = ProductRequirement(
+                category='Video Conferencing',
+                sub_category='Scheduling Panel',
+                quantity=1,
+                priority=16,
+                justification='Client requested room scheduling display',
+                required_keywords=['scheduling', 'room panel', 'booking'],
+                min_price=500,
+                max_price=1500
+            )
+
+        # Check if client wants lighting/automation
+        if self.requirements.lighting_control_integration or \
+           any(term in str(self.requirements.additional_requirements).lower() 
+               for term in ['automation', 'lighting control', 'blind control', 'shades']):
+            
+            blueprint['automation_processor'] = ProductRequirement(
+                category='Control Systems',
+                sub_category='Control Processor',
+                quantity=1,
+                priority=17,
+                justification='Client requested room automation (lighting, blinds, HVAC)',
+                required_keywords=['control', 'processor', 'automation'],
+                min_price=1500,
+                max_price=5000
+            )
+
+        # Check if client wants acoustic treatment
+        if self.requirements.voice_reinforcement_needed or \
+           any(term in str(self.requirements.additional_requirements).lower() 
+               for term in ['acoustic', 'treatment', 'panels', 'sound absorption']):
+            
+            blueprint['acoustic_treatment'] = ProductRequirement(
+                category='Infrastructure',
+                sub_category='Acoustic Treatment',
+                quantity=4,  # Panels
+                priority=18,
+                justification='Client requested acoustic treatment for sound quality',
+                required_keywords=['acoustic', 'panel', 'absorption'],
+                min_price=100,
+                max_price=500
+            )
+
         return blueprint
 
     def _generate_avixa_justification(
@@ -652,15 +749,18 @@ class OptimizedBOQGenerator:
         
         return validation
 
+    # === CRITICAL FIX 4: Replaced function ===
     def _validate_audio_ecosystem(self, boq_items: List[Dict]) -> List[str]:
         """
-        NEW: Validate that audio components form a compatible ecosystem
+        ENHANCED: Validate entire audio chain compatibility
         """
         warnings = []
         
         # Extract audio components
         microphones = [item for item in boq_items if 'Microphone' in item.get('sub_category', '')]
         dsp_items = [item for item in boq_items if 'DSP / Audio Processor / Mixer' in item.get('sub_category', '')]
+        amplifiers = [item for item in boq_items if 'Amplifier' in item.get('sub_category', '')]
+        speakers = [item for item in boq_items if 'Speaker' in item.get('sub_category', '') or 'Loudspeaker' in item.get('sub_category', '')]
         
         if microphones and dsp_items:
             mic_brand = microphones[0].get('brand', '').lower()
@@ -676,6 +776,25 @@ class OptimizedBOQGenerator:
                 warnings.append(
                     f"⚠️ AUDIO ECOSYSTEM WARNING: Shure microphones paired with {dsp_items[0].get('brand')} DSP. "
                     f"Recommend Shure IntelliMix, Biamp, or QSC for optimal integration."
+                )
+        
+        # === NEW: VALIDATE SPEAKER COMPATIBILITY ===
+        if speakers and (dsp_items or amplifiers):
+            speaker_brand = speakers[0].get('brand', '').lower()
+            amp_brand = amplifiers[0].get('brand', '').lower() if amplifiers else ''
+            dsp_brand = dsp_items[0].get('brand', '').lower() if dsp_items else ''
+            
+            # Check for ecosystem mismatches
+            if dsp_brand == 'biamp' and speaker_brand not in ['biamp', 'bose', 'shure']:
+                warnings.append(
+                    f"⚠️ SPEAKER ECOSYSTEM WARNING: {speakers[0].get('brand')} speakers with Biamp DSP. "
+                    f"Consider Biamp Desono or Bose EdgeMax for better integration."
+                )
+            
+            if amp_brand == 'qsc' and speaker_brand not in ['qsc', 'jbl', 'community']:
+                warnings.append(
+                    f"⚠️ SPEAKER ECOSYSTEM WARNING: {speakers[0].get('brand')} speakers with QSC amplifier. "
+                    f"Consider QSC speakers for optimal performance."
                 )
         
         # Check for mixer instead of DSP
