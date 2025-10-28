@@ -478,7 +478,7 @@ def main():
         }
 
         default_room_type = 'Standard Conference Room (6-8 People)'
-        if 'client_requirements' in st.session_state:
+        if 'client_requirements' in st.session_state and st.session_state.client_requirements is not None:
             req = st.session_state.client_requirements
             default_room_type = use_case_to_room_type.get(
                 req.primary_use_case, 
@@ -886,3 +886,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
