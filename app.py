@@ -567,6 +567,7 @@ def main():
                         'room_length': st.session_state.get('room_length_input', 28.0),
                         'room_width': st.session_state.get('room_width_input', 20.0),
                         'features': st.session_state.get('features_text_area', '')
+                        # NOTE: 'unified_context' could be saved here if serialized (e.g., to_dict())
                     }
                     if save_project(db, st.session_state.user_email, project_data):
                         show_success_message(f"Project '{project_name}' saved successfully!")
@@ -693,26 +694,40 @@ def main():
                           use_container_width=True,
                           disabled=generate_disabled):
                 try:
+                    # ✅ CHECK: Ensure unified context exists
+                    if 'unified_context' not in st.session_state or not st.session_state.unified_context:
+                        st.error("❌ Please complete the Smart Questionnaire first!")
+                        st.stop()
+                    
+                    unified_ctx = st.session_state.unified_context
+                    
+                    # Update room dimensions if changed in sidebar
+                    unified_ctx.room.length_ft = st.session_state.get('room_length_input', 28.0)
+                    unified_ctx.room.width_ft = st.session_state.get('room_width_input', 20.0)
+                    unified_ctx.room.ceiling_height_ft = st.session_state.get('ceiling_height_input', 10.0)
+                    unified_ctx.room.area_sqft = unified_ctx.room.length_ft * unified_ctx.room.width_ft
+                    unified_ctx.room.volume_cuft = unified_ctx.room.area_sqft * unified_ctx.room.ceiling_height_ft
+                    
                     progress_bar = st.progress(0, text="Initializing optimized generation...")
                     
                     # Import the optimized generator
                     from components.optimized_boq_generator import OptimizedBOQGenerator
+                    
                     progress_bar.progress(25, text="🎯 Building logical equipment blueprint...")
-                    # Create generator with questionnaire requirements
+                    
+                    # ✅ NEW: Pass unified context
                     generator = OptimizedBOQGenerator(
                         product_df=product_df,
-                        client_requirements=st.session_state.client_requirements
+                        unified_context=unified_ctx
                     )
+                    
+                    # Store generator for later use
                     st.session_state.boq_selector = generator.selector
+                    
                     progress_bar.progress(50, text="🔍 Selecting optimal products...")
                     
-                    # Generate BOQ
-                    boq_items, validation_results = generator.generate_boq_for_room(
-                        room_type=room_type,
-                        room_length=room_length,
-                        room_width=room_width,
-                        ceiling_height=ceiling_height
-                    )
+                    # ✅ SIMPLIFIED: No parameters needed now
+                    boq_items, validation_results = generator.generate_boq_for_room()
                     
                     progress_bar.progress(90, text="⚖️ Calculating Quality Score...")
 
@@ -771,6 +786,12 @@ def main():
                     else:
                         progress_bar.empty()
                         show_error_message("Failed to generate BOQ. Please check your inputs.")
+
+                    # NEW: Show decision log
+                    if unified_ctx.decision_log:
+                        with st.expander("📝 System Decision Log", expanded=False):
+                            for decision in unified_ctx.decision_log:
+                                st.write(f"• {decision}")
 
                 except KeyError as e:
                     progress_bar.empty()
