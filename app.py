@@ -32,7 +32,9 @@ try:
         create_multi_room_interface, display_boq_results, update_boq_content_with_current_items
     )
     from components.visualizer import create_3d_visualization
-    from components.smart_questionnaire import SmartQuestionnaire, show_smart_questionnaire_tab
+    
+    # --- CHANGE 5 APPLIED HERE ---
+    from components.smart_questionnaire_v2 import EnhancedSmartQuestionnaire, show_smart_questionnaire_tab
     
     # ✅ ADD THESE TWO CRITICAL IMPORTS
     from components.multi_room_optimizer import MultiRoomOptimizer
