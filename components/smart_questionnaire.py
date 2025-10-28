@@ -69,6 +69,46 @@ class ClientRequirements:
     automation_scope: str = ""  # What should be automated
     supporting_documents: List = None  # Floor plans, etc.
     
+    # ACIM Detailed Responses (Phase 3)
+    acim_seating_layout: str = ""
+    acim_solution_type: str = ""
+    acim_uc_platform: str = ""
+    acim_native_solution: str = ""
+    acim_connectivity: str = ""
+    acim_digital_whiteboard: bool = False
+    acim_automation: str = ""
+    acim_room_scheduler: bool = False
+    acim_virtual_demo: bool = False
+    acim_acoustic_solutions: bool = False
+    acim_budget: str = ""
+    acim_seating_info: str = ""
+    acim_remote_training: bool = False
+    acim_camera_requirements: str = ""
+    acim_camera_features: bool = False
+    acim_live_streaming: bool = False
+    acim_business_outcome: str = ""
+    acim_showcase_items: str = ""
+    acim_flexibility: str = ""
+    acim_stakeholders: str = ""
+    acim_visitor_experience: str = ""
+    acim_av_equipment: List = None
+    acim_display_type: str = ""
+    acim_content_type: str = ""
+    acim_centralized_platform: bool = False
+    acim_locations_count: int = 1
+    acim_audio_solution: bool = False
+    acim_usage_frequency: str = ""
+    acim_primary_users: str = ""
+    acim_program_audio: str = ""
+    acim_audio_performance: str = ""
+    acim_primary_applications: str = ""
+    acim_vc_solution: str = ""
+    acim_microphone_preferences: str = ""
+    acim_users_count: int = 0
+    acim_display_preference: str = ""
+    acim_source_inputs: str = ""
+    acim_encoder_decoder: str = ""
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
@@ -436,6 +476,345 @@ class EnhancedSmartQuestionnaire:
                 }
             ]
         
+        # Town Hall Questions
+        elif room_type == "Town Hall":
+            return [
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '1. Could you provide detailed room dimensions (length, breadth, and height) and any existing architectural features we need to consider?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 50ft x 35ft x 14ft, tiered seating, acoustic panels on walls'
+                },
+                {
+                    'id': 'acim_seating_info',
+                    'question': '2. How many seats are there in the room, and what is the seating orientation towards the trainer? (e.g., classroom, theater, U-shaped)',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 100 seats, theater style, fixed seating'
+                },
+                {
+                    'id': 'acim_connectivity',
+                    'question': '3. Are you looking for wired and wireless connectivity from both the podium and the overall seating area?',
+                    'type': 'select',
+                    'options': [
+                        'Podium only',
+                        'Seating area only',
+                        'Both podium and seating area',
+                        'Wireless throughout'
+                    ]
+                },
+                {
+                    'id': 'acim_usage_frequency',
+                    'question': '4. How often will the Town Hall be used? (e.g., Once a week, Once a month, etc.)',
+                    'type': 'select',
+                    'options': [
+                        'Daily',
+                        'Multiple times per week',
+                        'Weekly',
+                        'Monthly',
+                        'Quarterly',
+                        'As needed'
+                    ]
+                },
+                {
+                    'id': 'acim_primary_users',
+                    'question': '5. Who will be the primary users of the Town Hall space? (e.g., employees, management, external guests, etc.)',
+                    'type': 'text_area',
+                    'placeholder': 'List primary user groups'
+                },
+                {
+                    'id': 'acim_uc_platform',
+                    'question': '6. Which UC (Unified Collaboration) platform do you currently use?',
+                    'type': 'select',
+                    'options': [
+                        'Microsoft Teams',
+                        'Zoom',
+                        'Google Meet',
+                        'Cisco Webex',
+                        'GoToMeeting',
+                        'Other'
+                    ]
+                },
+                {
+                    'id': 'acim_digital_whiteboard',
+                    'question': '7. Would you require a digital whiteboard collaboration tool with streaming options, such as Kaptivo or Logitech Scribe?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_camera_requirements',
+                    'question': '8. Based on the size of the room, would you require a single camera to capture the presenter, or would you need multiple cameras to capture both presenters and the audience?',
+                    'type': 'select',
+                    'options': [
+                        'Single camera (presenter only)',
+                        'Dual cameras (presenter + audience)',
+                        'Multi-camera setup (3+ cameras)'
+                    ]
+                },
+                {
+                    'id': 'acim_camera_features',
+                    'question': '9. If you require multiple cameras, would you like features such as speech tracking and auto-focus based on presets?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Smart tracking enhances remote viewing experience'
+                },
+                {
+                    'id': 'acim_program_audio',
+                    'question': '10. Would you require program audio for this room? (Will this room also be used for regular presentations/training?)',
+                    'type': 'text_area',
+                    'placeholder': 'Describe audio usage and requirements'
+                },
+                {
+                    'id': 'acim_automation',
+                    'question': '11. Would you need automation in the room for controlling Audio Visual equipment, lights, air conditioning, blinds, etc.?',
+                    'type': 'text_area',
+                    'placeholder': 'Specify automation requirements'
+                },
+                {
+                    'id': 'acim_audio_performance',
+                    'question': '12. Town halls are often conducted in reverberant spaces (acoustically challenging). If high-performance audio is crucial, we recommend using high-performance or digitally scalable columns. Please share your thoughts on this approach.',
+                    'type': 'text_area',
+                    'placeholder': 'Your audio quality expectations and concerns'
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '13. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        '$50,000 - $100,000',
+                        '$100,000 - $150,000',
+                        '$150,000 - $250,000',
+                        'Over $250,000',
+                        'To be discussed'
+                    ]
+                }
+            ]
+
+        # Auditorium Questions
+        elif room_type == "Auditorium":
+            return [
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '1. Could you provide detailed room dimensions (length, breadth, and height) and any existing architectural features we need to consider?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 80ft x 60ft x 20ft, balcony seating, acoustic treatment on ceiling'
+                },
+                {
+                    'id': 'acim_seating_info',
+                    'question': '2. How many seats are there in the room, and what is the seating orientation towards the stage? (e.g., theater, amphitheater)',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 300 seats, theater style with center aisle'
+                },
+                {
+                    'id': 'acim_connectivity',
+                    'question': '3. Are you looking for wired and wireless connectivity from both the podium and the overall seating area?',
+                    'type': 'select',
+                    'options': [
+                        'Stage/Podium only',
+                        'Seating area included',
+                        'Both stage and seating',
+                        'Comprehensive wireless'
+                    ]
+                },
+                {
+                    'id': 'acim_usage_frequency',
+                    'question': '4. How often will the Auditorium be used?',
+                    'type': 'select',
+                    'options': [
+                        'Daily',
+                        'Multiple times per week',
+                        'Weekly',
+                        'Monthly',
+                        'For special events only'
+                    ]
+                },
+                {
+                    'id': 'acim_primary_applications',
+                    'question': '5. What are the primary applications for this auditorium? (e.g., presentations, distance learning, entertainment, etc.)',
+                    'type': 'text_area',
+                    'placeholder': 'List primary uses and any special requirements'
+                },
+                {
+                    'id': 'acim_vc_solution',
+                    'question': '6. Would you require a Video Conferencing solution for Native Solution for simplified one-touch dialing via a touch panel mounted on a desk? Or would you prefer to connect your laptop and use the camera of the meeting room to drive the meeting (e.g. Teams, Zoom)',
+                    'type': 'select',
+                    'options': [
+                        'Native Solution (One-touch dialing)',
+                        'BYOD (Laptop connection)',
+                        'Both options',
+                        'Not needed'
+                    ]
+                },
+                {
+                    'id': 'acim_uc_platform',
+                    'question': '7. Which UC (Unified Collaboration) platform do you currently use?',
+                    'type': 'select',
+                    'options': [
+                        'Microsoft Teams',
+                        'Zoom',
+                        'Google Meet',
+                        'Cisco Webex',
+                        'GoToMeeting',
+                        'Not applicable'
+                    ]
+                },
+                {
+                    'id': 'acim_microphone_preferences',
+                    'question': '8. What type of microphones are preferred for onstage and offstage use? (e.g., lapel, wireless handheld, boundary, etc.)',
+                    'type': 'text_area',
+                    'placeholder': 'Specify microphone types and quantities needed'
+                },
+                {
+                    'id': 'acim_camera_requirements',
+                    'question': '9. Based on the size of the room, would you require a single camera to capture the presenter, or would you need multiple cameras to capture both presenters and the audience?',
+                    'type': 'select',
+                    'options': [
+                        'Single camera (stage only)',
+                        'Dual cameras (stage + audience)',
+                        'Multi-camera broadcast setup',
+                        'Professional PTZ system'
+                    ]
+                },
+                {
+                    'id': 'acim_camera_features',
+                    'question': '10. If you require multiple cameras, would you like features such as speech tracking and auto-focus based on presets?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_live_streaming',
+                    'question': '11. Would you require live streaming, corporate broadcast, or distance learning on a corporate network, YouTube Live, or Facebook Live?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Streaming requires encoding equipment and bandwidth'
+                },
+                {
+                    'id': 'acim_automation',
+                    'question': '12. Would you need automation in the room for controlling Audio Visual equipment, lights, air conditioning, blinds, etc.?',
+                    'type': 'text_area',
+                    'placeholder': 'Describe automation scope and preferences'
+                },
+                {
+                    'id': 'acim_audio_performance',
+                    'question': '13. Auditoriums often have acoustic challenges. If high-performance audio is crucial, we recommend professional speaker arrays with DSP processing. Please share your audio quality expectations.',
+                    'type': 'text_area',
+                    'placeholder': 'Your audio requirements and priorities'
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '14. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        '$100,000 - $250,000',
+                        '$250,000 - $500,000',
+                        '$500,000 - $1,000,000',
+                        'Over $1,000,000',
+                        'To be discussed'
+                    ]
+                }
+            ]
+
+        # Network Operations Center/Command Center Questions
+        elif room_type == "Network Operations Center/Command Center":
+            return [
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '1. Could you provide detailed room dimensions (length, breadth, and height) and any existing architectural features we need to consider?',
+                    'type': 'text_area',
+                    'placeholder': 'Include raised floor details if applicable'
+                },
+                {
+                    'id': 'acim_users_count',
+                    'question': '2. How many users will be viewing the screen? This information will help us calculate the number of screens and windows required.',
+                    'type': 'number',
+                    'min': 1,
+                    'max': 100,
+                    'default': 10,
+                    'help': 'Total number of operators/viewers'
+                },
+                {
+                    'id': 'acim_connectivity',
+                    'question': '3. Are you looking for wired and wireless connectivity from both the podium and the overall seating area?',
+                    'type': 'select',
+                    'options': [
+                        'All workstations wired',
+                        'Mix of wired and wireless',
+                        'Wireless backup',
+                        'Fully redundant connections'
+                    ]
+                },
+                {
+                    'id': 'acim_display_preference',
+                    'question': '4. Do you have a preference for video walls, LED video walls, active LEDs, or projection for this room?',
+                    'type': 'select',
+                    'options': [
+                        'LCD Video Wall',
+                        'Direct-View LED Wall',
+                        'Large Format Displays',
+                        'Projection System',
+                        'No preference - recommend best option'
+                    ]
+                },
+                {
+                    'id': 'acim_source_inputs',
+                    'question': '5. How many source inputs will be needed in this room? Should each user have their own input, or would it be from a central repository?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 20 workstation inputs + 10 server feeds + 5 camera feeds'
+                },
+                {
+                    'id': 'acim_digital_whiteboard',
+                    'question': '6. Would you require a digital whiteboard collaboration tool with streaming options, such as Kaptivo or Logitech Scribe?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_program_audio',
+                    'question': '7. Would you require program audio for this room? (Will this room also be used for regular presentations/training?)',
+                    'type': 'select',
+                    'options': [
+                        'Monitoring audio only',
+                        'Full presentation audio',
+                        'Both monitoring and presentation',
+                        'No audio required'
+                    ]
+                },
+                {
+                    'id': 'acim_encoder_decoder',
+                    'question': '8. Do you have a preference for hardware-based encoder/decoder solutions, or would you prefer a software-based solution that can be loaded on your IT infrastructure with redundancy?',
+                    'type': 'select',
+                    'options': [
+                        'Hardware-based (dedicated appliances)',
+                        'Software-based (virtual/server)',
+                        'Hybrid approach',
+                        'No preference - recommend best'
+                    ],
+                    'help': 'Hardware offers reliability, software offers flexibility'
+                },
+                {
+                    'id': 'acim_automation',
+                    'question': '9. Would you need automation in the room for controlling Audio Visual equipment, lights, air conditioning, blinds, etc.?',
+                    'type': 'text_area',
+                    'placeholder': 'Critical for 24/7 operations'
+                },
+                {
+                    'id': 'acim_live_streaming',
+                    'question': '10. Would you need live streaming or corporate broadcasting for distance learning on platforms like corporate networks, YouTube Live, or Facebook Live?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '11. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        '$100,000 - $250,000',
+                        '$250,000 - $500,000',
+                        '$500,000 - $1,000,000',
+                        'Over $1,000,000',
+                        'To be discussed'
+                    ]
+                }
+            ]
+
         # Default: Return empty list if room type not matched
         else:
             return []
@@ -1011,5 +1390,45 @@ class EnhancedSmartQuestionnaire:
             
             # NEW ACIM fields
             room_type_acim=responses.get('room_type_acim', ''),
-            supporting_documents=[]
+            supporting_documents=[],
+
+            # ACIM Detailed Responses
+            acim_seating_layout=responses.get('acim_seating_layout', ''),
+            acim_solution_type=responses.get('acim_solution_type', ''),
+            acim_uc_platform=responses.get('acim_uc_platform', ''),
+            acim_native_solution=responses.get('acim_native_solution', ''),
+            acim_connectivity=responses.get('acim_connectivity', ''),
+            acim_digital_whiteboard=responses.get('acim_digital_whiteboard', False),
+            acim_automation=responses.get('acim_automation', ''),
+            acim_room_scheduler=responses.get('acim_room_scheduler', False),
+            acim_virtual_demo=responses.get('acim_virtual_demo', False),
+            acim_acoustic_solutions=responses.get('acim_acoustic_solutions', False),
+            acim_budget=responses.get('acim_budget', ''),
+            acim_seating_info=responses.get('acim_seating_info', ''),
+            acim_remote_training=responses.get('acim_remote_training', False),
+            acim_camera_requirements=responses.get('acim_camera_requirements', ''),
+            acim_camera_features=responses.get('acim_camera_features', False),
+            acim_live_streaming=responses.get('acim_live_streaming', False),
+            acim_business_outcome=responses.get('acim_business_outcome', ''),
+            acim_showcase_items=responses.get('acim_showcase_items', ''),
+            acim_flexibility=responses.get('acim_flexibility', ''),
+            acim_stakeholders=responses.get('acim_stakeholders', ''),
+            acim_visitor_experience=responses.get('acim_visitor_experience', ''),
+            acim_av_equipment=responses.get('acim_av_equipment', []),
+            acim_display_type=responses.get('acim_display_type', ''),
+            acim_content_type=responses.get('acim_content_type', ''),
+            acim_centralized_platform=responses.get('acim_centralized_platform', False),
+            acim_locations_count=responses.get('acim_locations_count', 1),
+            acim_audio_solution=responses.get('acim_audio_solution', False),
+            acim_usage_frequency=responses.get('acim_usage_frequency', ''),
+            acim_primary_users=responses.get('acim_primary_users', ''),
+            acim_program_audio=responses.get('acim_program_audio', ''),
+            acim_audio_performance=responses.get('acim_audio_performance', ''),
+            acim_primary_applications=responses.get('acim_primary_applications', ''),
+            acim_vc_solution=responses.get('acim_vc_solution', ''),
+            acim_microphone_preferences=responses.get('acim_microphone_preferences', ''),
+            acim_users_count=responses.get('acim_users_count', 0),
+            acim_display_preference=responses.get('acim_display_preference', ''),
+            acim_source_inputs=responses.get('acim_source_inputs', ''),
+            acim_encoder_decoder=responses.get('acim_encoder_decoder', '')
         )
