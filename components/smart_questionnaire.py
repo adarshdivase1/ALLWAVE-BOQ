@@ -1432,3 +1432,86 @@ class EnhancedSmartQuestionnaire:
             acim_source_inputs=responses.get('acim_source_inputs', ''),
             acim_encoder_decoder=responses.get('acim_encoder_decoder', '')
         )
+
+    # --- NEW METHOD ADDED (CHANGE 4) ---
+    def generate_summary_report(self, requirements: ClientRequirements) -> str:
+        """Generates a markdown summary of the client requirements"""
+        report = []
+        report.append("### 📋 Client Requirements Summary")
+        
+        # Basic Info
+        report.append("\n**Project Basics:**")
+        report.append(f"  • **Project Type:** {requirements.project_type}")
+        report.append(f"  • **Room Count:** {requirements.room_count}")
+        report.append(f"  • **Primary Use:** {requirements.primary_use_case}")
+        report.append(f"  • **Budget Level:** {requirements.budget_level}")
+
+        # Key Preferences
+        report.append("\n**Key Preferences:**")
+        report.append(f"  • **VC Platform:** {requirements.vc_platform}")
+        brand_prefs = requirements.get_brand_preferences()
+        brands = [f"{k.title().replace('_', ' ')}: {v}" for k, v in brand_prefs.items() if v != 'No Preference']
+        if brands:
+            report.append(f"  • **Brand Prefs:** {', '.join(brands)}")
+        else:
+            report.append("  • **Brand Prefs:** No specific preferences")
+
+        # --- CHANGE 4 CODE BLOCK INSERTED HERE ---
+        # ACIM Detailed Requirements Section
+        if requirements.room_type_acim:
+            report.append("\n**📋 ACIM Detailed Requirements:**")
+            report.append(f"  • **Room Type:** {requirements.room_type_acim}")
+            
+            # Show relevant ACIM responses based on what was filled
+            if requirements.acim_seating_layout:
+                report.append(f"  • **Seating Layout:** {requirements.acim_seating_layout[:100]}...")
+            if requirements.acim_solution_type:
+                report.append(f"  • **Solution Type:** {requirements.acim_solution_type}")
+            if requirements.acim_budget:
+                report.append(f"  • **Budget Range:** {requirements.acim_budget}")
+            if requirements.acim_camera_requirements:
+                report.append(f"  • **Camera Setup:** {requirements.acim_camera_requirements}")
+            if requirements.acim_automation:
+                report.append(f"  • **Automation:** {requirements.acim_automation[:100]}...")
+            
+            report.append("")
+        # --- END OF CHANGE 4 BLOCK ---
+
+        return "\n".join(report)
+
+
+# --- NEW FUNCTION ADDED (FOR CHANGE 5 & 4) ---
+def show_smart_questionnaire_tab():
+    """
+    Renders the questionnaire tab, handles submission,
+    and displays the summary report.
+    """
+    if 'client_requirements' not in st.session_state:
+        st.session_state.client_requirements = None
+
+    questionnaire = EnhancedSmartQuestionnaire()
+    responses = questionnaire.render_questionnaire()
+    
+    st.markdown("---")
+    if st.button("✅ Submit & Save Requirements", type="primary", use_container_width=True):
+        with st.spinner("Processing requirements..."):
+            try:
+                requirements = questionnaire.convert_to_client_requirements(responses)
+                st.session_state.client_requirements = requirements
+                st.success("Requirements saved! You can now proceed to the 'Generate BOQ' tab.")
+                
+                # Generate and display summary
+                summary = questionnaire.generate_summary_report(requirements)
+                st.markdown(summary)
+            except Exception as e:
+                st.error(f"An error occurred while processing requirements: {e}")
+    
+    # If already submitted, show the summary
+    elif st.session_state.client_requirements:
+        st.markdown("---")
+        st.info("Requirements are already saved. You can edit above and re-submit if needed.")
+        try:
+            summary = questionnaire.generate_summary_report(st.session_state.client_requirements)
+            st.markdown(summary)
+        except Exception as e:
+            st.error(f"An error occurred while generating summary: {e}")
