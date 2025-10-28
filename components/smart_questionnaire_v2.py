@@ -1568,19 +1568,27 @@ class EnhancedSmartQuestionnaire:
                         responses[q_id] = response
                         questions_answered += 1
                         
+                    # --- START OF FIXED CODE BLOCK ---
                     elif q_type == 'number':
+                        # Ensure all numeric arguments are the same type (all floats)
+                        min_val = float(question.get('min', 1))
+                        max_val = float(question.get('max', 100))
+                        default_val = float(question.get('default', 1))
+                        step_val = 1.0  # Always use float step
+                        
                         response = st.number_input(
                             q_text,
-                            min_value=question.get('min', 1),
-                            max_value=question.get('max', 100),
-                            value=float(question.get('default', 1)),
-                            step=1.0, # Allow floats for dimensions
-                            format="%.1f" if q_id in ['room_length', 'room_width', 'ceiling_height'] else "%d",
+                            min_value=min_val,
+                            max_value=max_val,
+                            value=default_val,
+                            step=step_val,
+                            format="%.1f" if q_id in ['room_length', 'room_width', 'ceiling_height', 'ceiling_height_input'] else "%.0f",
                             key=f"q_{q_id}",
                             help=q_help
                         )
                         responses[q_id] = response
                         questions_answered += 1
+                    # --- END OF FIXED CODE BLOCK ---
                         
                     elif q_type == 'text_area':
                         response = st.text_area(
@@ -1821,4 +1829,3 @@ def show_smart_questionnaire_tab():
                         st.write(f"• {decision}")
         except Exception as e:
             st.error(f"An error occurred while generating summary: {e}")
-
