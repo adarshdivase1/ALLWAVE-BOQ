@@ -1,7 +1,7 @@
-# components/smart_questionnaire.py
+# components/smart_questionnaire_v2.py
 """
-Smart BOQ Questionnaire System
-Replaces scattered inputs with structured questions to gather all necessary information
+Enhanced Smart BOQ Questionnaire System - ACIM Integration Phase 1
+Combines existing questionnaire with ACIM form's detailed room-specific questions
 """
 
 import streamlit as st
@@ -11,54 +11,63 @@ import json
 
 @dataclass
 class ClientRequirements:
-    """Structured client requirements from questionnaire"""
-    # Project Basics (NO DEFAULTS - must come first)
+    """Enhanced structured client requirements"""
+    # EXISTING FIELDS (preserved for backward compatibility)
     project_type: str
     room_count: int
     primary_use_case: str
     budget_level: str
     
-    # Display Preferences (NO DEFAULTS)
+    # Display Preferences
     display_brand_preference: str
     display_size_preference: str
     dual_display_needed: bool
     interactive_display_needed: bool
     
-    # Video Conferencing (NO DEFAULTS)
+    # Video Conferencing
     vc_platform: str
     vc_brand_preference: str
     camera_type_preference: str
     auto_tracking_needed: bool
     
-    # Audio System (NO DEFAULTS)
+    # Audio System
     audio_brand_preference: str
     microphone_type: str
     ceiling_vs_table_audio: str
     voice_reinforcement_needed: bool
     
-    # Control & Integration (NO DEFAULTS)
+    # Control & Integration
     control_brand_preference: str
     wireless_presentation_needed: bool
     room_scheduling_needed: bool
     lighting_control_integration: bool
     
-    # Infrastructure (NO DEFAULTS)
+    # Infrastructure
     existing_network_capable: bool
     power_infrastructure_adequate: bool
     cable_management_type: str
     
-    # Compliance & Special Requirements (NO DEFAULTS)
+    # Compliance & Special Requirements
     ada_compliance_required: bool
     recording_capability_needed: bool
     streaming_capability_needed: bool
     
-    # Advanced Requirements (NO DEFAULTS)
+    # Advanced Requirements
     additional_requirements: str
     
-    # AVIXA-specific requirements (WITH DEFAULTS - must come LAST)
+    # AVIXA-specific requirements
     avixa_display_sizing: str = "AVIXA DISCAS Recommended (Optimal viewing)"
     performance_verification_required: bool = False
     target_sti_level: str = "Standard (STI ≥ 0.60)"
+    
+    # NEW FIELDS - ACIM Integration Phase 1
+    room_type_acim: str = ""  # Specific ACIM room type
+    detailed_room_dimensions: str = ""  # Detailed dimensions with layout
+    solution_type: str = ""  # AV only or AV + Video Collaboration
+    connectivity_requirements: str = ""  # Detailed connectivity needs
+    digital_whiteboard_needed: bool = False
+    automation_scope: str = ""  # What should be automated
+    supporting_documents: List = None  # Floor plans, etc.
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -74,17 +83,365 @@ class ClientRequirements:
         }
 
 
-class SmartQuestionnaire:
+class EnhancedSmartQuestionnaire:
     """
-    Intelligent questionnaire that adapts based on room type and previous answers
+    Enhanced questionnaire with ACIM form integration
+    Phase 1: Add room type selection and detailed questions
     """
     
     def __init__(self):
-        self.questions = self._build_question_tree()
+        self.questions = self._build_enhanced_question_tree()
         self.responses = {}
         
-    def _build_question_tree(self) -> Dict[str, Any]:
-        """Build comprehensive question structure"""
+        # ACIM room types mapping
+        self.acim_room_types = {
+            "Conference/Meeting Room/Boardroom": "conference_boardroom",
+            "Experience Center": "experience_center",
+            "Reception/Digital Signage": "reception_signage",
+            "Training Room": "training_room",
+            "Network Operations Center/Command Center": "noc_command",
+            "Town Hall": "town_hall",
+            "Auditorium": "auditorium"
+        }
+    
+    def _get_acim_detailed_questions(self, room_type: str) -> List[Dict]:
+        """
+        Get detailed ACIM questions for specific room type
+        Phase 2: Room-specific detailed questions
+        """
+        
+        # Conference/Meeting Room/Boardroom Questions
+        if room_type == "Conference/Meeting Room/Boardroom":
+            return [
+                {
+                    'id': 'acim_seating_layout',
+                    'question': '1. What is the seating capacity, layout (e.g., square table, U-shaped table, theater style), and detailed dimensions of the room, including its length, breadth, and height?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 12 people, rectangular table, 28ft x 20ft x 10ft height',
+                    'help': 'Be as specific as possible about room layout and dimensions'
+                },
+                {
+                    'id': 'acim_solution_type',
+                    'question': '2. Would you require an AV (Audio Visual) Solution for only Presentations or Video Collaboration (Teams/Zoom) as well?',
+                    'type': 'select',
+                    'options': [
+                        'Presentations Only',
+                        'Video Collaboration Only',
+                        'Both Presentations and Video Collaboration'
+                    ],
+                    'help': 'This determines if we need video conferencing equipment'
+                },
+                {
+                    'id': 'acim_uc_platform',
+                    'question': '3. Which UC platform does your organization currently use?',
+                    'type': 'select',
+                    'options': [
+                        'Microsoft Teams',
+                        'Zoom',
+                        'Google Meet',
+                        'Cisco Webex',
+                        'GoToMeeting',
+                        'Other'
+                    ],
+                    'help': 'We will ensure compatibility with your UC platform'
+                },
+                {
+                    'id': 'acim_native_solution',
+                    'question': '4. Would you require a Native Solution for simplified one-touch dialing via a touch panel mounted on the desk, or would you prefer to connect your laptop and use the meeting room\'s camera?',
+                    'type': 'select',
+                    'options': [
+                        'Native Solution (One-touch dialing with touch panel)',
+                        'BYOD (Bring Your Own Device - connect laptop)',
+                        'Both options needed'
+                    ],
+                    'help': 'Native solution provides easier user experience'
+                },
+                {
+                    'id': 'acim_connectivity',
+                    'question': '5. Do you require wired (e.g., HDMI) or wireless connectivity, and would you also need USB-C as an option?',
+                    'type': 'multiselect',
+                    'options': [
+                        'HDMI wired',
+                        'USB-C',
+                        'Wireless presentation',
+                        'All of the above'
+                    ],
+                    'help': 'Multiple connectivity options provide flexibility'
+                },
+                {
+                    'id': 'acim_digital_whiteboard',
+                    'question': '6. Would you like a digital whiteboard with streaming capabilities, such as Kaptivo or Logitech Scribe, for collaboration?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Digital whiteboards enable remote participants to see whiteboard content'
+                },
+                {
+                    'id': 'acim_automation',
+                    'question': '7. Do you want room automation for controlling AV systems, lighting, air conditioning, and blinds?',
+                    'type': 'text_area',
+                    'placeholder': 'Specify which systems should be automated and how',
+                    'help': 'Automation enhances user experience but adds complexity'
+                },
+                {
+                    'id': 'acim_room_scheduler',
+                    'question': '8. Would you require a room scheduler outside the room that integrates with platforms like Microsoft 365 or Gmail?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Room schedulers show availability and meeting details'
+                },
+                {
+                    'id': 'acim_virtual_demo',
+                    'question': '9. Would you be interested in scheduling a virtual demo to experience our AV solutions?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'We can arrange a virtual demonstration of recommended solutions'
+                },
+                {
+                    'id': 'acim_acoustic_solutions',
+                    'question': '10. Would you like more information about acoustic solutions to enhance the AV and video collaboration experience?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Acoustic treatment can significantly improve audio quality'
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '11. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        'Under $10,000',
+                        '$10,000 - $25,000',
+                        '$25,000 - $50,000',
+                        '$50,000 - $100,000',
+                        'Over $100,000',
+                        'To be discussed'
+                    ],
+                    'help': 'Budget helps us recommend appropriate solutions'
+                }
+            ]
+        
+        # Training Room Questions
+        elif room_type == "Training Room":
+            return [
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '1. Could you provide detailed room dimensions (length, breadth, and height) and any existing architectural features we need to consider?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 40ft x 25ft x 12ft height, columns at center, drop ceiling',
+                    'help': 'Architectural features affect equipment placement'
+                },
+                {
+                    'id': 'acim_seating_info',
+                    'question': '2. How many seats are there in the room, and what is the seating orientation towards the trainer? (e.g., classroom, theater, U-shaped)',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 25 seats, classroom style, 5 rows of 5 seats',
+                    'help': 'Seating arrangement affects camera and audio placement'
+                },
+                {
+                    'id': 'acim_connectivity',
+                    'question': '3. Are you looking for wired and wireless connectivity from both the podium and the overall seating area?',
+                    'type': 'select',
+                    'options': [
+                        'Podium only',
+                        'Seating area only',
+                        'Both podium and seating area',
+                        'Wireless throughout'
+                    ],
+                    'help': 'Multiple connection points increase flexibility'
+                },
+                {
+                    'id': 'acim_remote_training',
+                    'question': '4. Will this training room be used for remote training via platforms like Microsoft Teams, Zoom, WebEx, GoToMeeting, etc.?',
+                    'type': 'boolean',
+                    'default': True,
+                    'help': 'Remote training requires video conferencing equipment'
+                },
+                {
+                    'id': 'acim_camera_requirements',
+                    'question': '5. Based on the size of the room, would you require a single camera to capture the trainer, or would you need multiple cameras to capture the trainer and the audience?',
+                    'type': 'select',
+                    'options': [
+                        'Single camera (trainer only)',
+                        'Dual cameras (trainer + audience)',
+                        'Multi-camera (full coverage)'
+                    ],
+                    'help': 'Multiple cameras provide better remote experience'
+                },
+                {
+                    'id': 'acim_camera_features',
+                    'question': '6. If multiple cameras are required, would you like features such as speech tracking and auto-focus based on predefined presets?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Smart tracking keeps remote participants engaged'
+                },
+                {
+                    'id': 'acim_digital_whiteboard',
+                    'question': '7. Would you require a digital whiteboard collaboration tool with streaming options, such as Kaptivo or Logitech Scribe?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_automation',
+                    'question': '8. Would you need automation in the room for controlling Audio Visual equipment, lights, air conditioning, blinds, etc.?',
+                    'type': 'text_area',
+                    'placeholder': 'Specify automation requirements'
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '9. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        'Under $25,000',
+                        '$25,000 - $50,000',
+                        '$50,000 - $75,000',
+                        '$75,000 - $100,000',
+                        'Over $100,000',
+                        'To be discussed'
+                    ]
+                },
+                {
+                    'id': 'acim_live_streaming',
+                    'question': '10. Would you need live streaming or corporate broadcasting for distance learning on platforms like corporate networks, YouTube Live, or Facebook Live?',
+                    'type': 'boolean',
+                    'default': False,
+                    'help': 'Live streaming requires additional encoding equipment'
+                }
+            ]
+        
+        # Experience Center Questions
+        elif room_type == "Experience Center":
+            return [
+                {
+                    'id': 'acim_business_outcome',
+                    'question': '1. What is the intended business outcome of the Experience Center? Please provide detailed insights into the overall management goals and explain how the Experience Center will add value to your organization.',
+                    'type': 'text_area',
+                    'placeholder': 'Describe business goals, target audience, and expected outcomes',
+                    'height': 200
+                },
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '2. Can you provide detailed room dimensions (length, breadth, height) and layout preferences (e.g., open space, structured zones)?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: 60ft x 40ft x 15ft, open floor plan with 3 zones'
+                },
+                {
+                    'id': 'acim_showcase_items',
+                    'question': '3. What products, services, or solutions will be showcased in the Experience Center?',
+                    'type': 'text_area',
+                    'placeholder': 'List products/services to be demonstrated'
+                },
+                {
+                    'id': 'acim_flexibility',
+                    'question': '4. Will this space be flexible, allowing for changing product showcases? Will the showcase include both physical products and non-physical elements such as services or software solutions?',
+                    'type': 'text_area',
+                    'placeholder': 'Describe flexibility requirements'
+                },
+                {
+                    'id': 'acim_stakeholders',
+                    'question': '5. Who are the key stakeholders or target audiences for the Experience Center (e.g., customers, partners, internal teams)?',
+                    'type': 'text_area',
+                    'placeholder': 'List target audiences and their needs'
+                },
+                {
+                    'id': 'acim_visitor_experience',
+                    'question': '6. What type of experience do you want visitors to have (e.g., interactive, guided, self-serve)? How long will a typical walkthrough take?',
+                    'type': 'text_area',
+                    'placeholder': 'Example: Self-guided, interactive displays, 30-minute walkthrough'
+                },
+                {
+                    'id': 'acim_av_equipment',
+                    'question': '9. What types of AV equipment do you envision using (e.g., videowalls, touch screens, projection systems)?',
+                    'type': 'multiselect',
+                    'options': [
+                        'Video Walls',
+                        'Interactive Touch Screens',
+                        'Projection Systems',
+                        'LED Walls',
+                        'Audio Systems',
+                        'Lighting Effects',
+                        'Digital Signage'
+                    ]
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '11. What is the allocated budget for this project?',
+                    'type': 'select',
+                    'options': [
+                        '$50,000 - $100,000',
+                        '$100,000 - $250,000',
+                        '$250,000 - $500,000',
+                        'Over $500,000',
+                        'To be discussed'
+                    ]
+                }
+            ]
+        
+        # Reception/Digital Signage Questions
+        elif room_type == "Reception/Digital Signage":
+            return [
+                {
+                    'id': 'acim_display_type',
+                    'question': '1. What type of display would you prefer: a commercial display, video wall, or active LED?',
+                    'type': 'select',
+                    'options': [
+                        'Single Commercial Display',
+                        'Video Wall (multiple displays)',
+                        'Active LED Wall',
+                        'Multiple individual displays'
+                    ]
+                },
+                {
+                    'id': 'acim_room_dimensions',
+                    'question': '2. Could you provide detailed room dimensions (length, breadth, and height) and any existing architectural features we need to consider?',
+                    'type': 'text_area',
+                    'placeholder': 'Include ceiling height, wall space available, viewing distances'
+                },
+                {
+                    'id': 'acim_content_type',
+                    'question': '3. What type of content will be showcased on the digital signage (e.g., welcome messages, event promotions, product launches, commercial broadcasts)?',
+                    'type': 'text_area',
+                    'placeholder': 'Describe content types and update frequency'
+                },
+                {
+                    'id': 'acim_centralized_platform',
+                    'question': '4. Do you require a centralized, web-based platform for remotely managing and pushing updates to the digital signage?',
+                    'type': 'boolean',
+                    'default': True,
+                    'help': 'Centralized management simplifies content updates'
+                },
+                {
+                    'id': 'acim_locations_count',
+                    'question': '5. How many locations or screens would need to be controlled?',
+                    'type': 'number',
+                    'min': 1,
+                    'max': 100,
+                    'default': 1
+                },
+                {
+                    'id': 'acim_audio_solution',
+                    'question': '6. Do you require an audio solution to complement the digital signage, such as background music or sound for videos?',
+                    'type': 'boolean',
+                    'default': False
+                },
+                {
+                    'id': 'acim_budget',
+                    'question': '8. What is your budget range for this project?',
+                    'type': 'select',
+                    'options': [
+                        'Under $10,000',
+                        '$10,000 - $25,000',
+                        '$25,000 - $50,000',
+                        '$50,000 - $100,000',
+                        'Over $100,000'
+                    ]
+                }
+            ]
+        
+        # Default: Return empty list if room type not matched
+        else:
+            return []
+    
+    def _build_enhanced_question_tree(self) -> Dict[str, Any]:
+        """Build comprehensive question structure with ACIM integration"""
         return {
             'basic_info': {
                 'title': '📋 Project Basics',
@@ -140,6 +497,31 @@ class SmartQuestionnaire:
                 ]
             },
             
+            # NEW SECTION - ACIM Room Type Selection
+            'acim_room_selection': {
+                'title': '🏢 Detailed Room Classification (ACIM)',
+                'help_text': 'Select the specific room type for detailed technical requirements',
+                'questions': [
+                    {
+                        'id': 'room_type_acim',
+                        'question': 'Select the ACIM room type that best matches your space:',
+                        'type': 'select',
+                        'options': [
+                            'Conference/Meeting Room/Boardroom',
+                            'Experience Center',
+                            'Reception/Digital Signage',
+                            'Training Room',
+                            'Network Operations Center/Command Center',
+                            'Town Hall',
+                            'Auditorium'
+                        ],
+                        'default': 'Conference/Meeting Room/Boardroom',
+                        'help': 'This determines which detailed questions you will see next'
+                    }
+                ]
+            },
+            
+            # EXISTING SECTIONS (preserved)
             'display_system': {
                 'title': '🖥️ Display System Preferences',
                 'questions': [
@@ -195,7 +577,7 @@ class SmartQuestionnaire:
             },
             
             'video_conferencing': {
-                'title': '📹 Video Conferencing Requirements',
+                'title': '🎥 Video Conferencing Requirements',
                 'questions': [
                     {
                         'id': 'vc_platform',
@@ -294,7 +676,7 @@ class SmartQuestionnaire:
                             'Wall Mounted'
                         ],
                         'show_if': {
-                            'room_count': [1, 2, 3, 4, 5]  # Small projects
+                            'room_count': [1, 2, 3, 4, 5]
                         }
                     },
                     {
@@ -496,8 +878,8 @@ class SmartQuestionnaire:
     
     def render_questionnaire(self) -> Dict[str, Any]:
         """Render the complete questionnaire in Streamlit"""
-        st.markdown("## 🎯 Smart BOQ Questionnaire")
-        st.markdown("Please answer the following questions to generate an optimized, AVIXA-compliant Bill of Quantities.")
+        st.markdown("## 🎯 Enhanced Smart BOQ Questionnaire")
+        st.markdown("Answer these questions to generate an optimized, AVIXA-compliant Bill of Quantities.")
         st.markdown("---")
         
         responses = {}
@@ -510,7 +892,17 @@ class SmartQuestionnaire:
         questions_answered = 0
         
         for section_key, section in self.questions.items():
-            with st.expander(f"**{section['title']}**", expanded=(section_key == 'basic_info')):
+            # Special handling for ACIM room selection
+            is_acim_section = (section_key == 'acim_room_selection')
+            
+            with st.expander(
+                f"**{section['title']}**", 
+                expanded=(section_key == 'basic_info' or is_acim_section)
+            ):
+                # Add help text for ACIM section
+                if 'help_text' in section:
+                    st.info(section['help_text'])
+                
                 for question in section['questions']:
                     # Check if question should be shown
                     if not self.should_show_question(question, responses):
@@ -577,6 +969,7 @@ class SmartQuestionnaire:
     def convert_to_client_requirements(self, responses: Dict[str, Any]) -> ClientRequirements:
         """Convert questionnaire responses to ClientRequirements object"""
         return ClientRequirements(
+            # Existing fields
             project_type=responses.get('project_type', 'New Installation'),
             room_count=responses.get('room_count', 1),
             primary_use_case=responses.get('primary_use_case', 'Video Conferencing'),
@@ -589,7 +982,7 @@ class SmartQuestionnaire:
             
             vc_platform=responses.get('vc_platform', 'Microsoft Teams'),
             vc_brand_preference=responses.get('vc_brand_preference', 'No Preference'),
-            camera_type_preference=responses.get('camera_type_preference', 'All-in-One Video Bar (Recommended for small/medium rooms)'),
+            camera_type_preference=responses.get('camera_type_preference', 'All-in-One Video Bar'),
             auto_tracking_needed=responses.get('auto_tracking_needed', False),
             
             audio_brand_preference=responses.get('audio_brand_preference', 'No Preference'),
@@ -597,7 +990,7 @@ class SmartQuestionnaire:
             ceiling_vs_table_audio=responses.get('ceiling_vs_table_audio', 'Integrated in Video Bar'),
             voice_reinforcement_needed=responses.get('voice_reinforcement_needed', False),
             
-            control_brand_preference=responses.get('control_brand_preference', 'Native Platform Control (Teams Rooms/Zoom Rooms)'),
+            control_brand_preference=responses.get('control_brand_preference', 'Native Platform Control'),
             wireless_presentation_needed=responses.get('wireless_presentation_needed', True),
             room_scheduling_needed=responses.get('room_scheduling_needed', False),
             lighting_control_integration=responses.get('lighting_control_integration', False),
@@ -611,119 +1004,12 @@ class SmartQuestionnaire:
             streaming_capability_needed=responses.get('streaming_capability_needed', False),
             
             additional_requirements=responses.get('additional_requirements', ''),
-
-            # AVIXA requirements
-            avixa_display_sizing=responses.get('avixa_display_sizing', 'AVIXA DISCAS Recommended (Optimal viewing)'),
+            
+            avixa_display_sizing=responses.get('avixa_display_sizing', 'AVIXA DISCAS Recommended'),
             performance_verification_required=responses.get('performance_verification_required', False),
-            target_sti_level=responses.get('target_sti_level', 'Standard (STI ≥ 0.60)')
+            target_sti_level=responses.get('target_sti_level', 'Standard (STI ≥ 0.60)'),
+            
+            # NEW ACIM fields
+            room_type_acim=responses.get('room_type_acim', ''),
+            supporting_documents=[]
         )
-    
-    def generate_summary_report(self, requirements: ClientRequirements) -> str:
-        """Generate human-readable summary of requirements"""
-        report = ["=== PROJECT REQUIREMENTS SUMMARY ===\n"]
-        
-        report.append(f"**Project Type:** {requirements.project_type}")
-        report.append(f"**Number of Rooms:** {requirements.room_count}")
-        report.append(f"**Primary Use:** {requirements.primary_use_case}")
-        report.append(f"**Budget Level:** {requirements.budget_level}\n")
-        
-        report.append("**Display System:**")
-        report.append(f"  • Brand Preference: {requirements.display_brand_preference}")
-        report.append(f"  • Size Strategy: {requirements.display_size_preference}")
-        if requirements.dual_display_needed:
-            report.append(f"  • ✅ Dual displays required")
-        if requirements.interactive_display_needed:
-            report.append(f"  • ✅ Interactive/touch capability required\n")
-        
-        report.append("**Video Conferencing:**")
-        report.append(f"  • Platform: {requirements.vc_platform}")
-        report.append(f"  • Equipment Brand: {requirements.vc_brand_preference}")
-        report.append(f"  • Camera System: {requirements.camera_type_preference}")
-        if requirements.auto_tracking_needed:
-            report.append(f"  • ✅ Auto-tracking enabled\n")
-        
-        report.append("**Audio System:**")
-        report.append(f"  • Brand Preference: {requirements.audio_brand_preference}")
-        report.append(f"  • Microphone Type: {requirements.microphone_type}")
-        report.append(f"  • Speaker Placement: {requirements.ceiling_vs_table_audio}")
-        if requirements.voice_reinforcement_needed:
-            report.append(f"  • ✅ Voice reinforcement system included\n")
-        
-        report.append("**Control & Integration:**")
-        report.append(f"  • Control System: {requirements.control_brand_preference}")
-        if requirements.wireless_presentation_needed:
-            report.append(f"  • ✅ Wireless presentation (BYOD)")
-        if requirements.room_scheduling_needed:
-            report.append(f"  • ✅ Room scheduling displays")
-        if requirements.lighting_control_integration:
-            report.append(f"  • ✅ Lighting control integration\n")
-        
-        report.append("**Special Requirements:**")
-        if requirements.ada_compliance_required:
-            report.append(f"  • ✅ ADA compliance")
-        if requirements.recording_capability_needed:
-            report.append(f"  • ✅ Recording capability")
-        if requirements.streaming_capability_needed:
-            report.append(f"  • ✅ Live streaming capability")
-        
-        if requirements.additional_requirements:
-            report.append(f"\n**Additional Notes:**")
-            report.append(f"{requirements.additional_requirements}")
-        
-        return "\n".join(report)
-
-
-# Integration function for existing app
-def show_smart_questionnaire_tab():
-    """Render questionnaire tab in main app"""
-    questionnaire = SmartQuestionnaire()
-    
-    st.markdown("### Why Use the Smart Questionnaire?")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.info("⚡ **Faster**\nGenerate BOQs 10x faster with optimized queries")
-    with col2:
-        st.success("🎯 **More Accurate**\nGuided questions ensure nothing is missed")
-    with col3:
-        st.warning("📊 **AVIXA Compliant**\nAll recommendations follow industry standards")
-    
-    st.markdown("---")
-    
-    # Render questionnaire
-    responses = questionnaire.render_questionnaire()
-    
-    # Store responses in session state
-    st.session_state.questionnaire_responses = responses
-    
-    st.markdown("---")
-    
-    # Generate button
-    col_generate, col_summary = st.columns([1, 2])
-    
-    with col_generate:
-        if st.button("🚀 Generate BOQ from Questionnaire", type="primary", use_container_width=True):
-            # Convert to structured requirements
-            requirements = questionnaire.convert_to_client_requirements(responses)
-            st.session_state.client_requirements = requirements
-            
-            st.success("✅ Requirements captured! Generating BOQ...")
-            st.balloons()
-            
-            # This will trigger BOQ generation in the main flow
-            st.session_state.trigger_boq_generation = True
-    
-    with col_summary:
-        if st.button("📄 Show Requirements Summary", use_container_width=True):
-            requirements = questionnaire.convert_to_client_requirements(responses)
-            summary = questionnaire.generate_summary_report(requirements)
-            
-            with st.expander("📋 Requirements Summary", expanded=True):
-                st.code(summary, language=None)
-                
-                # Export option
-                st.download_button(
-                    "💾 Export Summary",
-                    data=summary,
-                    file_name="project_requirements.txt",
-                    mime="text/plain"
-                )
