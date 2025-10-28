@@ -1,12 +1,15 @@
 # components/optimized_boq_generator.py
-# ENHANCED VERSION - Full AVIXA Standards Implementation & Production Readiness Fixes
+# ENHANCED VERSION - PHASE 4: UnifiedRequirementsContext Integration
 
 import streamlit as st
 from typing import Dict, List, Any, Tuple
 import pandas as pd
 import math
 
-from components.smart_questionnaire import ClientRequirements
+# NEW: Import the unified context
+from components.requirements_context import UnifiedRequirementsContext
+# OLD: ClientRequirements is no longer needed
+# from components.smart_questionnaire import ClientRequirements
 from components.room_profiles import ROOM_SPECS
 from components.intelligent_product_selector import IntelligentProductSelector, ProductRequirement
 from components.av_designer import calculate_avixa_recommendations
@@ -369,86 +372,94 @@ class OptimizedBOQGenerator:
     ENHANCED: Now uses full AVIXA calculations and production-ready logic
     """
     
-    def __init__(self, product_df: pd.DataFrame, client_requirements: ClientRequirements):
+    def __init__(self, product_df: pd.DataFrame, unified_context: 'UnifiedRequirementsContext'):
+        """
+        UPDATED: Now accepts UnifiedRequirementsContext instead of ClientRequirements
+        """
         self.product_df = product_df
-        self.requirements = client_requirements
+        self.context = unified_context  # The single source of truth
         self.avixa_calc = EnhancedAVIXACalculator()
         
         self.selector = IntelligentProductSelector(
             product_df=product_df,
-            client_preferences=client_requirements.get_brand_preferences(),
-            budget_tier=client_requirements.budget_level
+            client_preferences=unified_context.brands.__dict__,
+            budget_tier=unified_context.project.budget_tier
         )
+        
+        # Pass unified context to selector
+        self.selector.unified_context = unified_context
     
-    def generate_boq_for_room(
-        self, 
-        room_type: str, 
-        room_length: float, 
-        room_width: float, 
-        ceiling_height: float
-    ) -> Tuple[List[Dict], Dict[str, Any]]:
+    def generate_boq_for_room(self) -> Tuple[List[Dict], Dict[str, Any]]:
         """
-        ENHANCED: Generate BOQ with comprehensive AVIXA calculations
+        UPDATED: Uses unified context instead of separate parameters
         """
-        room_area = room_length * room_width
-        room_volume = room_area * ceiling_height
-        room_profile = ROOM_SPECS.get(room_type, ROOM_SPECS['Standard Conference Room (6-8 People)'])
+        room = self.context.room
+        tech = self.context.technical
         
         # === COMPREHENSIVE AVIXA CALCULATIONS ===
         st.info("📊 Running AVIXA Standards Analysis...")
         
         # Display calculations (DISCAS)
         display_calcs = self.avixa_calc.calculate_display_size_discas(
-            room_length, room_width, content_type="BDM"
+            room.length_ft, room.width_ft, content_type="BDM"
         )
         
-        # Audio coverage (A102.01) - Pass occupancy if available
-        occupancy = room_profile.get('capacity_max', None)
+        # Store AVIXA recommendation in context
+        tech.display_size_avixa = display_calcs['selected_size_inches']
+        
+        # Check for manual override
+        if tech.display_size_preference:
+            tech.display_size_final = tech.display_size_preference
+            self.context.log_decision(
+                f"Display size: User override {tech.display_size_preference}\" "
+                f"(AVIXA recommended {tech.display_size_avixa}\")"
+            )
+        else:
+            tech.display_size_final = tech.display_size_avixa
+            self.context.log_decision(
+                f"Display size: Using AVIXA recommendation {tech.display_size_avixa}\""
+            )
+        
+        # Audio coverage (A102.01) - Pass occupancy
         audio_calcs = self.avixa_calc.calculate_audio_coverage_a102(
-            room_area, ceiling_height, room_type, occupancy
+            room.area_sqft, 
+            room.ceiling_height_ft, 
+            room.room_type,
+            room.seating_capacity
         )
         
         # Microphone coverage
-        table_config = "conference_table" if room_area < 600 else "conference_table"
-        mic_calcs = self.avixa_calc.calculate_microphone_coverage(room_area, table_config)
+        table_config = "conference_table" if room.area_sqft < 600 else "conference_table"
+        mic_calcs = self.avixa_calc.calculate_microphone_coverage(room.area_sqft, table_config)
+        
+        # Store in context
+        tech.microphone_count_avixa = mic_calcs['mics_needed']
+        tech.speaker_count_avixa = audio_calcs['speakers_needed']
         
         # SPL requirements
         target_spl = 75  # Standard for conference rooms
         spl_calcs = self.avixa_calc.calculate_required_amplifier_power(
-            room_volume, target_spl
+            room.volume_cuft, target_spl
         )
         
         # Viewing angles
         viewing_calcs = self.avixa_calc.validate_viewing_angles(
-            room_width, display_calcs['selected_size_inches'], seating_rows=2
+            room.width_ft, tech.display_size_final, seating_rows=2
         )
         
-        # Network requirements (will be calculated after equipment is selected)
-        # Power requirements (will be calculated after equipment is selected)
-        
-        # Store all calculations
-        avixa_calcs = {
+        # Store all calculations in context
+        self.context.avixa_calculations = {
             'display': display_calcs,
             'audio': audio_calcs,
             'microphones': mic_calcs,
             'spl': spl_calcs,
             'viewing_angles': viewing_calcs,
-            'room_area': room_area,
-            'room_volume': room_volume
-        }
-        
-        # Pass calculations to selector
-        self.selector.requirements_context = {
-            'vc_platform': self.requirements.vc_platform,
-            'room_type': room_type,
-            'room_area': room_area,
-            'avixa_calcs': avixa_calcs
+            'room_area': room.area_sqft,
+            'room_volume': room.volume_cuft
         }
         
         # Build blueprint using AVIXA calculations
-        blueprint = self._build_avixa_compliant_blueprint(
-            room_type, room_area, room_profile, ceiling_height, avixa_calcs
-        )
+        blueprint = self._build_avixa_compliant_blueprint()
         
         # Select products
         boq_items = []
@@ -458,7 +469,7 @@ class OptimizedBOQGenerator:
             
             if product:
                 justification = self._generate_avixa_justification(
-                    component_key, product, avixa_calcs
+                    component_key, product, self.context.avixa_calculations
                 )
                 
                 product.update({
@@ -483,11 +494,11 @@ class OptimizedBOQGenerator:
         
         power_reqs = self.avixa_calc.calculate_power_requirements(boq_items)
         
-        avixa_calcs['network'] = network_reqs
-        avixa_calcs['power'] = power_reqs
+        self.context.avixa_calculations['network'] = network_reqs
+        self.context.avixa_calculations['power'] = power_reqs
         
         # Validate AVIXA compliance
-        validation_results = self._validate_avixa_compliance(boq_items, avixa_calcs)
+        validation_results = self._validate_avixa_compliance(boq_items, self.context.avixa_calculations)
 
         # ✅ NEW: Validate audio ecosystem
         audio_warnings = self._validate_audio_ecosystem(boq_items)
@@ -504,13 +515,21 @@ class OptimizedBOQGenerator:
         return boq_items, validation_results
     
     def _build_avixa_compliant_blueprint(
-        self, room_type: str, room_area: float, room_profile: Dict,
-        ceiling_height: float, avixa_calcs: Dict
+        self
     ) -> Dict[str, ProductRequirement]:
         """
         ✅ ARCHITECTURE FIX: Route to room-specific blueprint builders.
         This acts as a decision tree for different room types.
+        NOW READS FROM self.context
         """
+        # Extract data from context
+        room = self.context.room
+        room_type = room.room_type
+        room_area = room.area_sqft
+        ceiling_height = room.ceiling_height_ft
+        avixa_calcs = self.context.avixa_calculations
+        room_profile = ROOM_SPECS.get(room_type, ROOM_SPECS['Standard Conference Room (6-8 People)'])
+
         # ============ ROOM TYPE DECISION TREE ============
         if room_type in ['Small Huddle Room (2-3 People)', 'Medium Huddle Room (4-6 People)']:
             # In a full implementation, this would call a dedicated _build_huddle_room_blueprint
@@ -541,31 +560,34 @@ class OptimizedBOQGenerator:
     ) -> Dict[str, ProductRequirement]:
         """
         Builds the equipment blueprint for a standard conference or boardroom.
-        This contains the core logic and has been refactored from the old
-        _build_avixa_compliant_blueprint method.
+        UPDATED: Now reads from self.context.technical and self.context.brands
         """
         blueprint = {}
-        req = self.requirements
+        # NEW: Get technical and brand context
+        tech = self.context.technical
+        brands = self.context.brands
         
-        # === DISPLAYS (Using AVIXA DISCAS WITH ROOM CONSTRAINTS) ===
-        display_size_avixa = avixa_calcs['display']['selected_size_inches']
+        # === DISPLAYS (Using final context-driven size) ===
+        display_size = tech.display_size_final
+        
+        # Apply room-specific constraints (this is now a secondary check, as final size is set)
         room_constraints = ROOM_DISPLAY_CONSTRAINTS.get(room_type, {'min': 55, 'max': 98})
-        display_size = max(room_constraints['min'], min(display_size_avixa, room_constraints['max']))
+        display_size = max(room_constraints['min'], min(display_size, room_constraints['max']))
 
         if 'Executive' in room_type or 'Boardroom' in room_type:
             display_size = max(75, display_size)
         elif room_area > 600:
             display_size = max(75, display_size)
 
-        st.success(f"✅ AVIXA + Room Constraints: {display_size}\" display for {room_type}")
-        display_qty = 2 if (req.dual_display_needed or 'Executive' in room_type or 'Boardroom' in room_type or room_area > 600) else 1
+        st.success(f"✅ Final Display Size: {display_size}\" for {room_type}")
+        display_qty = 2 if (tech.dual_display_needed or 'Executive' in room_type or 'Boardroom' in room_type or room_area > 600) else 1
 
         blueprint['primary_display'] = ProductRequirement(
             category='Displays',
-            sub_category='Interactive Display' if req.interactive_display_needed else 'Professional Display',
+            sub_category='Interactive Display' if tech.interactive_display_needed else 'Professional Display',
             quantity=display_qty,
             priority=1,
-            justification=f'AVIXA DISCAS + Room constraints: {display_size}" for {room_type}',
+            justification=f'Final determined size: {display_size}" for {room_type}',
             size_requirement=display_size,
             required_keywords=['display', '4k', str(display_size)],
             blacklist_keywords=['mount', 'bracket', 'stand', 'arm', 'cable', 'adapter', 'menu'],
@@ -594,22 +616,10 @@ class OptimizedBOQGenerator:
         # === VIDEO CONFERENCING (WITH ECOSYSTEM ENFORCEMENT) ===
         is_large_room = room_area > 400
 
-        # CRITICAL: Determine VC brand FIRST based on platform
-        vc_brand_preference = None
-        if self.requirements.vc_platform.lower() == 'microsoft teams':
-            # Teams certified: Poly, Yealink, Logitech, Crestron
-            vc_brand_preference = 'Poly'  # Default to Poly for Teams
-        elif self.requirements.vc_platform.lower() == 'zoom':
-            # Zoom certified: Poly, Logitech, Yealink
-            vc_brand_preference = 'Poly'  # Default to Poly
-        elif 'cisco' in self.requirements.vc_platform.lower() or 'webex' in self.requirements.vc_platform.lower():
-            vc_brand_preference = 'Cisco'
-        else:
-            # Check client preferences
-            vc_brand_preference = self.requirements.get_brand_preferences().get('video_conferencing', 'Poly')
+        # CRITICAL: Read VC brand from unified context
+        vc_brand_preference = brands.vc_ecosystem_brand if brands.vc_ecosystem_brand else 'Poly'
 
-        # Store the selected VC brand for ecosystem enforcement
-        self.selector.vc_ecosystem_brand = vc_brand_preference
+        # Store the selected VC brand for ecosystem enforcement (already done in __init__)
         st.info(f"🎯 Video Conferencing Ecosystem: **{vc_brand_preference}** (enforced for camera, codec, and touch panel)")
 
         if room_area <= 250:  # Small huddle
@@ -648,7 +658,7 @@ class OptimizedBOQGenerator:
                 sub_category='Room Kit / Codec',
                 quantity=1,
                 priority=3,
-                justification=f'{vc_brand_preference} codec for {self.requirements.vc_platform}',
+                justification=f'{vc_brand_preference} codec for {tech.vc_platform}',
                 required_keywords=['codec', 'room kit', vc_brand_preference.lower()],
                 blacklist_keywords=['video bar', 'webcam', 'usb'],
                 min_price=1500,
@@ -703,8 +713,17 @@ class OptimizedBOQGenerator:
         st.success(f"✅ AVIXA A102.01: {avixa_calcs['audio']['speakers_needed']} speakers needed for ±3dB uniformity")
         st.success(f"✅ AVIXA Microphone Coverage: {avixa_calcs['microphones']['mics_needed']} microphones required")
         
-        mic_type_sub = 'Ceiling Microphone' if room_area > 400 else 'Table/Boundary Microphone'
-        min_mic_price = 400 if room_area > 400 else 150
+        # Use mic type from context if available, otherwise calculate
+        mic_type_pref = tech.microphone_type.lower()
+        if 'ceiling' in mic_type_pref:
+            mic_type_sub = 'Ceiling Microphone'
+        elif 'table' in mic_type_pref or 'boundary' in mic_type_pref:
+             mic_type_sub = 'Table/Boundary Microphone'
+        else: # Default
+            mic_type_sub = 'Ceiling Microphone' if room_area > 400 else 'Table/Boundary Microphone'
+            
+        min_mic_price = 400 if 'Ceiling' in mic_type_sub else 150
+        
         blueprint['microphones'] = ProductRequirement(
             category='Audio', sub_category=mic_type_sub, quantity=avixa_calcs['microphones']['mics_needed'], priority=6,
             justification=f"AVIXA-calculated {avixa_calcs['microphones']['mics_needed']}x mics for {room_area:.0f} sqft",
@@ -716,8 +735,8 @@ class OptimizedBOQGenerator:
             # ✅ CRITICAL: Brand matching with microphones
             mic_brand = None
             if 'microphones' in blueprint:
-                # Get the brand preference for microphones
-                mic_brand_pref = self.requirements.get_brand_preferences().get('audio', 'No Preference')
+                # Get the brand preference for microphones from context
+                mic_brand_pref = brands.audio
                 if mic_brand_pref != 'No Preference':
                     mic_brand = mic_brand_pref
             
@@ -730,6 +749,8 @@ class OptimizedBOQGenerator:
                 # Add brand to keywords for ecosystem matching
                 dsp_keywords.append(mic_brand.lower())
                 st.info(f"🎯 Audio Ecosystem: Matching DSP to {mic_brand} microphones")
+                # NEW: Set this in the context for the selector
+                brands.audio_ecosystem_brand = mic_brand
             
             blueprint['audio_dsp'] = ProductRequirement(
                 category='Audio',
@@ -837,7 +858,7 @@ class OptimizedBOQGenerator:
             reasons = [
                 f"AVIXA DISCAS-compliant sizing for {display_calcs['max_viewing_distance_ft']:.1f}ft viewing distance",
                 "Professional 4K resolution ensures readability from all seats",
-                f"Certified for {self.requirements.vc_platform} collaboration"
+                f"Certified for {self.context.technical.vc_platform} collaboration"
             ]
             
         elif 'Audio' in category:
@@ -1071,6 +1092,7 @@ class OptimizedBOQGenerator:
     def calculate_boq_quality_score(self, boq_items: List[Dict], validation_results: Dict) -> Dict[str, Any]:
         """
         ENHANCED: Quality score now includes AVIXA compliance
+        UPDATED: Reads brand preferences from self.context
         """
         score_breakdown = {
             'brand_compliance': 0,
@@ -1089,21 +1111,26 @@ class OptimizedBOQGenerator:
         }
         
         # 1. Brand Compliance (15 points)
-        prefs = self.requirements.get_brand_preferences()
+        prefs = self.context.brands.__dict__
         brand_matches = 0
         brand_total = 0
         
-        for category, preferred_brand in prefs.items():
+        category_map = {
+            'displays': 'Displays',
+            'video_conferencing': 'Video Conferencing',
+            'audio': 'Audio',
+            'control': 'Control Systems'
+        }
+        
+        for category_key, preferred_brand in prefs.items():
+            # NEW: Only check categories that are in our map
+            if category_key not in category_map:
+                continue
+                
             if preferred_brand != 'No Preference':
                 brand_total += 1
-                category_map = {
-                    'displays': 'Displays',
-                    'video_conferencing': 'Video Conferencing',
-                    'audio': 'Audio',
-                    'control': 'Control Systems'
-                }
+                actual_category = category_map.get(category_key)
                 
-                actual_category = category_map.get(category)
                 matching_items = [
                     item for item in boq_items 
                     if actual_category in item.get('category', '')
