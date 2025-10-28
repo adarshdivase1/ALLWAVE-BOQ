@@ -1573,7 +1573,7 @@ class EnhancedSmartQuestionnaire:
                             q_text,
                             min_value=question.get('min', 1),
                             max_value=question.get('max', 100),
-                            value=question.get('default', 1),
+                            value=float(question.get('default', 1)),
                             step=1.0, # Allow floats for dimensions
                             format="%.1f" if q_id in ['room_length', 'room_width', 'ceiling_height'] else "%d",
                             key=f"q_{q_id}",
@@ -1821,3 +1821,4 @@ def show_smart_questionnaire_tab():
                         st.write(f"• {decision}")
         except Exception as e:
             st.error(f"An error occurred while generating summary: {e}")
+
