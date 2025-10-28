@@ -149,6 +149,9 @@ class IntelligentProductSelector:
         
         # NEW: Build category validation database
         self._build_category_validators()
+
+        # NEW: Unified context (from PHASE 4)
+        self.unified_context = None  # Will be set by BOQ generator
     
     def _standardize_price_column(self):
         """Ensure consistent 'price' column"""
@@ -395,8 +398,10 @@ class IntelligentProductSelector:
                 return None
 
             # STAGE 7.5: AVIXA Display Sizing Validation
-            if selected and selected.get('category') == 'Displays' and hasattr(self, 'requirements_context'):
-                room_context = self.requirements_context
+            # (PHASE 4) - Check for unified_context instead of requirements_context
+            if selected and selected.get('category') == 'Displays' and hasattr(self, 'unified_context'):
+                # (PHASE 4) - Get context from unified_context
+                room_context = self.unified_context.avixa_calculations 
                 is_avixa_compliant, avixa_msg = self._validate_avixa_display_sizing(selected, room_context)
                 
                 if not is_avixa_compliant:
@@ -553,9 +558,10 @@ class IntelligentProductSelector:
         
         return alternatives
 
-    def _validate_avixa_display_sizing(self, product: Dict, room_context: Dict) -> Tuple[bool, str]:
+    def _validate_avixa_display_sizing(self, product: Dict, avixa_calcs: Dict) -> Tuple[bool, str]:
         """
         Validates display size against AVIXA DISCAS standards
+        (PHASE 4) - Takes avixa_calcs dict directly
         """
         if product.get('category') != 'Displays':
             return True, "N/A"
@@ -565,8 +571,8 @@ class IntelligentProductSelector:
         if not display_size:
             return True, "Cannot validate - size unknown"
         
-        # Get room viewing distance
-        viewing_distance = room_context.get('avixa_calcs', {}).get('display', {}).get('max_viewing_distance_ft', 0)
+        # Get room viewing distance from avixa_calcs
+        viewing_distance = avixa_calcs.get('display', {}).get('max_viewing_distance_ft', 0)
         if viewing_distance == 0:
             return True, "No viewing distance available"
         
@@ -942,40 +948,42 @@ class IntelligentProductSelector:
             self.log(f"    ⚠️ Strict validation found no mounts - using all candidates")
             return df
 
-    # === MODIFICATION 2: ADDED ECOSYSTEM ENFORCEMENT ===
+    # === (PHASE 4) MODIFICATION: UPDATED METHOD ===
     def _apply_client_preferences(self, df, req: ProductRequirement):
         """
-        ENHANCED: Strict brand preference enforcement with ecosystem validation.
-        Now respects vc_ecosystem_brand for VC components.
+        UPDATED: Uses unified context for ecosystem enforcement
         """
-        
         if df.empty:
             return df
         
-        # ✅ CRITICAL: Check if this is a VC ecosystem component
-        if req.category == 'Video Conferencing' and hasattr(self, 'vc_ecosystem_brand'):
-            enforced_brand = self.vc_ecosystem_brand
+        # ✅ CRITICAL: Check unified context first
+        if self.unified_context:
+            brands = self.unified_context.brands
             
-            self.log(f"    🔒 ECOSYSTEM ENFORCEMENT: Filtering for {enforced_brand} (VC ecosystem)")
-            
-            # STRICT filtering for ecosystem brand
-            exact_matches = df[df['brand'].str.lower() == enforced_brand.lower()]
-            
-            if not exact_matches.empty:
-                self.log(f"    ✅ ECOSYSTEM MATCH: {len(exact_matches)} {enforced_brand} products found")
-                return exact_matches
-            else:
-                # CRITICAL ERROR: If ecosystem brand not available, flag it
-                self.log(f"    ❌ CRITICAL: {enforced_brand} not available for {req.sub_category}")
+            # VC ecosystem enforcement
+            if req.category == 'Video Conferencing' and brands.vc_ecosystem_brand:
+                enforced_brand = brands.vc_ecosystem_brand
                 
-                self.validation_warnings.append({
-                    'component': req.sub_category,
-                    'issue': f'🚨 ECOSYSTEM VIOLATION: {enforced_brand} not available. System will NOT be compatible!',
-                    'severity': 'CRITICAL'
-                })
+                self.log(f"    🔒 ECOSYSTEM ENFORCEMENT: {enforced_brand} (from unified context)")
                 
-                # DO NOT fall back to other brands - return empty to force review
-                return pd.DataFrame()
+                exact_matches = df[df['brand'].str.lower() == enforced_brand.lower()]
+                
+                if not exact_matches.empty:
+                    self.log(f"    ✅ ECOSYSTEM MATCH: {len(exact_matches)} {enforced_brand} products")
+                    return exact_matches
+                else:
+                    self.log(f"    ❌ CRITICAL: {enforced_brand} not available")
+                    self.validation_warnings.append({
+                        'component': req.sub_category,
+                        'issue': f'🚨 ECOSYSTEM VIOLATION: {enforced_brand} not available',
+                        'severity': 'CRITICAL'
+                    })
+                    return pd.DataFrame()
+            
+            # Audio ecosystem enforcement
+            if req.category == 'Audio' and brands.audio_ecosystem_brand:
+                # Similar logic for audio
+                pass
         
         # Get preferred brand for non-VC categories
         preferred_brand = self._get_client_preference_for_category(req.category)
@@ -1053,8 +1061,9 @@ class IntelligentProductSelector:
         if req.category in ['Audio', 'Video Conferencing']:
             # Find the VC platform from requirements context
             vc_platform = None
-            if hasattr(self, 'requirements_context'):
-                vc_platform = self.requirements_context.get('vc_platform', '').lower()
+            # (PHASE 4) - Check for unified_context
+            if hasattr(self, 'unified_context'):
+                vc_platform = self.unified_context.technical.vc_platform.lower()
             
             # If we have a VC platform, ensure audio is compatible
             if vc_platform and req.category == 'Audio':
@@ -1198,10 +1207,9 @@ class IntelligentProductSelector:
             if category not in selected_brands:
                 selected_brands[category] = brand
             
-            # This logic assumes self.requirements exists, which might need to be set
-            # during the BOQ generation process.
-            if 'Video Conferencing' in category and hasattr(self, 'requirements') and hasattr(self.requirements, 'vc_platform'):
-                vc_platform = self.requirements.vc_platform
+            # (PHASE 4) - Check for unified_context
+            if 'Video Conferencing' in category and hasattr(self, 'unified_context'):
+                vc_platform = self.unified_context.technical.vc_platform
         
         # Check ecosystem compatibility
         audio_brand = selected_brands.get('Audio', '')
@@ -1262,8 +1270,9 @@ class IntelligentProductSelector:
         # Check 3: Control System and VC Platform
         controls = [item for item in boq_items if 'Control' in item.get('category', '')]
         
-        if controls and hasattr(self, 'requirements'):
-            vc_platform = self.requirements.vc_platform.lower()
+        # (PHASE 4) - Check for unified_context
+        if controls and hasattr(self, 'unified_context'):
+            vc_platform = self.unified_context.technical.vc_platform.lower()
             control_brand = controls[0].get('brand', '').lower()
             
             # Teams Rooms requires specific control brands
